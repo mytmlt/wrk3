@@ -1,0 +1,34 @@
+name: Bug report
+description: Something is broken
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Expected vs actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Redacted wrk3.yaml (no secrets), exact commands, logs.
+      placeholder: |
+        wrk3 version:
+        OS/arch:
+        ```yaml
+        # redacted config
+        ```
+        ```console
+        $ wrk3 status
+        ...
+        ```
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: wrk3 version (`wrk3 version`)
+    validations:
+      required: true

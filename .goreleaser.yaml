@@ -1,0 +1,66 @@
+# GoReleaser config for wrk3 (github.com/mytmlt/wrk3).
+# Release with: git tag v0.1.0 && git push origin v0.1.0
+# (or `make release` with GITHUB_TOKEN set).
+# Docs: https://goreleaser.com/intro/
+
+version: 2
+
+project_name: wrk3
+
+before:
+  hooks:
+    - go mod download
+    - go vet ./...
+    - go test ./... -count=1
+
+builds:
+  - id: wrk3
+    main: .
+    binary: wrk3
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X github.com/mytmlt/wrk3/cmd.Version={{ .Version }}
+        -X github.com/mytmlt/wrk3/cmd.Commit={{ .Commit }}
+        -X github.com/mytmlt/wrk3/cmd.Date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz, zip]
+    files:
+      - LICENSE
+      - README.md
+      - wrk3.yaml.example
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: mytmlt
+    name: wrk3
+  name_template: "wrk3 {{ .Version }}"
+  prerelease: auto
+
+snapshot:
+  version_template: "{{ .Version }}-next"

@@ -1,0 +1,37 @@
+# Binaries and build output
+/wrk3
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+
+# Go build cache / coverage
+coverage.out
+coverage.html
+*.coverprofile
+
+# Local project configs (personal paths — never commit)
+wrk3.*.local.yaml
+.wrk3-state.json
+.worktrees/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+
+# Release artifacts
+*.tar.gz
+*.zip
+checksums.txt

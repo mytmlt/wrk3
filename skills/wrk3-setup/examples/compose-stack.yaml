@@ -1,0 +1,22 @@
+# Generic compose-stack template for wrk3.
+# Copy to wrk3.<name>.local.yaml in the repo root, fill in commands from the
+# target repo's own Makefile/README, then:
+#   wrk3 project add <name> --config wrk3.<name>.local.yaml
+project:
+  worktreeBase: .worktrees
+source:
+  type: git
+  git: {remote: origin, fetchPrune: true}
+runner:
+  type: docker
+  docker:
+    composeFiles: [docker-compose.yml]
+    projectPrefix: demo
+entry:
+  setup: ["docker compose up --wait --build"]
+  run: "docker compose logs -f"
+  stop: "docker compose down"
+  logs: "docker compose logs -f"
+ports:
+  base: {app: 8000}
+  step: 100
