@@ -1,6 +1,6 @@
 // Package source abstracts where worktrees come from.
 //
-// v1 ships the git source (fetch origin --prune, branch -r,
+// v1 ships the git source (fetch <remote> --prune, branch -r,
 // worktree add/remove/list). New Source types register in registry.go;
 // unknown types error listing available options.
 package source
@@ -30,18 +30,21 @@ type BranchRef struct {
 
 // Source provisions worktree directories from branches.
 type Source interface {
-	// Fetch prunes remote refs (git fetch origin --prune).
-	Fetch(repoPath string) error
-	// Refs lists known remote branches (git branch -r, origin/*).
-	Refs(repoPath string) ([]string, error)
+	// Fetch prunes remote refs (git fetch <remote> --prune).
+	// Empty remote means the default ("origin").
+	Fetch(repoPath, remote string) error
+	// Refs lists known remote branches (git branch -r, <remote>/*).
+	Refs(repoPath, remote string) ([]string, error)
 	// RefsDetailed lists remote branches with tip-commit authors
-	// (for-each-ref over refs/remotes/origin).
-	RefsDetailed(repoPath string) ([]BranchRef, error)
+	// (for-each-ref over refs/remotes/<remote>).
+	RefsDetailed(repoPath, remote string) ([]BranchRef, error)
 	// Identity returns git config user.name/user.email for repoPath.
 	// Empty strings mean unset (no error).
 	Identity(repoPath string) (name, email string, err error)
 	// Add creates a worktree for branch at worktreePath (git worktree add).
-	Add(repoPath, branch, worktreePath string) error
+	// When the branch has no local ref but <remote>/<branch> exists, Add
+	// creates a tracking branch (--track -b). Empty remote means default.
+	Add(repoPath, branch, worktreePath, remote string) error
 	// Remove deletes the worktree at worktreePath (git worktree remove).
 	Remove(repoPath, worktreePath string, force bool) error
 	// List returns existing worktrees (git worktree list --porcelain).

@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"context"
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -55,7 +58,7 @@ func completeWorktreesFirstOnly(cmd *cobra.Command, args []string, toComplete st
 // remoteBranchesForCompletion lists remote branches minus already-added
 // worktrees. No network fetch here — completion must stay fast and
 // offline-friendly (uses the last fetched refs).
-func remoteBranchesForCompletion() []string {
+func remoteBranchesForCompletion(cmd *cobra.Command) []string {
 	path, err := ResolveConfigPath()
 	if err != nil || path == "" {
 		return nil
@@ -68,7 +71,13 @@ func remoteBranchesForCompletion() []string {
 	if err != nil {
 		return nil
 	}
-	refs, err := src.Refs(cfg.RepoPath())
+	remote := cfg.EffectiveRemote()
+	if cmd != nil {
+		if v, err := cmd.Flags().GetString("remote"); err == nil && strings.TrimSpace(v) != "" {
+			remote = strings.TrimSpace(v)
+		}
+	}
+	refs, err := src.Refs(cfg.RepoPath(), remote)
 	if err != nil {
 		return nil
 	}
@@ -91,7 +100,7 @@ func remoteBranchesForCompletion() []string {
 // completeRemoteBranches completes remote branch names for add.
 func completeRemoteBranches(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	var out []string
-	for _, ref := range remoteBranchesForCompletion() {
+	for _, ref := range remoteBranchesForCompletion(cmd) {
 		if strings.HasPrefix(ref, toComplete) {
 			out = append(out, ref)
 		}
@@ -165,4 +174,32 @@ func completeLocalWorktreeBranches(cmd *cobra.Command, args []string, toComplete
 		}
 	}
 	return out, cobra.ShellCompDirectiveNoFileComp
+}
+
+// completeRemotes completes --remote flag values via `git remote`.
+// Offline-safe and never fails hard: degrades to nothing outside a repo.
+func completeRemotes(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	path, err := ResolveConfigPath()
+	if err != nil || path == "" {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c := exec.CommandContext(ctx, "git", "-C", cfg.RepoPath(), "remote")
+	out, err := c.Output()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	var names []string
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && strings.HasPrefix(line, toComplete) {
+			names = append(names, line)
+		}
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
 }

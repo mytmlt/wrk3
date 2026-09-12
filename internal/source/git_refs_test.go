@@ -45,10 +45,10 @@ func TestRefsDetailed_AuthorsAndSkips(t *testing.T) {
 	pushAs(t, repo, "bob/feat", "Bob", "bob@example.com")
 
 	src := &GitSource{}
-	if err := src.Fetch(repo); err != nil {
+	if err := src.Fetch(repo, "origin"); err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	refs, err := src.RefsDetailed(repo)
+	refs, err := src.RefsDetailed(repo, "origin")
 	if err != nil {
 		t.Fatalf("RefsDetailed: %v", err)
 	}
@@ -115,11 +115,70 @@ func TestParseRefsDetailed(t *testing.T) {
 		"origin/alice/feat\x00Alice\x00<alice@example.com>\n" +
 		"origin/HEAD\x00t\x00<t@t>\n" +
 		"broken-line-without-separators\n"
-	refs := parseRefsDetailed(out)
+	refs := parseRefsDetailed(out, "origin")
 	if len(refs) != 1 {
 		t.Fatalf("got %+v", refs)
 	}
 	if refs[0].Name != "alice/feat" || refs[0].AuthorName != "Alice" || refs[0].AuthorEmail != "alice@example.com" {
 		t.Errorf("wrong parse: %+v", refs[0])
+	}
+}
+
+func TestParseRefs_FiltersByRemote(t *testing.T) {
+	out := "origin/main\n  origin/alice/feat\n  upstream/bob/feat\n  upstream/HEAD\n  origin\n  upstream\n"
+	got := parseRefs(out, "upstream")
+	if len(got) != 1 || got[0] != "bob/feat" {
+		t.Fatalf("upstream parse = %v", got)
+	}
+	got = parseRefs(out, "origin")
+	if len(got) != 2 || got[0] != "main" || got[1] != "alice/feat" {
+		t.Fatalf("origin parse = %v", got)
+	}
+	// Empty remote defaults to origin.
+	got = parseRefs(out, "")
+	if len(got) != 2 {
+		t.Fatalf("default parse = %v", got)
+	}
+}
+
+func TestParseRefsDetailed_CustomRemote(t *testing.T) {
+	out := "upstream\x00t\x00<t@t>\n" +
+		"upstream/bob/feat\x00Bob\x00<bob@example.com>\n" +
+		"upstream/HEAD\x00t\x00<t@t>\n"
+	refs := parseRefsDetailed(out, "upstream")
+	if len(refs) != 1 || refs[0].Name != "bob/feat" {
+		t.Fatalf("got %+v", refs)
+	}
+	// Wrong remote yields nothing.
+	if refs := parseRefsDetailed(out, "origin"); len(refs) != 0 {
+		t.Fatalf("origin parse of upstream refs = %+v", refs)
+	}
+}
+
+func TestFetchAndRefs_CustomRemote(t *testing.T) {
+	upstream := t.TempDir()
+	runGit(t, upstream, "init", "--bare")
+	repo := initRepo(t)
+	runGit(t, repo, "remote", "add", "upstream", upstream)
+	runGit(t, repo, "branch", "local-only")
+	runGit(t, repo, "push", "upstream", "main")
+	runGit(t, repo, "push", "upstream", "local-only")
+
+	src := &GitSource{}
+	if err := src.Fetch(repo, "upstream"); err != nil {
+		t.Fatalf("Fetch upstream: %v", err)
+	}
+	refs, err := src.Refs(repo, "upstream")
+	if err != nil {
+		t.Fatalf("Refs upstream: %v", err)
+	}
+	has := map[string]bool{}
+	for _, r := range refs {
+		has[r] = true
+	}
+	for _, want := range []string{"main", "local-only"} {
+		if !has[want] {
+			t.Errorf("Refs upstream = %v, missing %q", refs, want)
+		}
 	}
 }

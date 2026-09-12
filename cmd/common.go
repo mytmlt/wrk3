@@ -46,6 +46,14 @@ func resolveConfig() (*resolved, error) {
 	}, nil
 }
 
+// resolveRemote returns the effective git remote: flag > config > "origin".
+func resolveRemote(r *resolved, flagRemote string) string {
+	if strings.TrimSpace(flagRemote) != "" {
+		return strings.TrimSpace(flagRemote)
+	}
+	return r.cfg.EffectiveRemote()
+}
+
 // newSource builds the Source backend via registry (interface-only).
 func newSource(cfg *config.Config) (source.Source, error) {
 	f, err := source.Resolve(cfg.Source.Type)

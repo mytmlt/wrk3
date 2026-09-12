@@ -66,6 +66,7 @@ wrk3 fetch --mine                    # only your branches (tip author = git conf
 wrk3 fetch --author alice            # substring match on author name/email
 wrk3 add feature-a feature-b
 # or pick interactively: wrk3 add
+# or bulk-create from a remote: wrk3 add --remote upstream --mine
 
 # 3. Boot both stacks in parallel (setup entries, compose up, run entry)
 wrk3 up
@@ -109,15 +110,22 @@ Full field reference, port table, `.env` mapping, and multi-project patterns:
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md). Command reference:
 [docs/USAGE.md](docs/USAGE.md).
 
-> **Agents / automation:** the [`wrk3-setup` skill](skills/wrk3-setup/SKILL.md)
-> knows how to author and validate a `wrk3.yaml` for any repo.
+> **Agents / automation:** the [`wrk3-compat`](https://github.com/mytmlt/wrk3-skills/tree/main/skills/wrk3-compat)
+> and [`wrk3-setup`](https://github.com/mytmlt/wrk3-skills/tree/main/skills/wrk3-setup)
+> skills (standalone [`mytmlt/wrk3-skills`](https://github.com/mytmlt/wrk3-skills) repo,
+> sibling checkout `../wrk3-skills`) analyze a project's compose/local setup
+> for wrk3 compatibility and author + validate a `wrk3.yaml` for any repo.
 
 ## How it works
 
-1. `wrk3 add <branch>` → `git worktree add <base>/<slug>`, assigns the
+1. `wrk3 add <branch>` → `git worktree add <base>/<slug>` (tracking
+   `<remote>/<branch>` when remote-only), assigns the
    next index, allocates `base + index*step` ports, writes `.env`, appends
    `{branch, slug, absPath, index, ports, composeProject, status}` to
    `<worktreeBase>/.wrk3-state.json` (absolute paths → cwd-independent).
+   `add --remote <name> [--mine]` bulk-creates from a remote (default:
+   `source.git.remote`, else `origin`), skipping already registered or
+   checked-out branches.
 2. `wrk3 up` → runs `entry.setup` commands (`sh -c`, `cwd=worktree`,
    `env=ports`), then `docker compose -p <prefix>-<slug> up`, then
    `entry.run` — in parallel across worktrees via errgroup with prefixed logs.

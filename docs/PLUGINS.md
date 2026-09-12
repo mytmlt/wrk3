@@ -20,11 +20,11 @@ registries).
 
 ```go
 type Source interface {
-    Fetch(repoPath string) error
-    Refs(repoPath string) ([]string, error)
-    RefsDetailed(repoPath string) ([]BranchRef, error)
+    Fetch(repoPath, remote string) error
+    Refs(repoPath, remote string) ([]string, error)
+    RefsDetailed(repoPath, remote string) ([]BranchRef, error)
     Identity(repoPath string) (name, email string, err error)
-    Add(repoPath, branch, worktreePath string) error
+    Add(repoPath, branch, worktreePath, remote string) error
     Remove(repoPath, worktreePath string, force bool) error
     List(repoPath string) ([]WorktreeInfo, error)
 }
@@ -32,17 +32,19 @@ type Source interface {
 
 Semantics (match `internal/source/git.go`):
 
-- `Fetch(repoPath)` — refresh remote refs (git: `fetch origin --prune`).
-- `Refs(repoPath)` — list known remote branches (git: `branch -r`,
-  `origin/*`, HEAD symref skipped).
-- `RefsDetailed(repoPath)` — same branches as `[]BranchRef`
+- `Fetch(repoPath, remote)` — refresh remote refs (git: `fetch <remote> --prune`; empty remote means `origin`).
+- `Refs(repoPath, remote)` — list known remote branches (git: `branch -r`,
+  `<remote>/*`, HEAD symref skipped, other remotes filtered out).
+- `RefsDetailed(repoPath, remote)` — same branches as `[]BranchRef`
   (`Name` short branch, `AuthorName`/`AuthorEmail` from the tip commit;
-  git: `for-each-ref` over `refs/remotes/origin`). Powers
-  `fetch --mine` / `--author`.
+  git: `for-each-ref` over `refs/remotes/<remote>`). Powers
+  `fetch --mine` / `--author` and `add --remote --mine`.
 - `Identity(repoPath)` — local git identity (`git config user.name` /
   `user.email`; empty when unset). Powers `fetch --mine`.
-- `Add(repoPath, branch, worktreePath)` — provision one worktree dir.
+- `Add(repoPath, branch, worktreePath, remote)` — provision one worktree dir.
   Error on empty `branch`/`worktreePath` (`fmt.Errorf("...: %w", err)`).
+  When the branch has no local ref but `<remote>/<branch>` exists, create
+  a tracking branch (`worktree add --track -b`).
 - `Remove(repoPath, worktreePath string, force bool)` — delete it.
 - `List(repoPath)` — return existing worktrees as `[]WorktreeInfo`
   (`Path` absolute, `Branch` short name, `Commit` SHA, `Bare` flag).
@@ -172,10 +174,10 @@ Generic backends should take their own options struct (or none, like the
    - Document in `docs/CONFIGURATION.md`.
 
 4. **Construction needs no `cmd` change**: `cmd/common.go: newSource`
-   already builds any registered source via `source.Resolve(... )()`.
-   Only touch `cmd` if your backend needs per-call options beyond
-   `(repoPath, branch, worktreePath)` — prefer keeping the interface
-   signature and reading options from config inside the backend.
+    already builds any registered source via `source.Resolve(... )()`.
+    Only touch `cmd` if your backend needs per-call options beyond
+    `(repoPath, remote, branch, worktreePath)` — prefer keeping the interface
+    signature and reading options from config inside the backend.
 
 5. **Test + docs**: same as runners — `<name>_test.go` with temp git
    repos/dirs (see `git_test.go`), plus `README.md` / `docs/USAGE.md` /

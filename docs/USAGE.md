@@ -18,7 +18,8 @@ wrk3 completion fish > ~/.config/fish/completions/wrk3.fish
 wrk3 completion powershell | Out-String | Invoke-Expression
 ```
 
-`add` completes remote branches; `up`/`down`/`logs`/`exec`/`remove`
+`add` completes remote branches (for the effective remote — `--remote`
+flag > `source.git.remote` > `origin`); `up`/`down`/`logs`/`exec`/`remove`
 complete existing worktrees (branch names and slugs); `ls --project`
 completes registry project names. Completion never
 fetches from the network — it uses the last `fetch` results.
@@ -27,10 +28,14 @@ fetches from the network — it uses the last `fetch` results.
 
 ```bash
 wrk3 fetch                          # git fetch --prune, list origin/* refs
+wrk3 fetch --remote upstream        # same against upstream (default: source.git.remote, else origin)
 wrk3 fetch --mine                   # only branches whose tip commit author matches git config user.name/user.email
 wrk3 fetch --author alice           # substring match on author name/email (case-insensitive; repeatable, comma-split)
 wrk3 add feature-a feature-b        # worktree add + ports + .env
 wrk3 add                            # bare = interactive picker over remote branches
+wrk3 add --remote upstream --mine   # fetch upstream, create all my branches (skip registered/checked-out)
+wrk3 add --remote upstream          # fetch upstream, create all its branches
+wrk3 add --remote upstream hotfix   # create one branch, tracking upstream when remote-only
 wrk3 add --local                    # adopt all existing local worktrees (no fetch from origin)
 wrk3 add --local feature-a          # adopt only the named local worktree(s)
 wrk3 up feature-a                   # setup entries + compose up + run entry

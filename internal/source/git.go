@@ -34,31 +34,42 @@ func (g *GitSource) timeout() time.Duration {
 	return defaultGitTimeout
 }
 
-// Fetch runs git fetch origin --prune in repoPath.
-func (g *GitSource) Fetch(repoPath string) error {
-	_, err := g.run(repoPath, "fetch", "origin", "--prune")
+// normalizeRemote returns the effective remote name (default "origin").
+func normalizeRemote(remote string) string {
+	if strings.TrimSpace(remote) == "" {
+		return "origin"
+	}
+	return strings.TrimSpace(remote)
+}
+
+// Fetch runs git fetch <remote> --prune in repoPath.
+func (g *GitSource) Fetch(repoPath, remote string) error {
+	remote = normalizeRemote(remote)
+	_, err := g.run(repoPath, "fetch", remote, "--prune")
 	return err
 }
 
-// Refs lists remote branches via git branch -r (origin/*, HEAD symref skipped).
-func (g *GitSource) Refs(repoPath string) ([]string, error) {
+// Refs lists remote branches via git branch -r (<remote>/*, HEAD symref skipped).
+func (g *GitSource) Refs(repoPath, remote string) ([]string, error) {
+	remote = normalizeRemote(remote)
 	out, err := g.run(repoPath, "branch", "-r", "--format=%(refname:short)")
 	if err != nil {
 		return nil, err
 	}
-	return parseRefs(out), nil
+	return parseRefs(out, remote), nil
 }
 
 // RefsDetailed lists remote branches with tip-commit authors via
-// git for-each-ref (refs/remotes/origin, HEAD symref skipped).
-func (g *GitSource) RefsDetailed(repoPath string) ([]BranchRef, error) {
+// git for-each-ref (refs/remotes/<remote>, HEAD symref skipped).
+func (g *GitSource) RefsDetailed(repoPath, remote string) ([]BranchRef, error) {
+	remote = normalizeRemote(remote)
 	out, err := g.run(repoPath, "for-each-ref",
 		"--format=%(refname:short)%00%(authorname)%00%(authoremail)",
-		"refs/remotes/origin")
+		"refs/remotes/"+remote)
 	if err != nil {
 		return nil, err
 	}
-	return parseRefsDetailed(out), nil
+	return parseRefsDetailed(out, remote), nil
 }
 
 // Identity returns git config user.name/user.email (empty when unset).
@@ -94,15 +105,34 @@ func (g *GitSource) configValue(repoPath, key string) (string, error) {
 }
 
 // Add creates a worktree for branch at worktreePath.
-func (g *GitSource) Add(repoPath, branch, worktreePath string) error {
+// When the branch has no local ref but <remote>/<branch> exists, it creates
+// a tracking branch: git worktree add --track -b <branch> <path> <remote>/<branch>.
+func (g *GitSource) Add(repoPath, branch, worktreePath, remote string) error {
 	if branch == "" {
 		return fmt.Errorf("git worktree add: empty branch")
 	}
 	if worktreePath == "" {
 		return fmt.Errorf("git worktree add: empty worktree path")
 	}
+	remote = normalizeRemote(remote)
+	if g.refExists(repoPath, "refs/heads/"+branch) {
+		_, err := g.run(repoPath, "worktree", "add", worktreePath, branch)
+		return err
+	}
+	if g.refExists(repoPath, "refs/remotes/"+remote+"/"+branch) {
+		_, err := g.run(repoPath, "worktree", "add", "--track", "-b", branch, worktreePath, remote+"/"+branch)
+		return err
+	}
 	_, err := g.run(repoPath, "worktree", "add", worktreePath, branch)
 	return err
+}
+
+// refExists reports whether ref resolves in repoPath (quiet, no output).
+func (g *GitSource) refExists(repoPath, ref string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), g.timeout())
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "show-ref", "--verify", "--quiet", ref)
+	return cmd.Run() == nil
 }
 
 // Remove deletes the worktree at worktreePath.
@@ -142,7 +172,10 @@ func (g *GitSource) run(repoPath string, args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
-func parseRefs(out string) []string {
+func parseRefs(out, remote string) []string {
+	remote = normalizeRemote(remote)
+	prefix := remote + "/"
+	seen := map[string]struct{}{}
 	var refs []string
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
@@ -150,21 +183,26 @@ func parseRefs(out string) []string {
 			continue
 		}
 		// `git branch -r --format=%(refname:short)` renders the
-		// origin/HEAD symref as bare "origin" (no "->" marker).
-		// Skip it: only origin/* entries are real branches.
-		if line == "origin" {
+		// <remote>/HEAD symref as bare "<remote>" (no "->" marker).
+		// Skip it: only <remote>/* entries are real branches.
+		// Other remotes are listed too — keep only the requested one.
+		if line == remote || !strings.HasPrefix(line, prefix) {
 			continue
 		}
-		line = strings.TrimPrefix(line, "origin/")
-		if line == "" || line == "HEAD" {
+		name := strings.TrimPrefix(line, prefix)
+		if name == "" || name == "HEAD" {
 			continue
 		}
-		refs = append(refs, line)
+		if _, ok := seen[name]; !ok {
+			seen[name] = struct{}{}
+			refs = append(refs, name)
+		}
 	}
 	return refs
 }
 
-func parseRefsDetailed(out string) []BranchRef {
+func parseRefsDetailed(out, remote string) []BranchRef {
+	remote = normalizeRemote(remote)
 	var refs []BranchRef
 	for _, line := range strings.Split(out, "\n") {
 		if strings.TrimSpace(line) == "" {
@@ -180,12 +218,17 @@ func parseRefsDetailed(out string) []BranchRef {
 		if short == "" || strings.Contains(short, "->") {
 			continue
 		}
-		// refs/remotes/origin/HEAD renders as bare "origin".
-		if short == "origin" {
+		// refs/remotes/<remote>/HEAD renders as bare "<remote>".
+		if short == remote {
 			continue
 		}
-		name := strings.TrimPrefix(short, "origin/")
+		name := strings.TrimPrefix(short, remote+"/")
 		if name == "" || name == "HEAD" {
+			continue
+		}
+		// for-each-ref is scoped to refs/remotes/<remote> so every
+		// short ref should carry the prefix; skip anything else.
+		if short == name {
 			continue
 		}
 		refs = append(refs, BranchRef{

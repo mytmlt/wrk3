@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-12
+
+### Added
+
+- `wrk3 add --remote <name> [--mine]`: bulk-create worktrees from a git
+  remote (`--remote origin`, `--remote upstream`). Bare `--remote` creates
+  every branch on that remote; `--mine` keeps only branches whose tip
+  commit author matches git config `user.name`/`user.email`. Already
+  registered or already checked-out branches (e.g. `main` at the repo
+  root) are skipped with a message. Explicit `add --remote <name> <branch>`
+  creates one branch, tracking `<remote>/<branch>` when remote-only.
+  The default remote is now honored from `source.git.remote` (else
+  `origin`); `fetch` gains the same `--remote` override.
+- `Source` interface is remote-aware (`Fetch`/`Refs`/`RefsDetailed`/`Add`
+  take a `remote`; empty means `origin`) and `Add` auto-creates tracking
+  branches (`--track -b`) for remote-only names. See `docs/PLUGINS.md`.
+
+### Changed
+
+- Agent skills extracted to the standalone `mytmlt/wrk3-skills` repo
+  (`skills/` here is now a pointer — see `skills/README.md`).
+  `wrk3-setup` now starts with a Phase 0 compatibility triage (new
+  `wrk3-compat` skill): the agent analyzes the project's docker compose
+  files (`container_name:`, hardcoded vs `${VAR:-default}` host ports,
+  bind mounts, `network_mode: host`) and local setup (Makefile / README /
+  package.json scripts) and emits a `COMPATIBLE` / `COMPATIBLE WITH CHANGES`
+  / `INCOMPATIBLE` verdict with file:line evidence before authoring any
+  `wrk3.yaml`.
+
 ## [0.1.0] - 2026-09-12
 
 ### Removed
@@ -88,6 +117,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path-portable and skip linux-only `docker` integration tests on
   Windows so `windows-latest` goes green.
 
-[Unreleased]: https://github.com/mytmlt/wrk3/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mytmlt/wrk3/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mytmlt/wrk3/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mytmlt/wrk3/releases/tag/v0.1.0
 [0.0.1]: https://github.com/mytmlt/wrk3/releases/tag/v0.0.1

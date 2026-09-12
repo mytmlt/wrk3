@@ -12,14 +12,16 @@ import (
 var (
 	fetchMine   bool
 	fetchAuthor []string
+	fetchRemote string
 )
 
 var fetchCmd = &cobra.Command{
-	Use:   "fetch [--mine] [--author <name-or-email>...]",
-	Short: "git fetch origin --prune, list origin/* refs",
-	Long: `git fetch origin --prune, then list origin/* refs (one per line).
+	Use:   "fetch [--remote <name>] [--mine] [--author <name-or-email>...]",
+	Short: "git fetch <remote> --prune, list <remote>/* refs",
+	Long: `git fetch <remote> --prune, then list <remote>/* refs (one per line).
 
   wrk3 fetch                          list every remote branch
+  wrk3 fetch --remote upstream        list branches on upstream (default: source.git.remote, else origin)
   wrk3 fetch --mine                   only branches whose tip commit author
                                       matches git config user.name/user.email
   wrk3 fetch --author alice           substring match (case-insensitive)
@@ -32,10 +34,11 @@ var fetchCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := r.src.Fetch(r.cfg.RepoPath()); err != nil {
+		remote := resolveRemote(r, fetchRemote)
+		if err := r.src.Fetch(r.cfg.RepoPath(), remote); err != nil {
 			return fmt.Errorf("fetch: %w", err)
 		}
-		names, err := filterRefs(r.src, r.cfg.RepoPath(), fetchMine, fetchAuthor)
+		names, err := filterRefs(r.src, r.cfg.RepoPath(), remote, fetchMine, fetchAuthor)
 		if err != nil {
 			return err
 		}
@@ -50,16 +53,16 @@ var fetchCmd = &cobra.Command{
 
 // filterRefs fetches branch names, optionally narrowed to the local user's
 // branches (--mine) and/or an author substring filter (--author).
-func filterRefs(src source.Source, repoPath string, mine bool, authors []string) ([]string, error) {
+func filterRefs(src source.Source, repoPath, remote string, mine bool, authors []string) ([]string, error) {
 	patterns := normalizePatterns(authors)
 	if !mine && len(patterns) == 0 {
-		refs, err := src.Refs(repoPath)
+		refs, err := src.Refs(repoPath, remote)
 		if err != nil {
 			return nil, fmt.Errorf("list refs: %w", err)
 		}
 		return refs, nil
 	}
-	detailed, err := src.RefsDetailed(repoPath)
+	detailed, err := src.RefsDetailed(repoPath, remote)
 	if err != nil {
 		return nil, fmt.Errorf("list refs: %w", err)
 	}
@@ -132,7 +135,9 @@ func matchesAuthor(ref source.BranchRef, patterns []string) bool {
 }
 
 func init() {
+	fetchCmd.Flags().StringVar(&fetchRemote, "remote", "", "remote to fetch/list (default: source.git.remote, else origin)")
 	fetchCmd.Flags().BoolVar(&fetchMine, "mine", false, "only branches whose tip commit author matches git config user.name/user.email")
 	fetchCmd.Flags().StringSliceVar(&fetchAuthor, "author", nil, "only branches whose tip author matches <name-or-email> (substring, case-insensitive; repeatable)")
+	_ = fetchCmd.RegisterFlagCompletionFunc("remote", completeRemotes)
 	rootCmd.AddCommand(fetchCmd)
 }

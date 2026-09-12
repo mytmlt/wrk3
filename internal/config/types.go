@@ -83,6 +83,19 @@ type PortsConfig struct {
 // SourceType returns the configured source backend name.
 func (c *Config) SourceType() string { return c.Source.Type }
 
+// EffectiveRemote returns the configured git remote, defaulting to
+// "origin" when unset. Flag values (--remote) override this when non-empty
+// (see cmd for resolution).
+func (c *Config) EffectiveRemote() string {
+	if c == nil {
+		return "origin"
+	}
+	if strings.TrimSpace(c.Source.Git.Remote) == "" {
+		return "origin"
+	}
+	return strings.TrimSpace(c.Source.Git.Remote)
+}
+
 // RunnerType returns the configured runner backend name.
 func (c *Config) RunnerType() string { return c.Runner.Type }
 
@@ -148,6 +161,10 @@ func Load(path string) (*Config, error) {
 func (c *Config) Validate() error {
 	if strings.TrimSpace(c.Project.WorktreeBase) == "" {
 		return fmt.Errorf("project.worktreeBase must not be empty")
+	}
+	// Default the git remote so EffectiveRemote is stable after load.
+	if strings.TrimSpace(c.Source.Git.Remote) == "" {
+		c.Source.Git.Remote = "origin"
 	}
 	if strings.TrimSpace(c.Source.Type) == "" {
 		return fmt.Errorf("source.type must not be empty (available sources: %v)", source.Available())

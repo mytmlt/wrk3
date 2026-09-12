@@ -46,7 +46,7 @@ func TestAddListRemoveCycle(t *testing.T) {
 	runGit(t, repo, "branch", "feature/foo")
 
 	wt := filepath.Join(t.TempDir(), "wt-foo")
-	if err := src.Add(repo, "feature/foo", wt); err != nil {
+	if err := src.Add(repo, "feature/foo", wt, "origin"); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 
@@ -111,18 +111,57 @@ func TestAdd_InvalidBranchErrors(t *testing.T) {
 	repo := initRepo(t)
 	src := &GitSource{}
 	wt := filepath.Join(t.TempDir(), "wt-bad")
-	err := src.Add(repo, "does-not-exist-xyz", wt)
+	err := src.Add(repo, "does-not-exist-xyz", wt, "origin")
 	if err == nil {
 		t.Fatal("expected error for unknown branch")
 	}
 	if !strings.Contains(err.Error(), "worktree") {
 		t.Errorf("error should mention worktree: %v", err)
 	}
-	if err := src.Add(repo, "", wt); err == nil {
+	if err := src.Add(repo, "", wt, "origin"); err == nil {
 		t.Error("expected error for empty branch")
 	}
 	if err := src.Remove(repo, "", false); err == nil {
 		t.Error("expected error for empty worktree path")
+	}
+}
+
+func TestAdd_TracksRemoteOnlyBranch(t *testing.T) {
+	origin := t.TempDir()
+	runGit(t, origin, "init", "--bare")
+	repo := initRepo(t)
+	runGit(t, repo, "remote", "add", "origin", origin)
+	runGit(t, repo, "push", "origin", "main")
+	runGit(t, repo, "branch", "remote-only")
+	runGit(t, repo, "push", "origin", "remote-only")
+	runGit(t, repo, "checkout", "-q", "main")
+	runGit(t, repo, "branch", "-D", "remote-only")
+
+	src := &GitSource{}
+	if err := src.Fetch(repo, "origin"); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	wt := filepath.Join(t.TempDir(), "wt-tracked")
+	if err := src.Add(repo, "remote-only", wt, "origin"); err != nil {
+		t.Fatalf("Add remote-only: %v", err)
+	}
+	// Tracking branch now exists locally.
+	cmd := exec.Command("git", "-C", repo, "show-ref", "--verify", "--quiet", "refs/heads/remote-only")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("expected local tracking branch refs/heads/remote-only: %v", err)
+	}
+	infos, err := src.List(repo)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	found := false
+	for _, in := range infos {
+		if in.Branch == "remote-only" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("worktree for remote-only not listed: %+v", infos)
 	}
 }
 
@@ -131,7 +170,7 @@ func TestRemove_ForceDirtyWorktree(t *testing.T) {
 	src := &GitSource{}
 	runGit(t, repo, "branch", "dirty")
 	wt := filepath.Join(t.TempDir(), "wt-dirty")
-	if err := src.Add(repo, "dirty", wt); err != nil {
+	if err := src.Add(repo, "dirty", wt, "origin"); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 	// Make the worktree dirty with an untracked file + a modification.
@@ -146,7 +185,7 @@ func TestRemove_ForceDirtyWorktree(t *testing.T) {
 func TestRefs_NoRemotesEmpty(t *testing.T) {
 	repo := initRepo(t)
 	src := &GitSource{}
-	refs, err := src.Refs(repo)
+	refs, err := src.Refs(repo, "origin")
 	if err != nil {
 		t.Fatalf("Refs: %v", err)
 	}
@@ -166,10 +205,10 @@ func TestFetchAndRefs_LocalBareOrigin(t *testing.T) {
 	runGit(t, repo, "push", "origin", "feature/bar")
 
 	src := &GitSource{}
-	if err := src.Fetch(repo); err != nil {
+	if err := src.Fetch(repo, "origin"); err != nil {
 		t.Fatalf("Fetch against local bare origin: %v", err)
 	}
-	refs, err := src.Refs(repo)
+	refs, err := src.Refs(repo, "origin")
 	if err != nil {
 		t.Fatalf("Refs: %v", err)
 	}
@@ -192,7 +231,7 @@ func TestList_InvalidRepoErrors(t *testing.T) {
 	if _, err := src.List(t.TempDir()); err == nil {
 		t.Fatal("expected error listing non-repo dir")
 	}
-	if err := src.Fetch(t.TempDir()); err == nil {
+	if err := src.Fetch(t.TempDir(), "origin"); err == nil {
 		t.Fatal("expected error fetching non-repo dir")
 	}
 }

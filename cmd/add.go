@@ -15,10 +15,12 @@ import (
 var (
 	addSelect bool
 	addLocal  bool
+	addRemote string
+	addMine   bool
 )
 
 var addCmd = &cobra.Command{
-	Use:               "add [branch...] | --select | --local",
+	Use:               "add [branch...] | --select | --local | --remote <name> [--mine]",
 	Short:             "worktree add + port assign + .env write (bare = select)",
 	ValidArgsFunction: completeAddBranches,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -26,11 +28,17 @@ var addCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if addLocal && addSelect {
-			return fmt.Errorf("pass either --local or --select, not both")
+		if addLocal && (addSelect || addRemote != "" || addMine) {
+			return fmt.Errorf("pass only one of --local, --select, --remote/--mine")
+		}
+		if addSelect && (addRemote != "" || addMine) {
+			return fmt.Errorf("pass only one of --local, --select, --remote/--mine")
 		}
 		if addLocal {
 			return addLocalMode(cmd, r, args)
+		}
+		if addRemote != "" || addMine {
+			return addRemoteMode(cmd, r, args)
 		}
 		branches := args
 		selectMode := addSelect
@@ -43,10 +51,11 @@ var addCmd = &cobra.Command{
 			selectMode = true
 		}
 		if selectMode {
-			if err := r.src.Fetch(r.cfg.RepoPath()); err != nil {
+			remote := resolveRemote(r, "")
+			if err := r.src.Fetch(r.cfg.RepoPath(), remote); err != nil {
 				return fmt.Errorf("fetch: %w", err)
 			}
-			refs, err := r.src.Refs(r.cfg.RepoPath())
+			refs, err := r.src.Refs(r.cfg.RepoPath(), remote)
 			if err != nil {
 				return fmt.Errorf("list refs: %w", err)
 			}
@@ -66,6 +75,7 @@ var addCmd = &cobra.Command{
 			return err
 		}
 		alloc := r.cfg.Allocator()
+		remote := resolveRemote(r, "")
 		for _, branch := range branches {
 			if branch == "" {
 				return fmt.Errorf("branch name must not be empty")
@@ -73,7 +83,7 @@ var addCmd = &cobra.Command{
 			if existing := findRecord(recs, branch); existing != nil {
 				return fmt.Errorf("worktree for %q already exists at %s", branch, existing.AbsPath)
 			}
-			if err := addOne(r, &recs, &alloc, branch); err != nil {
+			if err := addOne(r, &recs, &alloc, branch, remote); err != nil {
 				return err
 			}
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "added %s\n", branch); err != nil {
@@ -85,6 +95,111 @@ var addCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+// addRemoteMode bulk-creates worktrees from a git remote:
+// fetch <remote> --prune, then create every (or only --mine) branch,
+// skipping ones already registered. With explicit args (no --mine) it
+// creates just those branches, resolving remote-only names as tracking
+// branches. No interactive picker here — bare `add --remote` means "all".
+func addRemoteMode(cmd *cobra.Command, r *resolved, args []string) error {
+	if addMine && len(args) > 0 {
+		return fmt.Errorf("pass either branch names or --mine, not both")
+	}
+	remote := resolveRemote(r, addRemote)
+	if err := r.src.Fetch(r.cfg.RepoPath(), remote); err != nil {
+		return fmt.Errorf("fetch: %w", err)
+	}
+	if err := ensureBase(r.base); err != nil {
+		return err
+	}
+	recs, err := loadState(r)
+	if err != nil {
+		return err
+	}
+	alloc := r.cfg.Allocator()
+	// Explicit names + --remote: fail fast on duplicates (typo safety),
+	// like plain `add branch...`, but resolve via the given remote.
+	if len(args) > 0 {
+		for _, branch := range args {
+			if branch == "" {
+				return fmt.Errorf("branch name must not be empty")
+			}
+			if existing := findRecord(recs, branch); existing != nil {
+				return fmt.Errorf("worktree for %q already exists at %s", branch, existing.AbsPath)
+			}
+			if err := addOne(r, &recs, &alloc, branch, remote); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "added %s\n", branch); err != nil {
+				return fmt.Errorf("write output: %w", err)
+			}
+		}
+		if err := touchProject(r.cfg); err != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: register project: %v\n", err)
+		}
+		return nil
+	}
+	var branches []string
+	if addMine {
+		branches, err = filterRefs(r.src, r.cfg.RepoPath(), remote, true, nil)
+		if err != nil {
+			return err
+		}
+		if len(branches) == 0 {
+			return fmt.Errorf("no branches for --mine on remote %q (see fetch --mine)", remote)
+		}
+	} else {
+		branches, err = r.src.Refs(r.cfg.RepoPath(), remote)
+		if err != nil {
+			return fmt.Errorf("list refs: %w", err)
+		}
+		if len(branches) == 0 {
+			return fmt.Errorf("no remote branches on %q", remote)
+		}
+	}
+	sort.Strings(branches)
+	// Branches already checked out anywhere (e.g. main at the repo root)
+	// cannot get a second worktree — skip them like already-registered.
+	checkedOut := map[string]string{}
+	if infos, err := r.src.List(r.cfg.RepoPath()); err == nil {
+		for _, info := range infos {
+			if info.Branch != "" {
+				if _, ok := checkedOut[info.Branch]; !ok {
+					checkedOut[info.Branch] = info.Path
+				}
+			}
+		}
+	}
+	added := 0
+	for _, branch := range branches {
+		if existing := findRecord(recs, branch); existing != nil {
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "skipped %s (already registered)\n", branch); err != nil {
+				return fmt.Errorf("write output: %w", err)
+			}
+			continue
+		}
+		if path, ok := checkedOut[branch]; ok {
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "skipped %s (already checked out at %s)\n", branch, path); err != nil {
+				return fmt.Errorf("write output: %w", err)
+			}
+			continue
+		}
+		if err := addOne(r, &recs, &alloc, branch, remote); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "added %s\n", branch); err != nil {
+			return fmt.Errorf("write output: %w", err)
+		}
+		added++
+	}
+	if added == 0 {
+		return fmt.Errorf("nothing to add (%d branches, all already registered or checked out)", len(branches))
+	}
+	if err := touchProject(r.cfg); err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: register project: %v\n", err)
+	}
+	return nil
 }
 
 // addLocalMode adopts branches that already have local git worktrees
@@ -204,7 +319,8 @@ func lookupLocalBranch(byBranch map[string]string, branchOrSlug string) string {
 }
 
 // addOne creates one worktree: git add + port assign + state + .env.
-func addOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, branch string) error {
+// Remote-only branches are created as tracking branches (--track -b).
+func addOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, branch, remote string) error {
 	slug := source.Slugify(branch)
 	path := worktreePath(r.base, slug)
 	if existing := findRecord(*recs, slug); existing != nil && existing.Branch != branch {
@@ -213,7 +329,7 @@ func addOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, b
 	idx := nextIndex(*recs)
 	allocation := alloc.Allocate(idx)
 	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
-	if err := r.src.Add(r.cfg.RepoPath(), branch, path); err != nil {
+	if err := r.src.Add(r.cfg.RepoPath(), branch, path, remote); err != nil {
 		return fmt.Errorf("add worktree %q: %w", branch, err)
 	}
 	if err := ports.Write(path, allocation.Ports); err != nil {
@@ -267,6 +383,9 @@ func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator,
 
 func init() {
 	addCmd.Flags().BoolVar(&addSelect, "select", false, "interactive branch select")
-	addCmd.Flags().BoolVar(&addLocal, "local", false, "adopt existing local worktrees (no fetch from origin)")
+	addCmd.Flags().BoolVar(&addLocal, "local", false, "adopt existing local worktrees (no fetch)")
+	addCmd.Flags().StringVar(&addRemote, "remote", "", "create worktrees from remote branches (default: source.git.remote, else origin)")
+	addCmd.Flags().BoolVar(&addMine, "mine", false, "with --remote: only branches whose tip commit author matches git config user.name/user.email")
+	_ = addCmd.RegisterFlagCompletionFunc("remote", completeRemotes)
 	rootCmd.AddCommand(addCmd)
 }

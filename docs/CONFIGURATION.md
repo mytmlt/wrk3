@@ -33,7 +33,7 @@ ports:
 | ---- | -------- | ----- |
 | `project.worktreeBase` | yes | Directory holding worktrees + `.wrk3-state.json`. The repo root is the directory containing `wrk3.yaml` (the config always lives in the project root). Relative values resolve against the repo root; absolute values pass through. Worktrees are created with `git -C <repoRoot>`. |
 | `source.type` | yes | `git` (only backend that ships). Unknown values error listing `[git]`. |
-| `source.git.remote` | no | Default `origin`. Used by `fetch` (`fetch --prune`) and ref listing. |
+| `source.git.remote` | no | Default `origin`. Used by `fetch` (`fetch --prune`) and ref listing. `--remote <name>` on `fetch`/`add` overrides it per-invocation; `--mine` on `add` requires remote mode (uses the flag or this value). Remote-only branches are created as tracking branches (`--track -b`). |
 | `source.git.fetchPrune` | no | Default `true`. |
 | `runner.type` | yes | `docker` (ships). `portainer`/`nomad` exist as stubs → `not implemented`. Unknown values error listing available runners. |
 | `runner.docker.composeFiles` | yes (docker) | At least one compose file, resolved inside each worktree. Compose files must not set `container_name:` — it is global on the daemon and bypasses `-p <prefix>-<slug>` isolation, so `up` fails fast naming the offending file/services. Compose generates `<project>-<service>-1` automatically. |
