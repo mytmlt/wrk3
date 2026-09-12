@@ -61,7 +61,7 @@ func FetchLatest(ctx context.Context) (string, error) {
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "wrk3-update-check")
-	if tok := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); tok != "" {
+	if tok := githubToken(); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
 	resp, err := httpClient(CheckTimeout).Do(req)
