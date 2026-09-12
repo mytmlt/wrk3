@@ -32,10 +32,23 @@ func stateRecordsForCompletion() []ports.WorktreeRecord {
 }
 
 // completeWorktrees completes existing worktree branch names (with the
-// slug as description). Used by up/down/logs/exec/remove.
+// slug as description), including the implicit main checkout.
+// Used by up/down/logs/exec/remove.
 func completeWorktrees(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	recs := stateRecordsForCompletion()
+	// Best-effort main checkout (never fails hard for completion).
+	if path, err := ResolveConfigPath(); err == nil && path != "" {
+		if cfg, err := config.Load(path); err == nil {
+			if src, err := newSource(cfg); err == nil {
+				r := &resolved{cfg: cfg, src: src}
+				if main, err := mainRecord(r, recs); err == nil && main != nil {
+					recs = append(recs, *main)
+				}
+			}
+		}
+	}
 	var out []string
-	for _, rec := range stateRecordsForCompletion() {
+	for _, rec := range recs {
 		for _, cand := range []string{rec.Branch, rec.Slug} {
 			if cand == "" || !strings.HasPrefix(cand, toComplete) {
 				continue

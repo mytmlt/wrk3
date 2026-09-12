@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/mytmlt/wrk3/internal/config"
 	"github.com/mytmlt/wrk3/internal/ports"
 	"github.com/mytmlt/wrk3/internal/source"
 )
@@ -126,6 +127,24 @@ func findRecordIncludingMain(r *resolved, recs []ports.WorktreeRecord, branchOrS
 		return nil, err
 	}
 	return findRecord(all, branchOrSlug), nil
+}
+
+// recordsForDisplay returns state records plus the implicit main record
+// for status/ls. Main lookup never fails hard (offline git -> state only),
+// but port/project collisions are surfaced as errors.
+func recordsForDisplay(cfg *config.Config) ([]ports.WorktreeRecord, error) {
+	recs, err := ports.Load(cfg.StatePath())
+	if err != nil {
+		return nil, fmt.Errorf("load state: %w", err)
+	}
+	src, err := newSource(cfg)
+	if err != nil {
+		out := append([]ports.WorktreeRecord(nil), recs...)
+		sort.Slice(out, func(i, j int) bool { return out[i].Branch < out[j].Branch })
+		return out, nil
+	}
+	r := &resolved{cfg: cfg, src: src}
+	return recordsWithMain(r, recs)
 }
 
 // ensureMainEnv writes .env for the implicit main checkout so entry

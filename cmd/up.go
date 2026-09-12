@@ -14,7 +14,7 @@ import (
 
 var upCmd = &cobra.Command{
 	Use:               "up [branch...]",
-	Short:             "setup + compose up + run (bare = all worktrees)",
+	Short:             "setup + compose up + run (bare = all worktrees including main)",
 	ValidArgsFunction: completeWorktrees,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		r, err := resolveConfig()
@@ -25,7 +25,7 @@ var upCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		targets, err := resolveTargets(recs, args)
+		targets, err := resolveTargetsWithMain(r, recs, args)
 		if err != nil {
 			return err
 		}
@@ -55,6 +55,9 @@ var upCmd = &cobra.Command{
 
 // upOne runs setup entries, compose up, then the run entry.
 func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func(string, ...any)) error {
+	if err := ensureMainEnv(r, rec); err != nil {
+		return err
+	}
 	rn, err := newRunner(r.cfg, rec.Slug)
 	if err != nil {
 		return fmt.Errorf("up %q: %w", rec.Branch, err)

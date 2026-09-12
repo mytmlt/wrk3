@@ -13,7 +13,7 @@ import (
 
 var downCmd = &cobra.Command{
 	Use:               "down [branch...]",
-	Short:             "stop worktrees (bare = all worktrees)",
+	Short:             "stop worktrees (bare = all worktrees including main)",
 	ValidArgsFunction: completeWorktrees,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		r, err := resolveConfig()
@@ -24,7 +24,7 @@ var downCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		targets, err := resolveTargets(recs, args)
+		targets, err := resolveTargetsWithMain(r, recs, args)
 		if err != nil {
 			return err
 		}
@@ -50,6 +50,9 @@ var downCmd = &cobra.Command{
 }
 
 func downOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func(string, ...any)) error {
+	if err := ensureMainEnv(r, rec); err != nil {
+		return err
+	}
 	rn, err := newRunner(r.cfg, rec.Slug)
 	if err != nil {
 		return fmt.Errorf("down %q: %w", rec.Branch, err)

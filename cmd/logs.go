@@ -23,7 +23,10 @@ var logsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		rec := findRecord(recs, args[0])
+		rec, err := findRecordIncludingMain(r, recs, args[0])
+		if err != nil {
+			return err
+		}
 		if rec == nil {
 			return fmt.Errorf("unknown worktree %q (see status)", args[0])
 		}
