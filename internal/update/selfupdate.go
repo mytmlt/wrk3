@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -32,7 +33,9 @@ var ErrAlreadyUpToDate = errors.New("already up to date")
 var exePathOverride string
 
 // AssetName maps version+platform to the GoReleaser asset name, e.g.
-// wrk3_v0.2.0_linux_arm64.tar.gz (windows uses .zip).
+// wrk3_0.2.0_linux_arm64.tar.gz (windows uses .zip).
+// NOTE: GoReleaser strips the "v" from {{ .Version }}, so the filename
+// carries no "v" prefix even though the tag and download URL do.
 func AssetName(version, goos, goarch string) (string, error) {
 	switch goos {
 	case "linux", "darwin", "windows":
@@ -51,7 +54,7 @@ func AssetName(version, goos, goarch string) (string, error) {
 	if goos == "windows" {
 		ext = "zip"
 	}
-	return fmt.Sprintf("wrk3_%s_%s_%s.%s", NormalizeVersion(version), goos, goarch, ext), nil
+	return fmt.Sprintf("wrk3_%s_%s_%s.%s", Normalize(version), goos, goarch, ext), nil
 }
 
 // AssetURL returns the release download URL for an asset file.
@@ -110,6 +113,113 @@ func CurrentExePath() (string, error) {
 	return p, nil
 }
 
+// releaseAsset is one entry of a GitHub release's assets array.
+type releaseAsset struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// releaseWithAssets is the subset of the get-release-by-tag payload we need.
+type releaseWithAssets struct {
+	TagName string         `json:"tag_name"`
+	Assets  []releaseAsset `json:"assets"`
+}
+
+// githubToken returns GITHUB_TOKEN (or GH_TOKEN) for authenticated API
+// access. Needed for private repos; empty for public ones.
+func githubToken() string {
+	if tok := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); tok != "" {
+		return tok
+	}
+	return strings.TrimSpace(os.Getenv("GH_TOKEN"))
+}
+
+// apiGet fetches a GitHub API URL, returning the body on 200.
+func apiGet(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build API request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "wrk3-update")
+	if tok := githubToken(); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	client := httpClient(DownloadTimeout)
+	if httpClientOverride == nil {
+		client = &http.Client{Timeout: DownloadTimeout}
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("query %s: %w", url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", url, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("query %s: unexpected status %s", url, resp.Status)
+	}
+	return raw, nil
+}
+
+// findAssetID returns the asset id for name in a release payload.
+func findAssetID(raw []byte, name string) (int64, error) {
+	var r releaseWithAssets
+	if err := json.Unmarshal(raw, &r); err != nil {
+		return 0, fmt.Errorf("parse release: %w", err)
+	}
+	for _, a := range r.Assets {
+		if a.Name == name {
+			return a.ID, nil
+		}
+	}
+	return 0, fmt.Errorf("asset %q not found in release", name)
+}
+
+// downloadAssetViaAPI downloads a release asset by name through the GitHub
+// API (works for private repos with GITHUB_TOKEN/GH_TOKEN set). The client
+// follows the redirect to signed storage without forwarding Authorization.
+func downloadAssetViaAPI(ctx context.Context, tag, name string) ([]byte, error) {
+	base := strings.TrimSuffix(APIBase, "/")
+	raw, err := apiGet(ctx, base+"/repos/"+Repo+"/releases/tags/"+NormalizeVersion(tag))
+	if err != nil {
+		return nil, err
+	}
+	id, err := findAssetID(raw, name)
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/repos/%s/releases/assets/%d", base, Repo, id)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build asset request: %w", err)
+	}
+	req.Header.Set("Accept", "application/octet-stream")
+	req.Header.Set("User-Agent", "wrk3-update")
+	if tok := githubToken(); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	client := httpClient(DownloadTimeout)
+	if httpClientOverride == nil {
+		client = &http.Client{Timeout: DownloadTimeout}
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("download asset %q: %w", name, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("download asset %q: unexpected status %s", name, resp.Status)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 256<<20))
+	if err != nil {
+		return nil, fmt.Errorf("download asset %q: %w", name, err)
+	}
+	return data, nil
+}
+
 // download fetches url into memory (capped at 256 MiB).
 func download(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -117,7 +227,7 @@ func download(ctx context.Context, url string) ([]byte, error) {
 		return nil, fmt.Errorf("build download request: %w", err)
 	}
 	req.Header.Set("User-Agent", "wrk3-update")
-	if tok := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); tok != "" {
+	if tok := githubToken(); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
 	client := httpClient(DownloadTimeout)
@@ -255,6 +365,23 @@ func replaceExe(exePath string, newBin []byte) error {
 	return nil
 }
 
+// downloadChecksum fetches checksums.txt, falling back to the API for
+// private repos when a token is set.
+func downloadChecksum(ctx context.Context, tag string) ([]byte, error) {
+	sums, err := download(ctx, ChecksumURL(tag))
+	if err == nil {
+		return sums, nil
+	}
+	if githubToken() == "" {
+		return nil, fmt.Errorf("download checksums: %w", err)
+	}
+	sums, aerr := downloadAssetViaAPI(ctx, tag, "checksums.txt")
+	if aerr != nil {
+		return nil, fmt.Errorf("download checksums: %w", err)
+	}
+	return sums, nil
+}
+
 // fetchLatestLong uses a generous timeout for explicit update runs
 // (unlike the 2s foreground notice check).
 func fetchLatestLong(ctx context.Context) (string, error) {
@@ -291,11 +418,18 @@ func UpdateTo(ctx context.Context, current, target string) (string, error) {
 	}
 	pkg, err := download(ctx, AssetURL(target, asset))
 	if err != nil {
-		return "", err
+		if githubToken() == "" {
+			return "", err
+		}
+		// Browser URLs 404 for private repos; retry through the API.
+		pkg, err = downloadAssetViaAPI(ctx, target, asset)
+		if err != nil {
+			return "", err
+		}
 	}
-	sums, err := download(ctx, ChecksumURL(target))
+	sums, err := downloadChecksum(ctx, target)
 	if err != nil {
-		return "", fmt.Errorf("download checksums: %w", err)
+		return "", err
 	}
 	if err := VerifyChecksum(asset, string(sums), pkg); err != nil {
 		return "", err

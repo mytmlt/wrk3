@@ -26,16 +26,17 @@ the script errors with a link to the releases page.
 
 ## Option 2 — download the asset manually
 
-Pick `wrk3_<version>_<os>_<arch>.{tar.gz,zip}` + `checksums.txt` from
+Pick `wrk3_<version>_<os>_<arch>.{tar.gz,zip}` (no `v` in the filename)
++ `checksums.txt` from
 [releases](https://github.com/mytmlt/wrk3/releases), verify, and put
 `wrk3` on `PATH`:
 
 ```bash
-# linux example
-curl -fsSLO https://github.com/mytmlt/wrk3/releases/download/v0.2.0/wrk3_v0.2.0_linux_amd64.tar.gz
-curl -fsSLO https://github.com/mytmlt/wrk3/releases/download/v0.2.0/checksums.txt
-sha256sum -c <(grep wrk3_v0.2.0_linux_amd64.tar.gz checksums.txt)
-tar -xzf wrk3_v0.2.0_linux_amd64.tar.gz wrk3
+# linux example (tag v0.3.0 -> file wrk3_0.3.0_...)
+curl -fsSLO https://github.com/mytmlt/wrk3/releases/download/v0.3.0/wrk3_0.3.0_linux_amd64.tar.gz
+curl -fsSLO https://github.com/mytmlt/wrk3/releases/download/v0.3.0/checksums.txt
+sha256sum -c <(grep wrk3_0.3.0_linux_amd64.tar.gz checksums.txt)
+tar -xzf wrk3_0.3.0_linux_amd64.tar.gz wrk3
 install -m 0755 wrk3 ~/.local/bin/wrk3
 ```
 
