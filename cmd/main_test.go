@@ -226,7 +226,7 @@ func TestResolveTargetsWithMain_ExplicitMain(t *testing.T) {
 	}
 }
 
-func TestEnsureMainEnv_WritesDotEnv(t *testing.T) {
+func TestEnsureWorktreeEnv_WritesDotEnv(t *testing.T) {
 	repo := initMainTestRepo(t)
 	cfg := writeTestConfig(t, repo)
 	r := &resolved{cfg: cfg, src: &source.GitSource{}}
@@ -234,8 +234,10 @@ func TestEnsureMainEnv_WritesDotEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ensureMainEnv(r, *rec); err != nil {
+	if warns, err := ensureWorktreeEnv(r, *rec); err != nil {
 		t.Fatal(err)
+	} else if len(warns) != 0 {
+		t.Errorf("warns = %v, want none for fresh .env", warns)
 	}
 	content, err := os.ReadFile(filepath.Join(repo, ".env"))
 	if err != nil {
@@ -246,7 +248,7 @@ func TestEnsureMainEnv_WritesDotEnv(t *testing.T) {
 	}
 }
 
-func TestEnsureMainEnv_PreservesSecrets(t *testing.T) {
+func TestEnsureWorktreeEnv_PreservesSecrets(t *testing.T) {
 	repo := initMainTestRepo(t)
 	cfg := writeTestConfig(t, repo)
 	r := &resolved{cfg: cfg, src: &source.GitSource{}}
@@ -258,8 +260,10 @@ func TestEnsureMainEnv_PreservesSecrets(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, ".env"), []byte(secret), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := ensureMainEnv(r, *rec); err != nil {
+	if warns, err := ensureWorktreeEnv(r, *rec); err != nil {
 		t.Fatal(err)
+	} else if len(warns) != 0 {
+		t.Errorf("warns = %v, want none", warns)
 	}
 	content, err := os.ReadFile(filepath.Join(repo, ".env"))
 	if err != nil {
@@ -271,5 +275,80 @@ func TestEnsureMainEnv_PreservesSecrets(t *testing.T) {
 	}
 	if !strings.Contains(s, "APP_PORT=7900\n") {
 		t.Errorf("managed APP_PORT missing from main .env.\n%s", s)
+	}
+}
+
+func TestEnsureWorktreeEnv_ManagedWorktreeGapFilled(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfig(t, repo)
+	r := &resolved{cfg: cfg, src: &source.GitSource{}}
+	wt := t.TempDir()
+	// Manually created worktree .env with secrets but no port vars:
+	// ensure must insert the managed section without touching the rest.
+	if err := os.WriteFile(filepath.Join(wt, ".env"), []byte("SECRET=topsecret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rec := ports.WorktreeRecord{
+		Branch:  "feature-foo",
+		Slug:    "feature-foo",
+		AbsPath: wt,
+		Index:   0,
+		Ports:   map[string]int{"app": 8000},
+	}
+	if warns, err := ensureWorktreeEnv(r, rec); err != nil {
+		t.Fatal(err)
+	} else if len(warns) != 0 {
+		t.Errorf("warns = %v, want none", warns)
+	}
+	content, err := os.ReadFile(filepath.Join(wt, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(content)
+	if !strings.Contains(s, "SECRET=topsecret\n") {
+		t.Errorf("secret lost.\n%s", s)
+	}
+	if !strings.Contains(s, "APP_PORT=8000\n") {
+		t.Errorf("managed APP_PORT not inserted.\n%s", s)
+	}
+}
+
+func TestEnsureWorktreeEnv_DivergenceWarnsNeverOverwrites(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfig(t, repo)
+	r := &resolved{cfg: cfg, src: &source.GitSource{}}
+	wt := t.TempDir()
+	if err := os.WriteFile(filepath.Join(wt, ".env"), []byte("APP_PORT=5000\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rec := ports.WorktreeRecord{
+		Branch:  "feature-foo",
+		Slug:    "feature-foo",
+		AbsPath: wt,
+		Index:   0,
+		Ports:   map[string]int{"app": 8000},
+	}
+	warns, err := ensureWorktreeEnv(r, rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warns) == 0 {
+		t.Fatalf("warns empty, want divergence warning for APP_PORT")
+	}
+	found := false
+	for _, w := range warns {
+		if strings.Contains(w, "APP_PORT") && strings.Contains(w, "5000") && strings.Contains(w, "8000") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("warns missing APP_PORT divergence: %v", warns)
+	}
+	content, err := os.ReadFile(filepath.Join(wt, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "APP_PORT=5000\n") {
+		t.Errorf("existing APP_PORT was overwritten.\n%s", content)
 	}
 }

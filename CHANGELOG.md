@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `.env` handling is now append-only and self-healing: every
+  `add`/`up`/`down`/`exec` ensures the target worktree's `.env` contains
+  the wrk3-managed port section, appending only missing keys. Existing
+  lines are never modified — a managed key already set to a different
+  value is left intact and reported as a warning instead of being
+  overwritten. New worktrees inherit non-managed keys (secrets) from the
+  repo-root `.env`. Manually created worktrees adopted via `add --local`
+  no longer end up without port vars.
+- `add --local` no longer adopts the main checkout on macOS when the repo
+  lives under a symlinked path (e.g. `$TMPDIR` → `/private/var`): the
+  repo-root comparison is now symlink-aware like the rest of main-worktree
+  detection.
+
 ## [0.4.0] - 2026-09-12
 
 ### Fixed

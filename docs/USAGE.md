@@ -31,7 +31,7 @@ wrk3 fetch                          # git fetch --prune, list origin/* refs
 wrk3 fetch --remote upstream        # same against upstream (default: source.git.remote, else origin)
 wrk3 fetch --mine                   # only branches whose tip commit author or committer matches git config user.name/user.email
 wrk3 fetch --author alice           # substring match on author/committer name/email (case-insensitive; repeatable, comma-split)
-wrk3 add feature-a feature-b        # worktree add + ports + .env upsert
+wrk3 add feature-a feature-b        # worktree add + ports + .env ensure
 wrk3 add                            # bare = interactive picker over remote branches
 wrk3 add --remote upstream --mine   # fetch upstream, create all my branches (skip registered/checked-out)
 wrk3 add --remote upstream          # fetch upstream, create all its branches
@@ -60,7 +60,7 @@ accept branch names or slugs interchangeably; `status` shows
 Main checkout: the repo root is always included implicitly (no state entry)
 in `up`/`down` (bare = all including main), `status`/`ls`, and as an
 `exec`/`logs` target by branch/slug. It uses reserved port index `-1`
-(e.g. `7900` with defaults) with managed `.env` keys upserted on `up`/`down`/`exec`;
+(e.g. `7900` with defaults) with the managed `.env` section ensured on `up`/`down`/`exec`;
 `remove` refuses main and `remove --all` covers only managed worktrees.
 
 ## Examples

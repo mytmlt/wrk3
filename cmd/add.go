@@ -21,7 +21,7 @@ var (
 
 var addCmd = &cobra.Command{
 	Use:               "add [branch...] | --select | --local | --remote <name> [--mine]",
-	Short:             "worktree add + port assign + .env upsert (bare = select)",
+	Short:             "worktree add + port assign + .env ensure (bare = select)",
 	ValidArgsFunction: completeAddBranches,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		r, err := resolveConfig()
@@ -83,9 +83,11 @@ var addCmd = &cobra.Command{
 			if existing := findRecord(recs, branch); existing != nil {
 				return fmt.Errorf("worktree for %q already exists at %s", branch, existing.AbsPath)
 			}
-			if err := addOne(r, &recs, &alloc, branch, remote); err != nil {
+			warns, err := addOne(r, &recs, &alloc, branch, remote)
+			if err != nil {
 				return err
 			}
+			warnEnv(cmd, warns)
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "added %s\n", branch); err != nil {
 				return fmt.Errorf("write output: %w", err)
 			}
@@ -128,9 +130,11 @@ func addRemoteMode(cmd *cobra.Command, r *resolved, args []string) error {
 			if existing := findRecord(recs, branch); existing != nil {
 				return fmt.Errorf("worktree for %q already exists at %s", branch, existing.AbsPath)
 			}
-			if err := addOne(r, &recs, &alloc, branch, remote); err != nil {
+			warns, err := addOne(r, &recs, &alloc, branch, remote)
+			if err != nil {
 				return err
 			}
+			warnEnv(cmd, warns)
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "added %s\n", branch); err != nil {
 				return fmt.Errorf("write output: %w", err)
 			}
@@ -185,9 +189,11 @@ func addRemoteMode(cmd *cobra.Command, r *resolved, args []string) error {
 			}
 			continue
 		}
-		if err := addOne(r, &recs, &alloc, branch, remote); err != nil {
+		warns, err := addOne(r, &recs, &alloc, branch, remote)
+		if err != nil {
 			return err
 		}
+		warnEnv(cmd, warns)
 		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "added %s\n", branch); err != nil {
 			return fmt.Errorf("write output: %w", err)
 		}
@@ -235,9 +241,11 @@ func addLocalMode(cmd *cobra.Command, r *resolved, args []string) error {
 			if existing := findRecord(recs, branch); existing != nil {
 				return fmt.Errorf("worktree for %q already exists at %s", branch, existing.AbsPath)
 			}
-			if err := adoptOne(r, &recs, &alloc, branch, path); err != nil {
+			warns, err := adoptOne(r, &recs, &alloc, branch, path)
+			if err != nil {
 				return err
 			}
+			warnEnv(cmd, warns)
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "added %s\n", branch); err != nil {
 				return fmt.Errorf("write output: %w", err)
 			}
@@ -267,9 +275,11 @@ func addLocalMode(cmd *cobra.Command, r *resolved, args []string) error {
 			}
 			continue
 		}
-		if err := adoptOne(r, &recs, &alloc, branch, path); err != nil {
+		warns, err := adoptOne(r, &recs, &alloc, branch, path)
+		if err != nil {
 			return err
 		}
+		warnEnv(cmd, warns)
 		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "added %s\n", branch); err != nil {
 			return fmt.Errorf("write output: %w", err)
 		}
@@ -294,7 +304,9 @@ func localWorktreesByBranch(r *resolved, infos []source.WorktreeInfo) map[string
 		if info.Branch == "" || info.Bare {
 			continue
 		}
-		if filepath.Clean(info.Path) == repoRoot {
+		// sameRepoRoot tolerates macOS /var -> /private/var symlinks: git
+		// reports the resolved path while RepoPath keeps the logical form.
+		if sameRepoRoot(info.Path, repoRoot) {
 			continue
 		}
 		if _, ok := out[info.Branch]; !ok {
@@ -318,22 +330,28 @@ func lookupLocalBranch(byBranch map[string]string, branchOrSlug string) string {
 	return ""
 }
 
-// addOne creates one worktree: git add + port assign + state + .env upsert.
-// Remote-only branches are created as tracking branches (--track -b).
-func addOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, branch, remote string) error {
+// addOne creates one worktree: git add + port assign + state + .env ensure.
+// The new .env inherits non-managed keys (secrets) from the repo-root
+// checkout's .env when present; pre-existing values are never overwritten
+// (divergences are returned as warnings). Remote-only branches are created
+// as tracking branches (--track -b).
+func addOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, branch, remote string) ([]string, error) {
 	slug := source.Slugify(branch)
 	path := worktreePath(r.base, slug)
 	if existing := findRecord(*recs, slug); existing != nil && existing.Branch != branch {
-		return fmt.Errorf("slug %q for branch %q collides with branch %q", slug, branch, existing.Branch)
+		return nil, fmt.Errorf("slug %q for branch %q collides with branch %q", slug, branch, existing.Branch)
 	}
 	idx := nextIndex(*recs)
 	allocation := alloc.Allocate(idx)
 	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
 	if err := r.src.Add(r.cfg.RepoPath(), branch, path, remote); err != nil {
-		return fmt.Errorf("add worktree %q: %w", branch, err)
+		return nil, fmt.Errorf("add worktree %q: %w", branch, err)
 	}
-	if err := ports.Write(path, allocation.Ports); err != nil {
-		return fmt.Errorf("write .env for %q: %w", branch, err)
+	warns, err := ensureWorktreeEnv(r, ports.WorktreeRecord{
+		Branch: branch, Slug: slug, AbsPath: path, Ports: allocation.Ports,
+	})
+	if err != nil {
+		return nil, err
 	}
 	*recs = append(*recs, ports.WorktreeRecord{
 		Branch:         branch,
@@ -345,26 +363,32 @@ func addOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, b
 		Status:         "stopped",
 	})
 	if err := saveState(r, *recs); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return warns, nil
 }
 
-// adoptOne registers one pre-existing worktree path: port assign +
-// state + .env upsert. No git worktree add — the checkout already exists.
-func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, branch, path string) error {
+// adoptOne registers one pre-existing worktree path: port assign + state +
+// .env ensure. A missing .env is seeded with non-managed keys from the
+// repo-root checkout's .env; pre-existing values are never overwritten
+// (divergences are returned as warnings). No git worktree add — the checkout
+// already exists.
+func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, branch, path string) ([]string, error) {
 	slug := source.Slugify(branch)
 	if existing := findRecord(*recs, slug); existing != nil && existing.Branch != branch {
-		return fmt.Errorf("slug %q for branch %q collides with branch %q", slug, branch, existing.Branch)
+		return nil, fmt.Errorf("slug %q for branch %q collides with branch %q", slug, branch, existing.Branch)
 	}
 	if st, err := os.Stat(path); err != nil || !st.IsDir() {
-		return fmt.Errorf("adopt worktree %q: path %s missing or not a directory", branch, path)
+		return nil, fmt.Errorf("adopt worktree %q: path %s missing or not a directory", branch, path)
 	}
 	idx := nextIndex(*recs)
 	allocation := alloc.Allocate(idx)
 	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
-	if err := ports.Write(path, allocation.Ports); err != nil {
-		return fmt.Errorf("write .env for %q: %w", branch, err)
+	warns, err := ensureWorktreeEnv(r, ports.WorktreeRecord{
+		Branch: branch, Slug: slug, AbsPath: path, Ports: allocation.Ports,
+	})
+	if err != nil {
+		return nil, err
 	}
 	*recs = append(*recs, ports.WorktreeRecord{
 		Branch:         branch,
@@ -376,9 +400,9 @@ func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator,
 		Status:         "stopped",
 	})
 	if err := saveState(r, *recs); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return warns, nil
 }
 
 func init() {

@@ -22,12 +22,19 @@ func TestRender_Golden(t *testing.T) {
 	}
 }
 
-func TestWrite_RoundTripGolden(t *testing.T) {
+func TestEnsure_FreshMatchesGolden(t *testing.T) {
 	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
 	dir := t.TempDir()
 	wt := filepath.Join(dir, "feature-foo")
-	if err := Write(wt, a.Allocate(0).Ports); err != nil {
-		t.Fatalf("Write() = %v", err)
+	added, diverged, err := Ensure(wt, a.Allocate(0).Ports)
+	if err != nil {
+		t.Fatalf("Ensure() = %v", err)
+	}
+	if len(diverged) != 0 {
+		t.Errorf("Ensure() diverged = %v, want none for fresh file", diverged)
+	}
+	if len(added) == 0 {
+		t.Errorf("Ensure() added nothing for fresh file")
 	}
 	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
 	if err != nil {
@@ -96,25 +103,31 @@ func TestRender_MissingPort(t *testing.T) {
 	}
 }
 
-func TestWrite_EmptyPath(t *testing.T) {
-	if err := Write("", DefaultBase()); err == nil {
-		t.Errorf("Write() with empty path = nil, want error")
+func TestEnsure_EmptyPath(t *testing.T) {
+	if _, _, err := Ensure("", DefaultBase()); err == nil {
+		t.Errorf("Ensure() with empty path = nil, want error")
 	}
 }
 
-func TestWrite_PreservesSecrets(t *testing.T) {
+func TestEnsure_NeverOverridesExisting(t *testing.T) {
 	dir := t.TempDir()
 	wt := filepath.Join(dir, "feature-foo")
 	if err := os.MkdirAll(wt, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// Stale managed values plus user secrets: nothing may be modified,
+	// only missing managed keys are appended; divergences are reported.
 	existing := "# my project\nSECRET=topsecret\nDATABASE_URL=postgres://u:p@db/x\nAPP_PORT=9999\n"
 	if err := os.WriteFile(filepath.Join(wt, EnvFileName), []byte(existing), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	if err := Write(wt, a.Allocate(0).Ports); err != nil {
-		t.Fatalf("Write() = %v", err)
+	added, diverged, err := Ensure(wt, a.Allocate(0).Ports)
+	if err != nil {
+		t.Fatalf("Ensure() = %v", err)
+	}
+	if got, ok := diverged["APP_PORT"]; !ok || got != "9999" {
+		t.Errorf("Ensure() diverged = %v, want APP_PORT=9999", diverged)
 	}
 	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
 	if err != nil {
@@ -125,19 +138,20 @@ func TestWrite_PreservesSecrets(t *testing.T) {
 		"# my project\n",
 		"SECRET=topsecret\n",
 		"DATABASE_URL=postgres://u:p@db/x\n",
-		"APP_PORT=8000\n",
-		"BASE_URL=http://localhost:8000\n",
+		"APP_PORT=9999\n", // left intact, never overwritten
+		"BASE_URL=http://localhost:8000\n", // missing: appended
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("merged .env missing %q.\n%s", want, s)
 		}
 	}
-	if strings.Contains(s, "9999") {
-		t.Errorf("stale APP_PORT value survived.\n%s", s)
+	if strings.Contains(s, "APP_PORT=8000") {
+		t.Errorf("existing APP_PORT was overwritten.\n%s", s)
 	}
+	_ = added
 }
 
-func TestWrite_AppendsMissingUnderMarker(t *testing.T) {
+func TestEnsure_AppendsMissingUnderMarker(t *testing.T) {
 	dir := t.TempDir()
 	wt := filepath.Join(dir, "feature-foo")
 	if err := os.MkdirAll(wt, 0o755); err != nil {
@@ -147,8 +161,15 @@ func TestWrite_AppendsMissingUnderMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	if err := Write(wt, a.Allocate(0).Ports); err != nil {
-		t.Fatalf("Write() = %v", err)
+	added, diverged, err := Ensure(wt, a.Allocate(0).Ports)
+	if err != nil {
+		t.Fatalf("Ensure() = %v", err)
+	}
+	if len(diverged) != 0 {
+		t.Errorf("Ensure() diverged = %v, want none", diverged)
+	}
+	if len(added) == 0 {
+		t.Errorf("Ensure() added nothing, want missing managed keys")
 	}
 	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
 	if err != nil {
@@ -161,9 +182,12 @@ func TestWrite_AppendsMissingUnderMarker(t *testing.T) {
 	if !strings.Contains(s, managedHeader+"\n") {
 		t.Errorf("missing managed marker.\n%s", s)
 	}
+	if !strings.Contains(s, "APP_PORT=8000\n") {
+		t.Errorf("missing managed key not appended.\n%s", s)
+	}
 }
 
-func TestWrite_Idempotent(t *testing.T) {
+func TestEnsure_Idempotent(t *testing.T) {
 	dir := t.TempDir()
 	wt := filepath.Join(dir, "feature-foo")
 	if err := os.MkdirAll(wt, 0o755); err != nil {
@@ -173,52 +197,152 @@ func TestWrite_Idempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	if err := Write(wt, a.Allocate(0).Ports); err != nil {
-		t.Fatalf("Write() #1 = %v", err)
+	if _, _, err := Ensure(wt, a.Allocate(0).Ports); err != nil {
+		t.Fatalf("Ensure() #1 = %v", err)
 	}
 	first, err := os.ReadFile(filepath.Join(wt, EnvFileName))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Write(wt, a.Allocate(0).Ports); err != nil {
-		t.Fatalf("Write() #2 = %v", err)
+	added, _, err := Ensure(wt, a.Allocate(0).Ports)
+	if err != nil {
+		t.Fatalf("Ensure() #2 = %v", err)
+	}
+	if len(added) != 0 {
+		t.Errorf("second Ensure() added %v, want none", added)
 	}
 	second, err := os.ReadFile(filepath.Join(wt, EnvFileName))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(first) != string(second) {
-		t.Errorf("second Write changed content.\n--- first ---\n%s\n--- second ---\n%s", first, second)
+		t.Errorf("second Ensure changed content.\n--- first ---\n%s\n--- second ---\n%s", first, second)
 	}
 	if got, want := strings.Count(string(second), "APP_PORT="), 1; got != want {
 		t.Errorf("APP_PORT= count = %d, want %d.\n%s", got, want, second)
 	}
 }
 
-func TestWrite_ExportAndSpacingForms(t *testing.T) {
+func TestEnsure_MatchingFormsAreNotDiverged(t *testing.T) {
 	dir := t.TempDir()
 	wt := filepath.Join(dir, "feature-foo")
 	if err := os.MkdirAll(wt, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	existing := "export APP_PORT=9999\nBASE_URL = http://old # keep me\n"
+	// Same values in export/quoted/spaced forms: present, not diverged,
+	// left byte-for-byte intact.
+	existing := "export APP_PORT=8000\nBASE_URL = \"http://localhost:8000\" # ours\n"
 	if err := os.WriteFile(filepath.Join(wt, EnvFileName), []byte(existing), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	if err := Write(wt, a.Allocate(0).Ports); err != nil {
-		t.Fatalf("Write() = %v", err)
+	added, diverged, err := Ensure(wt, a.Allocate(0).Ports)
+	if err != nil {
+		t.Fatalf("Ensure() = %v", err)
+	}
+	if _, ok := diverged["APP_PORT"]; ok {
+		t.Errorf("export form falsely diverged: %v", diverged)
+	}
+	if _, ok := diverged["BASE_URL"]; ok {
+		t.Errorf("quoted/spaced form falsely diverged: %v", diverged)
+	}
+	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), existing) {
+		t.Errorf("existing lines were modified.\n%s", got)
+	}
+	_ = added
+}
+
+func TestEnsureInherited_SeedsSecretsNotPorts(t *testing.T) {
+	dir := t.TempDir()
+	seedDir := filepath.Join(dir, "main")
+	wt := filepath.Join(dir, "feature-foo")
+	if err := os.MkdirAll(seedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Seed (main .env) holds secrets plus main's own managed values.
+	seedContent := "SECRET=topsecret\nAPP_PORT=7900\nBASE_URL=http://localhost:7900\n"
+	seedPath := filepath.Join(seedDir, EnvFileName)
+	if err := os.WriteFile(seedPath, []byte(seedContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
+	added, diverged, err := EnsureInherited(wt, seedPath, a.Allocate(0).Ports)
+	if err != nil {
+		t.Fatalf("EnsureInherited() = %v", err)
+	}
+	if len(diverged) != 0 {
+		t.Errorf("EnsureInherited() diverged = %v, want none", diverged)
+	}
+	if len(added) == 0 {
+		t.Errorf("EnsureInherited() added nothing")
 	}
 	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(got)
-	if !strings.Contains(s, "export APP_PORT=8000\n") {
-		t.Errorf("export form not updated.\n%s", s)
+	if !strings.Contains(s, "SECRET=topsecret\n") {
+		t.Errorf("secret not inherited.\n%s", s)
 	}
-	if !strings.Contains(s, "BASE_URL=http://localhost:8000 # keep me\n") {
-		t.Errorf("spacing/comment form not preserved.\n%s", s)
+	if !strings.Contains(s, "APP_PORT=8000\n") {
+		t.Errorf("own allocation missing.\n%s", s)
+	}
+	if strings.Contains(s, "7900") {
+		t.Errorf("seed's managed values leaked into worktree.\n%s", s)
+	}
+}
+
+func TestEnsureInherited_MissingSeedBehavesLikeEnsure(t *testing.T) {
+	dir := t.TempDir()
+	wt := filepath.Join(dir, "feature-foo")
+	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
+	if _, _, err := EnsureInherited(wt, filepath.Join(dir, "nope", EnvFileName), a.Allocate(0).Ports); err != nil {
+		t.Fatalf("EnsureInherited() = %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(filepath.Join("testdata", ".env.golden"))
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("written .env mismatch.\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func TestEnsureInherited_ExistingFileNotReseeded(t *testing.T) {
+	dir := t.TempDir()
+	seedPath := filepath.Join(dir, "seed.env")
+	wt := filepath.Join(dir, "feature-foo")
+	if err := os.MkdirAll(wt, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(seedPath, []byte("SEED_SECRET=from-main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wt, EnvFileName), []byte("OWN_SECRET=mine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
+	if _, _, err := EnsureInherited(wt, seedPath, a.Allocate(0).Ports); err != nil {
+		t.Fatalf("EnsureInherited() = %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(got)
+	if !strings.Contains(s, "OWN_SECRET=mine\n") {
+		t.Errorf("own secret lost.\n%s", s)
+	}
+	if strings.Contains(s, "SEED_SECRET=") {
+		t.Errorf("existing file was reseeded.\n%s", s)
 	}
 }
 

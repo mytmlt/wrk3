@@ -55,8 +55,12 @@ var upCmd = &cobra.Command{
 
 // upOne runs setup entries, compose up, then the run entry.
 func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func(string, ...any)) error {
-	if err := ensureMainEnv(r, rec); err != nil {
+	if warns, err := ensureWorktreeEnv(r, rec); err != nil {
 		return err
+	} else {
+		for _, w := range warns {
+			logf("[%s] warning: %s", rec.Slug, w)
+		}
 	}
 	rn, err := newRunner(r.cfg, rec.Slug)
 	if err != nil {

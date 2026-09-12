@@ -21,8 +21,9 @@ projects. `status` shows every worktree, branch, and port at a glance.
   behind a `Runner` interface (`docker` ships; `portainer`/`nomad` stubs
   return `not implemented`).
 - **Deterministic ports** — `allocated = base + index * step` per port name,
-  upserted into each worktree's `.env` (managed keys updated in place or
-  appended; your other lines and secrets are never touched); `status` reads
+  ensured in each worktree's `.env` (missing managed keys appended under a
+  wrk3 section; your existing lines and secrets are never touched, and new
+  worktrees inherit non-managed keys from the repo root); `status` reads
   them back from the state file (`?`/`stale` when the directory is missing).
 - **Compose-style config** — wrk3 finds `wrk3.yaml`/`wrk3.yml`
   walking up from cwd (`-f/--file` to override), so it works from any
@@ -129,8 +130,8 @@ Full field reference, port table, `.env` mapping, and multi-project patterns:
 
 1. `wrk3 add <branch>` → `git worktree add <base>/<slug>` (tracking
    `<remote>/<branch>` when remote-only), assigns the
-   next index, allocates `base + index*step` ports, upserts managed keys into
-   `.env` (never overwrites your secrets), appends
+   next index, allocates `base + index*step` ports, ensures managed keys in
+   `.env` (append-only, never overwrites your values), appends
    `{branch, slug, absPath, index, ports, composeProject, status}` to
    `<worktreeBase>/.wrk3-state.json` (absolute paths → cwd-independent).
    `add --remote <name> [--mine]` bulk-creates from a remote (default:
@@ -140,7 +141,7 @@ Full field reference, port table, `.env` mapping, and multi-project patterns:
     `env=ports`), then `docker compose -p <prefix>-<slug> up`, then
     `entry.run` — in parallel across worktrees via errgroup with prefixed logs.
     Bare `up`/`down` apply to all worktrees including the implicit main
-    checkout (repo root, reserved port index -1, managed `.env` keys upserted on run);
+    checkout (repo root, reserved port index -1, managed `.env` section ensured on run);
     pass names to filter.
 3. `wrk3 status` → reads the state file plus the implicit main checkout,
     probes live runner status, prints

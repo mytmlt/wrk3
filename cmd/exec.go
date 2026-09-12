@@ -32,8 +32,12 @@ var execCmd = &cobra.Command{
 		if rec == nil {
 			return fmt.Errorf("unknown worktree %q (see status)", branch)
 		}
-		if err := ensureMainEnv(r, *rec); err != nil {
+		if warns, err := ensureWorktreeEnv(r, *rec); err != nil {
 			return err
+		} else {
+			for _, w := range warns {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)
+			}
 		}
 		rn, err := newRunner(r.cfg, rec.Slug)
 		if err != nil {
