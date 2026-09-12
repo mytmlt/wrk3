@@ -23,7 +23,8 @@ var fetchCmd = &cobra.Command{
   wrk3 fetch                          list every remote branch
   wrk3 fetch --remote upstream        list branches on upstream (default: source.git.remote, else origin)
   wrk3 fetch --mine                   only branches whose tip commit author
-                                      matches git config user.name/user.email
+                                      or committer matches git config
+                                      user.name/user.email
   wrk3 fetch --author alice           substring match (case-insensitive)
                                       against author name and email;
                                       repeatable, matches any
@@ -103,8 +104,10 @@ func normalizePatterns(authors []string) []string {
 	return out
 }
 
-// matchesIdentity reports whether ref's tip author equals the local git
-// identity (name or email, case-insensitive exact match).
+// matchesIdentity reports whether ref's tip author or committer equals the
+// local git identity (name or email, case-insensitive exact match).
+// Committer is included so bot/cursor branches pushed by the user still
+// match --mine even when the tip author is the bot.
 func matchesIdentity(ref source.BranchRef, name, email string) bool {
 	if name != "" && strings.EqualFold(strings.TrimSpace(ref.AuthorName), strings.TrimSpace(name)) {
 		return true
@@ -112,16 +115,25 @@ func matchesIdentity(ref source.BranchRef, name, email string) bool {
 	if email != "" && strings.EqualFold(strings.TrimSpace(ref.AuthorEmail), strings.TrimSpace(email)) {
 		return true
 	}
+	if name != "" && strings.EqualFold(strings.TrimSpace(ref.CommitterName), strings.TrimSpace(name)) {
+		return true
+	}
+	if email != "" && strings.EqualFold(strings.TrimSpace(ref.CommitterEmail), strings.TrimSpace(email)) {
+		return true
+	}
 	return false
 }
 
 // matchesAuthor reports whether any pattern is a case-insensitive substring
-// of the ref's author name, email, or "name <email>" combination.
+// of the ref's author/committer name, email, or "name <email>" combination.
 func matchesAuthor(ref source.BranchRef, patterns []string) bool {
 	haystacks := []string{
 		strings.ToLower(ref.AuthorName),
 		strings.ToLower(ref.AuthorEmail),
 		strings.ToLower(strings.TrimSpace(ref.AuthorName + " <" + ref.AuthorEmail + ">")),
+		strings.ToLower(ref.CommitterName),
+		strings.ToLower(ref.CommitterEmail),
+		strings.ToLower(strings.TrimSpace(ref.CommitterName + " <" + ref.CommitterEmail + ">")),
 	}
 	for _, p := range patterns {
 		needle := strings.ToLower(p)
@@ -136,8 +148,8 @@ func matchesAuthor(ref source.BranchRef, patterns []string) bool {
 
 func init() {
 	fetchCmd.Flags().StringVar(&fetchRemote, "remote", "", "remote to fetch/list (default: source.git.remote, else origin)")
-	fetchCmd.Flags().BoolVar(&fetchMine, "mine", false, "only branches whose tip commit author matches git config user.name/user.email")
-	fetchCmd.Flags().StringSliceVar(&fetchAuthor, "author", nil, "only branches whose tip author matches <name-or-email> (substring, case-insensitive; repeatable)")
+	fetchCmd.Flags().BoolVar(&fetchMine, "mine", false, "only branches whose tip commit author or committer matches git config user.name/user.email")
+	fetchCmd.Flags().StringSliceVar(&fetchAuthor, "author", nil, "only branches whose tip author or committer matches <name-or-email> (substring, case-insensitive; repeatable)")
 	_ = fetchCmd.RegisterFlagCompletionFunc("remote", completeRemotes)
 	rootCmd.AddCommand(fetchCmd)
 }
