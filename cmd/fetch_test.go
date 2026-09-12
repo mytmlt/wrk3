@@ -31,9 +31,10 @@ func (s *stubSource) List(repoPath string) ([]source.WorktreeInfo, error) { retu
 
 func detailedFixture() []source.BranchRef {
 	return []source.BranchRef{
-		{Name: "alice/feat", AuthorName: "Alice", AuthorEmail: "alice@example.com"},
-		{Name: "bob/feat", AuthorName: "Bob", AuthorEmail: "bob@example.com"},
-		{Name: "main", AuthorName: "T", AuthorEmail: "t@t"},
+		{Name: "alice/feat", AuthorName: "Alice", AuthorEmail: "alice@example.com", CommitterName: "Alice", CommitterEmail: "alice@example.com"},
+		{Name: "bob/feat", AuthorName: "Bob", AuthorEmail: "bob@example.com", CommitterName: "Bob", CommitterEmail: "bob@example.com"},
+		{Name: "cursor/bot-feat", AuthorName: "Cursor Bot", AuthorEmail: "bot@cursor.com", CommitterName: "Alice", CommitterEmail: "alice@example.com"},
+		{Name: "main", AuthorName: "T", AuthorEmail: "t@t", CommitterName: "T", CommitterEmail: "t@t"},
 	}
 }
 
@@ -54,8 +55,22 @@ func TestFilterRefs_Mine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0] != "alice/feat" {
-		t.Errorf("got %v", got)
+	if len(got) != 2 || got[0] != "alice/feat" || got[1] != "cursor/bot-feat" {
+		t.Errorf("mine should include committer match, got %v", got)
+	}
+}
+
+func TestFilterRefs_MineMatchesCommitterOnly(t *testing.T) {
+	detailed := []source.BranchRef{
+		{Name: "cursor/bot-feat", AuthorName: "Cursor Bot", AuthorEmail: "bot@cursor.com", CommitterName: "Ada", CommitterEmail: "ada@example.com"},
+	}
+	s := &stubSource{detailed: detailed, name: "Ada", email: "ada@example.com"}
+	got, err := filterRefs(s, ".", "origin", true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "cursor/bot-feat" {
+		t.Errorf("mine should match tip committer, got %v", got)
 	}
 }
 
@@ -90,15 +105,26 @@ func TestFilterRefs_AuthorSubstring(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 {
+	if len(got) != 3 {
 		t.Errorf("repeatable author should OR, got %v", got)
 	}
 	got, err = filterRefs(s, ".", "origin", false, []string{"alice,bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 {
+	if len(got) != 3 {
 		t.Errorf("comma-separated should split, got %v", got)
+	}
+}
+
+func TestFilterRefs_AuthorMatchesCommitter(t *testing.T) {
+	s := &stubSource{detailed: detailedFixture()}
+	got, err := filterRefs(s, ".", "origin", false, []string{"cursor"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "cursor/bot-feat" {
+		t.Errorf("author filter should match tip author, got %v", got)
 	}
 }
 
@@ -108,8 +134,8 @@ func TestFilterRefs_MineAndAuthorIntersect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 {
-		t.Errorf("got %v", got)
+	if len(got) != 2 {
+		t.Errorf("mine+alice should include author and committer matches, got %v", got)
 	}
 	got, err = filterRefs(s, ".", "origin", true, []string{"bob"})
 	if err != nil {

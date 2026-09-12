@@ -36,7 +36,8 @@ Semantics (match `internal/source/git.go`):
 - `Refs(repoPath, remote)` — list known remote branches (git: `branch -r`,
   `<remote>/*`, HEAD symref skipped, other remotes filtered out).
 - `RefsDetailed(repoPath, remote)` — same branches as `[]BranchRef`
-  (`Name` short branch, `AuthorName`/`AuthorEmail` from the tip commit;
+  (`Name` short branch, `AuthorName`/`AuthorEmail`/`CommitterName`/
+  `CommitterEmail` from the tip commit;
   git: `for-each-ref` over `refs/remotes/<remote>`). Powers
   `fetch --mine` / `--author` and `add --remote --mine`.
 - `Identity(repoPath)` — local git identity (`git config user.name` /

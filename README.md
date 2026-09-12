@@ -70,8 +70,8 @@ $EDITOR wrk3.yaml   # config lives in the repo root
 
 # 2. Fetch remote branches, create two isolated worktrees (run inside the repo)
 wrk3 fetch
-wrk3 fetch --mine                    # only your branches (tip author = git config user.name/user.email)
-wrk3 fetch --author alice            # substring match on author name/email
+wrk3 fetch --mine                    # only your branches (tip author or committer = git config user.name/user.email)
+wrk3 fetch --author alice            # substring match on author/committer name/email
 wrk3 add feature-a feature-b
 # or pick interactively: wrk3 add
 # or bulk-create from a remote: wrk3 add --remote upstream --mine
