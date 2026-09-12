@@ -16,12 +16,28 @@ import (
 // added/removed. With defaults (8000+index*100) main gets 7900.
 const mainWorktreeIndex = -1
 
+// sameRepoRoot compares a git-reported worktree path with the repo root,
+// tolerating macOS /var -> /private/var symlinks (git reports the resolved
+// path while RepoPath keeps the logical TempDir form).
+func sameRepoRoot(worktreePath, repoRoot string) bool {
+	if filepath.Clean(worktreePath) == filepath.Clean(repoRoot) {
+		return true
+	}
+	norm := func(p string) string {
+		if resolved, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Clean(resolved)
+		}
+		return filepath.Clean(p)
+	}
+	return norm(worktreePath) == norm(repoRoot)
+}
+
 // isMainPath reports whether path is the repo root (main checkout).
 func isMainPath(r *resolved, path string) bool {
 	if r == nil || r.cfg == nil {
 		return false
 	}
-	return filepath.Clean(path) == filepath.Clean(r.cfg.RepoPath())
+	return sameRepoRoot(path, r.cfg.RepoPath())
 }
 
 // mainRecord synthesizes the implicit main worktree record (repo root).
@@ -37,7 +53,7 @@ func mainRecord(r *resolved, recs []ports.WorktreeRecord) (*ports.WorktreeRecord
 	var branch string
 	found := false
 	for _, info := range infos {
-		if filepath.Clean(info.Path) != repoRoot {
+		if !sameRepoRoot(info.Path, repoRoot) {
 			continue
 		}
 		if info.Bare || info.Branch == "" {
