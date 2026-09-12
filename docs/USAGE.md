@@ -29,8 +29,8 @@ fetches from the network — it uses the last `fetch` results.
 ```bash
 wrk3 fetch                          # git fetch --prune, list origin/* refs
 wrk3 fetch --remote upstream        # same against upstream (default: source.git.remote, else origin)
-wrk3 fetch --mine                   # only branches whose tip commit author matches git config user.name/user.email
-wrk3 fetch --author alice           # substring match on author name/email (case-insensitive; repeatable, comma-split)
+wrk3 fetch --mine                   # only branches whose tip commit author or committer matches git config user.name/user.email
+wrk3 fetch --author alice           # substring match on author/committer name/email (case-insensitive; repeatable, comma-split)
 wrk3 add feature-a feature-b        # worktree add + ports + .env
 wrk3 add                            # bare = interactive picker over remote branches
 wrk3 add --remote upstream --mine   # fetch upstream, create all my branches (skip registered/checked-out)

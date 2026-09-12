@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `fetch --mine` and `add --remote --mine` now match branches whose tip
+  commit author **or** committer equals git config `user.name`/`user.email`
+  (and `--author` matches author/committer substrings). Bot/cursor branches
+  you pushed — tip author is the bot, tip committer is you — are now
+  included, closer to GitHub's "Yours" (branches you've pushed to).
+
 ## [0.3.1] - 2026-09-12
 
 ### Fixed

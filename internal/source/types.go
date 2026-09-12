@@ -18,7 +18,7 @@ type WorktreeInfo struct {
 	Bare bool
 }
 
-// BranchRef is one remote branch with its tip-commit author.
+// BranchRef is one remote branch with its tip-commit author and committer.
 type BranchRef struct {
 	// Name is the short branch name (origin/ prefix stripped).
 	Name string
@@ -26,6 +26,10 @@ type BranchRef struct {
 	AuthorName string
 	// AuthorEmail is the tip commit's author email (brackets stripped).
 	AuthorEmail string
+	// CommitterName is the tip commit's committer name.
+	CommitterName string
+	// CommitterEmail is the tip commit's committer email (brackets stripped).
+	CommitterEmail string
 }
 
 // Source provisions worktree directories from branches.
@@ -35,8 +39,8 @@ type Source interface {
 	Fetch(repoPath, remote string) error
 	// Refs lists known remote branches (git branch -r, <remote>/*).
 	Refs(repoPath, remote string) ([]string, error)
-	// RefsDetailed lists remote branches with tip-commit authors
-	// (for-each-ref over refs/remotes/<remote>).
+	// RefsDetailed lists remote branches with tip-commit authors and
+	// committers (for-each-ref over refs/remotes/<remote>).
 	RefsDetailed(repoPath, remote string) ([]BranchRef, error)
 	// Identity returns git config user.name/user.email for repoPath.
 	// Empty strings mean unset (no error).

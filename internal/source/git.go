@@ -59,12 +59,12 @@ func (g *GitSource) Refs(repoPath, remote string) ([]string, error) {
 	return parseRefs(out, remote), nil
 }
 
-// RefsDetailed lists remote branches with tip-commit authors via
-// git for-each-ref (refs/remotes/<remote>, HEAD symref skipped).
+// RefsDetailed lists remote branches with tip-commit authors and committers
+// via git for-each-ref (refs/remotes/<remote>, HEAD symref skipped).
 func (g *GitSource) RefsDetailed(repoPath, remote string) ([]BranchRef, error) {
 	remote = normalizeRemote(remote)
 	out, err := g.run(repoPath, "for-each-ref",
-		"--format=%(refname:short)%00%(authorname)%00%(authoremail)",
+		"--format=%(refname:short)%00%(authorname)%00%(authoremail)%00%(committername)%00%(committeremail)",
 		"refs/remotes/"+remote)
 	if err != nil {
 		return nil, err
@@ -208,10 +208,11 @@ func parseRefsDetailed(out, remote string) []BranchRef {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		// Format is ref%00author%00<email>; branch names never
-		// contain NUL so SplitN is exact.
-		parts := strings.SplitN(line, "\x00", 3)
-		if len(parts) != 3 {
+		// Format is ref%00author%00<email>%00committer%00<email>;
+		// branch names never contain NUL so SplitN is exact.
+		// Older output with only 3 fields is still accepted.
+		parts := strings.SplitN(line, "\x00", 5)
+		if len(parts) != 3 && len(parts) != 5 {
 			continue
 		}
 		short := strings.TrimSpace(parts[0])
@@ -235,6 +236,18 @@ func parseRefsDetailed(out, remote string) []BranchRef {
 			Name:        name,
 			AuthorName:  strings.TrimSpace(parts[1]),
 			AuthorEmail: strings.Trim(strings.TrimSpace(parts[2]), "<>"),
+			CommitterName: func() string {
+				if len(parts) > 3 {
+					return strings.TrimSpace(parts[3])
+				}
+				return ""
+			}(),
+			CommitterEmail: func() string {
+				if len(parts) > 4 {
+					return strings.Trim(strings.TrimSpace(parts[4]), "<>")
+				}
+				return ""
+			}(),
 		})
 	}
 	return refs
