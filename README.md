@@ -44,7 +44,7 @@ No Go toolchain needed — `git` and `docker` at runtime
 [docs/INSTALL.md](docs/INSTALL.md).
 
 ```bash
-# Option 1 — release assets (linux/darwin/windows, checksums verified)
+# Option 1 — release assets (linux/darwin/windows, checksums verified, no sudo: installs to ~/.local/bin)
 curl -fsSL https://raw.githubusercontent.com/mytmlt/wrk3/main/scripts/install.sh | bash
 
 # Option 2 — download the asset manually from GitHub releases
@@ -52,7 +52,8 @@ curl -fsSL https://raw.githubusercontent.com/mytmlt/wrk3/main/scripts/install.sh
 
 # Option 3 — from source (developers only, requires Go ≥ 1.26)
 git clone https://github.com/mytmlt/wrk3.git && cd wrk3
-make install            # installs to /usr/local/bin (PREFIX overridable)
+make install-user       # installs to ~/.local/bin, no sudo (ensure it is on PATH)
+# machine-wide instead: sudo make install   # installs to /usr/local/bin (PREFIX overridable)
 wrk3 version
 ```
 

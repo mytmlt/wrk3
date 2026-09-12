@@ -6,18 +6,30 @@ runner).
 
 ## Option 1 — install script (recommended)
 
-Installs a prebuilt release asset with sha256 verification:
+Installs a prebuilt release asset with sha256 verification. No sudo needed —
+defaults to `~/.local/bin` (available in every new terminal for the current
+user once that dir is on `PATH`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mytmlt/wrk3/main/scripts/install.sh | bash
 wrk3 version
 ```
 
-Pin a version, install without root, or pick the binary dir:
+If `~/.local/bin` is not on `PATH` yet, the script prints the one-liner for
+your shell:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mytmlt/wrk3/main/scripts/install.sh | bash -s -- --version v0.2.0 --prefix ~/.local
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   # zsh (macOS default)
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc   # bash
+fish_add_path $HOME/.local/bin                             # fish
+```
+
+Pin a version, pick another dir, or install machine-wide (all users):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mytmlt/wrk3/main/scripts/install.sh | bash -s -- --version v0.2.0
 curl -fsSL https://raw.githubusercontent.com/mytmlt/wrk3/main/scripts/install.sh | bash -s -- --bindir ~/.local/bin --no-verify
+curl -fsSL https://raw.githubusercontent.com/mytmlt/wrk3/main/scripts/install.sh | sudo bash -s -- --system   # /usr/local/bin
 ```
 
 Supported: `linux`/`darwin` × `amd64`/`arm64`, plus `windows/amd64`
@@ -47,7 +59,8 @@ Requires Go ≥ 1.26:
 ```bash
 git clone https://github.com/mytmlt/wrk3.git && cd wrk3
 make build          # ./bin/wrk3, version-stamped from git
-make install        # to /usr/local/bin (override: make install PREFIX=~/.local)
+make install-user   # to ~/.local/bin, no sudo needed (ensure it is on PATH)
+make install        # to /usr/local/bin instead (system-wide, may need sudo; override: make install PREFIX=~/.local)
 wrk3 version
 ```
 

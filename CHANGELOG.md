@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Sudo-less installs are now the default: `scripts/install.sh` installs to
+  `~/.local/bin` with no root required (machine-wide `/usr/local/bin`
+  is opt-in via `--system`), and `make install-user` does the same from
+  source (`make install` stays system-wide for packaging). The installer
+  prints per-shell `PATH` wiring when needed, and `wrk3 update`
+  permission errors now hint at sudo vs user-local reinstall.
+
 ## [0.7.0] - 2026-09-12
 
 ### Changed

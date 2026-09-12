@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Install the latest (or pinned) wrk3 release from GitHub.
 # No Go toolchain required — downloads a prebuilt binary + verifies sha256.
+# No sudo needed: defaults to $HOME/.local/bin (on PATH in every new
+# terminal for the current user once wired up — see the PATH note at the end).
 #
 #   curl -fsSL https://raw.githubusercontent.com/mytmlt/wrk3/main/scripts/install.sh | bash
 #   curl -fsSL https://raw.githubusercontent.com/mytmlt/wrk3/main/scripts/install.sh | bash -s -- --version v0.2.0
-#   curl -fsSL https://raw.githubusercontent.com/mytmlt/wrk3/main/scripts/install.sh | bash -s -- --prefix ~/.local
+#   curl -fsSL https://raw.githubusercontent.com/mytmlt/wrk3/main/scripts/install.sh | bash -s -- --system   # machine-wide /usr/local/bin (needs sudo)
 #
 # To update an existing install without re-running this script:
 #   wrk3 update
@@ -13,17 +15,31 @@ set -euo pipefail
 REPO="mytmlt/wrk3"
 BIN="wrk3"
 VERSION="${WRK3_VERSION:-latest}"
-PREFIX="${PREFIX:-/usr/local}"
-BINDIR="${BINDIR:-$PREFIX/bin}"
+PREFIX="${PREFIX:-}"
+BINDIR="${BINDIR:-}"
+SYSTEM=0
 VERIFY="${WRK3_VERIFY:-1}"
 
 usage() {
+  _default_bindir="${BINDIR:-}"
+  if [ -z "$_default_bindir" ]; then
+    if [ -n "$PREFIX" ]; then _default_bindir="$PREFIX/bin";
+    else _default_bindir="$HOME/.local/bin"; fi
+  fi
   cat <<EOF
-Usage: install.sh [--version vX.Y.Z|latest] [--prefix DIR] [--bindir DIR] [--no-verify]
+Usage: install.sh [--version vX.Y.Z|latest] [--prefix DIR] [--bindir DIR] [--system] [--no-verify]
 
 Installs $BIN from github.com/$REPO releases (prebuilt binary, no Go needed).
-Defaults: --version $VERSION --prefix $PREFIX --bindir $BINDIR
+No sudo required: default install dir is \$HOME/.local/bin.
+System-wide install (/usr/local/bin) is opt-in via --system (needs sudo).
+
+Defaults: --version $VERSION --bindir $_default_bindir
 Env overrides: WRK3_VERSION, PREFIX, BINDIR, WRK3_VERIFY=0
+Examples:
+  bash install.sh                                  # ~/.local/bin, no sudo
+  bash install.sh --version v0.2.0                 # pinned, no sudo
+  bash install.sh --system                         # /usr/local/bin (re-run with sudo if needed)
+  bash install.sh --bindir ~/.local/bin --no-verify
 EOF
 }
 
@@ -38,11 +54,26 @@ while [ $# -gt 0 ]; do
     --bindir)
       [ $# -ge 2 ] || { echo "--bindir needs a value" >&2; exit 1; }
       BINDIR="$2"; shift 2 ;;
+    --system) SYSTEM=1; PREFIX="/usr/local"; BINDIR="/usr/local/bin"; shift ;;
     --no-verify) VERIFY="0"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown flag: $1" >&2; usage; exit 1 ;;
   esac
 done
+
+# Resolve the install dir: explicit --bindir > explicit --prefix/PREFIX env >
+# --system > user-local default (no sudo). True machine-wide installs
+# (all users) always require root; the default is per-user global instead:
+# on PATH in every new terminal for the current user.
+if [ -z "$BINDIR" ]; then
+  if [ -n "$PREFIX" ]; then
+    BINDIR="$PREFIX/bin"
+  elif [ "$SYSTEM" = "1" ]; then
+    BINDIR="/usr/local/bin"
+  else
+    BINDIR="$HOME/.local/bin"
+  fi
+fi
 
 # Normalize: "0.2.0" -> "v0.2.0"; leave "latest" alone.
 case "$VERSION" in
@@ -149,17 +180,40 @@ esac
 
 if ! mkdir -p "$BINDIR" 2>/dev/null; then
   echo "cannot write to $BINDIR (permission denied)" >&2
-  echo "re-run with sudo, or install without root: bash install.sh --prefix ~/.local" >&2
+  case "$BINDIR" in
+    /usr/local/*|/usr/*|/opt/*)
+      echo "re-run with sudo for a system-wide install: sudo bash install.sh --system" >&2
+      echo "or install without root (default): bash install.sh" >&2 ;;
+    *)
+      echo "check permissions on $BINDIR, or pick another dir: bash install.sh --bindir DIR" >&2 ;;
+  esac
   exit 1
 fi
 if ! install -m 0755 "$BIN_SRC" "$BINDIR/$BIN" 2>/dev/null; then
   echo "cannot write to $BINDIR/$BIN (permission denied)" >&2
-  echo "re-run with sudo, or install without root: bash install.sh --prefix ~/.local" >&2
+  case "$BINDIR" in
+    /usr/local/*|/usr/*|/opt/*)
+      echo "re-run with sudo for a system-wide install: sudo bash install.sh --system" >&2
+      echo "or install without root (default): bash install.sh" >&2 ;;
+    *)
+      echo "check permissions on $BINDIR, or pick another dir: bash install.sh --bindir DIR" >&2 ;;
+  esac
   exit 1
 fi
 echo "installed $BINDIR/$BIN"
 "$BINDIR/$BIN" version
 case ":$PATH:" in
   *":$BINDIR:"*) ;;
-  *) echo "note: $BINDIR is not on PATH; add: export PATH=\"$BINDIR:\$PATH\"" >&2 ;;
+  *)
+    echo "note: $BINDIR is not on PATH." >&2
+    echo "add it so wrk3 is available in every new terminal:" >&2
+    case "$BINDIR" in
+      "$HOME/.local/bin")
+        echo "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc   # zsh (macOS default)" >&2
+        echo "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc   # bash" >&2
+        echo "  fish_add_path \$HOME/.local/bin                               # fish" >&2 ;;
+      *)
+        echo "  export PATH=\"$BINDIR:\$PATH\"" >&2 ;;
+    esac
+    ;;
 esac

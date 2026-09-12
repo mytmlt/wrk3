@@ -223,7 +223,7 @@ func replaceExe(exePath string, newBin []byte) error {
 	dir := filepath.Dir(exePath)
 	tmp, err := os.CreateTemp(dir, "wrk3-update-*.tmp")
 	if err != nil {
-		return fmt.Errorf("create temp binary: %w", err)
+		return fmt.Errorf("create temp binary: %w%s", err, permissionHint(exePath, err))
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
@@ -249,9 +249,24 @@ func replaceExe(exePath string, newBin []byte) error {
 			return fmt.Errorf("replace binary %q: %w (new binary staged at %q; move it into place after restart)",
 				exePath, err, staged)
 		}
-		return fmt.Errorf("replace binary %q: %w", exePath, err)
+		return fmt.Errorf("replace binary %q: %w%s", exePath, err, permissionHint(exePath, err))
 	}
 	return nil
+}
+
+// permissionHint explains how to fix a denied self-update without
+// assuming sudo: user-local installs update cleanly, system-wide ones
+// need elevated rights (or a user-local reinstall).
+func permissionHint(exePath string, err error) string {
+	if !os.IsPermission(err) {
+		return ""
+	}
+	if strings.HasPrefix(exePath, "/usr/local/") ||
+		strings.HasPrefix(exePath, "/usr/") ||
+		strings.HasPrefix(exePath, "/opt/") {
+		return " (permission denied: system-wide install — re-run with sudo, or reinstall without root via install.sh default ~/.local/bin)"
+	}
+	return " (permission denied: check write access to the install dir)"
 }
 
 // fetchLatestLong uses a generous timeout for explicit update runs

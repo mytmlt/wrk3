@@ -1,7 +1,8 @@
 # wrk3 — install, build, test, release.
 #
 #   make build      compile ./bin/wrk3 (stamped with version)
-#   make install    install to $(PREFIX)/bin (default /usr/local)
+#   make install    install to $(PREFIX)/bin (default /usr/local, may need sudo)
+#   make install-user install to ~/.local/bin (no sudo needed)
 #   make uninstall  remove installed binary + completions
 #   make test       go vet + go test
 #   make lint       golangci-lint (if installed)
@@ -28,7 +29,7 @@ LDFLAGS := -s -w \
 GO      ?= go
 GORELEASER ?= goreleaser
 
-.PHONY: all build install uninstall test vet lint completion snapshot release clean help
+.PHONY: all build install install-user uninstall test vet lint completion snapshot release clean help
 
 all: build
 
@@ -36,10 +37,14 @@ build: ## Compile ./bin/wrk3 with version stamp
 	@mkdir -p $(BINDIR)
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BINDIR)/$(BIN) .
 
-install: build ## Install wrk3 to $(PREFIX)/bin
+install: build ## Install wrk3 to $(PREFIX)/bin (system-wide; may need sudo)
 	install -d $(INSTALL_DIR)
 	install -m 0755 $(BINDIR)/$(BIN) $(INSTALL_DIR)/$(BIN)
 	@echo "installed $(INSTALL_DIR)/$(BIN) ($(VERSION))"
+
+install-user: ## Install wrk3 to ~/.local/bin (no sudo needed)
+	@$(MAKE) install PREFIX=$(HOME)/.local
+	@echo "note: ensure \$$HOME/.local/bin is on PATH (see docs/INSTALL.md)"
 
 uninstall: ## Remove installed wrk3
 	rm -f $(INSTALL_DIR)/$(BIN)
