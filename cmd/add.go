@@ -17,10 +17,11 @@ var (
 	addLocal  bool
 	addRemote string
 	addMine   bool
+	addMyPRS  bool
 )
 
 var addCmd = &cobra.Command{
-	Use:               "add [branch...] | --select | --local | --remote <name> [--mine]",
+	Use:               "add [branch...] | --select | --local | --remote <name> [--mine] [--myprs]",
 	Short:             "worktree add + port assign + .env ensure (bare = select)",
 	ValidArgsFunction: completeAddBranches,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -28,16 +29,16 @@ var addCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if addLocal && (addSelect || addRemote != "" || addMine) {
-			return fmt.Errorf("pass only one of --local, --select, --remote/--mine")
+		if addLocal && (addSelect || addRemote != "" || addMine || addMyPRS) {
+			return fmt.Errorf("pass only one of --local, --select, --remote/--mine/--myprs")
 		}
-		if addSelect && (addRemote != "" || addMine) {
-			return fmt.Errorf("pass only one of --local, --select, --remote/--mine")
+		if addSelect && (addRemote != "" || addMine || addMyPRS) {
+			return fmt.Errorf("pass only one of --local, --select, --remote/--mine/--myprs")
 		}
 		if addLocal {
 			return addLocalMode(cmd, r, args)
 		}
-		if addRemote != "" || addMine {
+		if addRemote != "" || addMine || addMyPRS {
 			return addRemoteMode(cmd, r, args)
 		}
 		branches := args
@@ -100,13 +101,14 @@ var addCmd = &cobra.Command{
 }
 
 // addRemoteMode bulk-creates worktrees from a git remote:
-// fetch <remote> --prune, then create every (or only --mine) branch,
-// skipping ones already registered. With explicit args (no --mine) it
-// creates just those branches, resolving remote-only names as tracking
-// branches. No interactive picker here — bare `add --remote` means "all".
+// fetch <remote> --prune, then create every (or only --mine/--myprs)
+// branch, skipping ones already registered. With explicit args (no
+// --mine/--myprs) it creates just those branches, resolving remote-only
+// names as tracking branches. No interactive picker here — bare
+// `add --remote` means "all".
 func addRemoteMode(cmd *cobra.Command, r *resolved, args []string) error {
-	if addMine && len(args) > 0 {
-		return fmt.Errorf("pass either branch names or --mine, not both")
+	if (addMine || addMyPRS) && len(args) > 0 {
+		return fmt.Errorf("pass either branch names or --mine/--myprs, not both")
 	}
 	remote := resolveRemote(r, addRemote)
 	if err := r.src.Fetch(r.cfg.RepoPath(), remote); err != nil {
@@ -160,6 +162,16 @@ func addRemoteMode(cmd *cobra.Command, r *resolved, args []string) error {
 		}
 		if len(branches) == 0 {
 			return fmt.Errorf("no remote branches on %q", remote)
+		}
+	}
+	if addMyPRS {
+		prs, err := myPRBranches(r.cfg.RepoPath(), remote)
+		if err != nil {
+			return err
+		}
+		branches = intersectMyPRS(branches, prs)
+		if len(branches) == 0 {
+			return fmt.Errorf("no branches with open PRs involving you on remote %q (see fetch --myprs)", remote)
 		}
 	}
 	sort.Strings(branches)
@@ -410,6 +422,7 @@ func init() {
 	addCmd.Flags().BoolVar(&addLocal, "local", false, "adopt existing local worktrees (no fetch)")
 	addCmd.Flags().StringVar(&addRemote, "remote", "", "create worktrees from remote branches (default: source.git.remote, else origin)")
 	addCmd.Flags().BoolVar(&addMine, "mine", false, "with --remote: only your branches (tip or branch-exclusive history matches git config user)")
+	addCmd.Flags().BoolVar(&addMyPRS, "myprs", false, "with --remote: only branches with an open PR involving you (GitHub remotes only, via gh)")
 	_ = addCmd.RegisterFlagCompletionFunc("remote", completeRemotes)
 	rootCmd.AddCommand(addCmd)
 }

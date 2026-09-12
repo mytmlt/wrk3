@@ -7,12 +7,37 @@
 - `Runner` (`internal/runner/types.go`) — where worktrees execute
   (`docker` ships; `portainer`/`nomad` are intentional `not implemented`
   stubs — good starting points to copy).
+- `Forge` (`internal/forge/forge.go`) — where PR state comes from
+  (`github` ships via the `gh` CLI; powers `fetch`/`add`/`dashboard`
+  `--myprs`).
 
 There is no dynamic plugin loading: a "plugin" is a new backend
 implementation compiled into the binary. `cmd/` must only depend on the
 `Source`/`Runner` interfaces — never import a concrete `git`/`docker`
 implementation (`cmd/common.go: newSource`/`newRunner` resolve via the
-registries).
+registries). The `Forge` side is thinner: `cmd/myprs.go: myPRBranches`
+gates `--myprs` on `forge.Detect` (from `git remote get-url`) and resolves
+the provider via the forge registry, so new forges need no `cmd` changes.
+
+## The `Forge` interface (`internal/forge/forge.go`)
+
+```go
+type Forge interface {
+    Name() string
+    MyPRBranches(ctx context.Context, repoPath, remote string) ([]PRBranch, error)
+}
+```
+
+- `Detect(repoPath, remote)` (`internal/forge/detect.go`) maps the remote
+  URL to a kind (`github` for `github.com`; `gitlab`/`gitea` by host
+  substring — reserved for future providers; everything else `unknown`).
+  `myPRBranches` refuses non-`github` kinds listing `Available()`.
+- To add a provider (e.g. GitLab): implement `Forge` in
+  `internal/forge/<name>.go` (shell out to `glab` like `github.go` shells
+  to `gh`: `exec.LookPath` guard with install/auth guidance, per-call
+  timeout, stderr wrapped with `%w`), `Register` it in an `init()`, add
+  `<name>_test.go` with pure parse helpers, and document in
+  `docs/CONFIGURATION.md` (`--myprs` section) + `CHANGELOG.md`.
 
 ## Interfaces
 

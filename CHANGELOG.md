@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--myprs` on `fetch`/`add`/`dashboard` (toggle `P` in the TUI): list
+  only branches with an open PR involving you
+  (`is:pr state:open involves:@me`), via a new `internal/forge` provider
+  package (`github` ships through the `gh` CLI — install + `gh auth
+  login`; wrk3 stores no tokens). The forge is detected per remote from
+  `git remote get-url`, so non-GitHub remotes fail with a gate message
+  instead of silently mis-filtering, and each dashboard project resolves
+  its own host. Intersects with `--mine`/`--author`; fork-head PRs with
+  no remote ref drop out. GitLab/Gitea classify as known-future forges
+  for the next provider.
+
 ## [0.5.0] - 2026-09-12
 
 ### Added

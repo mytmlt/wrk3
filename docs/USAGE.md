@@ -31,9 +31,12 @@ wrk3 fetch                          # git fetch --prune, list origin/* refs
 wrk3 fetch --remote upstream        # same against upstream (default: source.git.remote, else origin)
 wrk3 fetch --mine                   # only your branches: tip or last 100 branch-exclusive commits match git config user.name/user.email (covers bot/cursor tips you pushed)
 wrk3 fetch --author alice           # substring match on author/committer name/email in tip or history (case-insensitive; repeatable, comma-split)
+wrk3 fetch --myprs                  # only branches with an open PR involving you (GitHub remotes only, via gh; like pulls?q=is:pr+state:open+involves:@me)
 wrk3 add feature-a feature-b        # worktree add + ports + .env ensure
 wrk3 add                            # bare = interactive picker over remote branches
 wrk3 add --remote upstream --mine   # fetch upstream, create all my branches (skip registered/checked-out)
+wrk3 add --myprs                    # fetch effective remote, create all branches with open PRs involving you (GitHub, via gh)
+wrk3 add --remote upstream --myprs  # same against upstream; combine with --mine to intersect both filters
 wrk3 add --remote upstream          # fetch upstream, create all its branches
 wrk3 add --remote upstream hotfix   # create one branch, tracking upstream when remote-only
 wrk3 add --local                    # adopt all existing local worktrees (no fetch from origin)
@@ -74,8 +77,9 @@ table with ports and the next free `app` port, and runs the same operations
 as the CLI: `space` selects, `u`/`d` up/down (cursor worktree when nothing
 is selected), `a` adds queued branches, `x` removes (asks `y/n`, refuses
 main like `remove`), `r` refreshes state, `R` fetches the remote
-(`--remote`/`--mine`/`--author` filter the branch list, `m` toggles mine),
-`1`/`2` or `←`/`→` switch panes, `?` shows all keys, `q` quits.
+(`--remote`/`--mine`/`--author`/`--myprs` filter the branch list, `m`
+toggles mine, `P` toggles myprs), `1`/`2` or `←`/`→` switch panes, `?`
+shows all keys, `q` quits.
 
 The CLI keeps working alongside it: `wrk3 add` in another terminal shows
 up on the next poll or manual refresh.
@@ -109,6 +113,8 @@ wrk3 down pr-102 && wrk3 remove pr-102
 | `unknown worktree "foo"` | Name/slug not in state — check `wrk3 status`. |
 | `stale` / `?` in status | Worktree directory deleted out-of-band; `remove --force` to clean state, or re-`add`. |
 | `pass either branch names or --all, not both` | `remove` takes explicit names **or** `--all`. |
+| `--myprs supports GitHub remotes only ...` | The remote URL (`git remote get-url`) is not GitHub — `--myprs` is GitHub-only for now. |
+| `github forge needs the gh CLI ...` / `gh is not authenticated ...` | Install `gh` from https://cli.github.com, then run `gh auth login` (wrk3 reuses your session, stores no tokens). |
 | Port conflicts | Two checkouts sharing `base`+`step` on one host — give each config a distinct `ports.base` offset or `step`. |
 | `sets container_name for service(s) ...` | Compose file pins `container_name:`, which is global and collides across worktrees — delete it (compose generates `<project>-<service>-1`). |
 | `Conflict. The container name ... is already in use` | Same cause as above on a stack that predates the preflight check — remove `container_name:` and `docker rm -f` the leftover, then `up` again. |

@@ -13,10 +13,11 @@ var (
 	fetchMine   bool
 	fetchAuthor []string
 	fetchRemote string
+	fetchMyPRS  bool
 )
 
 var fetchCmd = &cobra.Command{
-	Use:   "fetch [--remote <name>] [--mine] [--author <name-or-email>...]",
+	Use:   "fetch [--remote <name>] [--mine] [--author <name-or-email>...] [--myprs]",
 	Short: "git fetch <remote> --prune, list <remote>/* refs",
 	Long: `git fetch <remote> --prune, then list <remote>/* refs (one per line).
 
@@ -30,7 +31,11 @@ var fetchCmd = &cobra.Command{
                                       against author/committer name and email,
                                       tip or branch-exclusive history;
                                       repeatable, matches any
-  wrk3 fetch --mine --author alice    intersection of both filters`,
+  wrk3 fetch --myprs                  only branches with an open PR involving
+                                      you (GitHub remotes only, via the gh CLI;
+                                      like pulls?q=is:pr+state:open+involves:@me)
+  wrk3 fetch --mine --author alice    intersection of both filters
+  wrk3 fetch --myprs --author alice   PR branches also matching the author filter`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		r, err := resolveConfig()
@@ -44,6 +49,13 @@ var fetchCmd = &cobra.Command{
 		names, err := filterRefs(r.src, r.cfg.RepoPath(), remote, fetchMine, fetchAuthor)
 		if err != nil {
 			return err
+		}
+		if fetchMyPRS {
+			prs, err := myPRBranches(r.cfg.RepoPath(), remote)
+			if err != nil {
+				return err
+			}
+			names = intersectMyPRS(names, prs)
 		}
 		for _, ref := range names {
 			if _, err := fmt.Fprintln(cmd.OutOrStdout(), ref); err != nil {
@@ -200,6 +212,7 @@ func init() {
 	fetchCmd.Flags().StringVar(&fetchRemote, "remote", "", "remote to fetch/list (default: source.git.remote, else origin)")
 	fetchCmd.Flags().BoolVar(&fetchMine, "mine", false, "only your branches (tip or last 100 branch-exclusive commits match git config user.name/user.email)")
 	fetchCmd.Flags().StringSliceVar(&fetchAuthor, "author", nil, "only branches whose tip or branch-exclusive history matches <name-or-email> (substring, case-insensitive; repeatable)")
+	fetchCmd.Flags().BoolVar(&fetchMyPRS, "myprs", false, "only branches with an open PR involving you (GitHub remotes only, via gh)")
 	_ = fetchCmd.RegisterFlagCompletionFunc("remote", completeRemotes)
 	rootCmd.AddCommand(fetchCmd)
 }

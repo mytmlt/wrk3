@@ -78,6 +78,7 @@ $EDITOR wrk3.yaml   # config lives in the repo root
 wrk3 fetch
 wrk3 fetch --mine                    # only your branches (tip or last 100 branch-exclusive commits match git config user)
 wrk3 fetch --author alice            # substring match on author/committer name/email (tip or history)
+wrk3 fetch --myprs                   # branches with an open PR involving you (GitHub remotes only, via gh)
 wrk3 add feature-a feature-b
 # or pick interactively: wrk3 add
 # or bulk-create from a remote: wrk3 add --remote upstream --mine

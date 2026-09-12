@@ -25,6 +25,7 @@ var (
 	dashboardRemote     string
 	dashboardMine       bool
 	dashboardAuthors    []string
+	dashboardMyPRS      bool
 	dashboardProjectArg string
 )
 
@@ -50,7 +51,7 @@ the next poll or manual refresh (r).`,
 		if len(descs) == 0 {
 			return fmt.Errorf("no project available (could not load %q)", initialPath)
 		}
-		m := newDashboardModel(descs, dashboardPoll, dashboardRemote, dashboardMine, dashboardAuthors)
+		m := newDashboardModel(descs, dashboardPoll, dashboardRemote, dashboardMine, dashboardAuthors, dashboardMyPRS)
 		p := tea.NewProgram(m, tea.WithAltScreen())
 		_, err = p.Run()
 		return err
@@ -153,6 +154,7 @@ type dashboardModel struct {
 	pendingX   []string
 	mine       bool
 	authors    []string
+	myprs      bool
 	poll       time.Duration
 	width      int
 	height     int
@@ -160,7 +162,7 @@ type dashboardModel struct {
 	showHelp   bool
 }
 
-func newDashboardModel(descs []dashboardProjectDesc, poll time.Duration, remote string, mine bool, authors []string) dashboardModel {
+func newDashboardModel(descs []dashboardProjectDesc, poll time.Duration, remote string, mine bool, authors []string, myprs bool) dashboardModel {
 	projects := make([]*dashboardProject, 0, len(descs))
 	for _, d := range descs {
 		projects = append(projects, loadDashboardProject(d, remote))
@@ -174,6 +176,7 @@ func newDashboardModel(descs []dashboardProjectDesc, poll time.Duration, remote 
 		poll:     poll,
 		mine:     mine,
 		authors:  append([]string(nil), authors...),
+		myprs:    myprs,
 		spinner:  sp,
 		log:      []string{"dashboard started — r refresh, R fetch, ? help"},
 	}
@@ -201,7 +204,7 @@ func (m dashboardModel) Init() tea.Cmd {
 	return tea.Batch(
 		m.spinner.Tick,
 		dashboardRefreshRowsCmd(m.curProject()),
-		dashboardFetchBranchesCmd(m.curProject(), m.mine, m.authors, m.brSel),
+		dashboardFetchBranchesCmd(m.curProject(), m.mine, m.authors, m.myprs, m.brSel),
 		dashboardTickCmd(m.poll),
 	)
 }
@@ -289,7 +292,7 @@ func probeDashboardRows(cfg *config.Config, recs []ports.WorktreeRecord, mainBra
 }
 
 // dashboardFetchBranchesCmd fetches the remote then lists refs.
-func dashboardFetchBranchesCmd(p *dashboardProject, mine bool, authors []string, keepSel map[string]bool) tea.Cmd {
+func dashboardFetchBranchesCmd(p *dashboardProject, mine bool, authors []string, myprs bool, keepSel map[string]bool) tea.Cmd {
 	keep := map[string]bool{}
 	for k, v := range keepSel {
 		keep[k] = v
@@ -305,13 +308,7 @@ func dashboardFetchBranchesCmd(p *dashboardProject, mine bool, authors []string,
 		if err := p.src.Fetch(p.cfg.RepoPath(), p.remote); err != nil {
 			return dashboardBranchesMsg{err: fmt.Errorf("fetch: %w", err)}
 		}
-		var refs []string
-		var err error
-		if mine || len(authors) > 0 {
-			refs, err = filterRefs(p.src, p.cfg.RepoPath(), p.remote, mine, authors)
-		} else {
-			refs, err = p.src.Refs(p.cfg.RepoPath(), p.remote)
-		}
+		refs, err := dashboardBranchRefs(p.src, p.cfg.RepoPath(), p.remote, mine, authors, myprs)
 		if err != nil {
 			return dashboardBranchesMsg{err: fmt.Errorf("list refs: %w", err)}
 		}
@@ -328,7 +325,7 @@ func dashboardFetchBranchesCmd(p *dashboardProject, mine bool, authors []string,
 }
 
 // dashboardReloadBranchesCmd re-lists refs without fetching (fast poll path).
-func dashboardReloadBranchesCmd(p *dashboardProject, mine bool, authors []string, keepSel map[string]bool) tea.Cmd {
+func dashboardReloadBranchesCmd(p *dashboardProject, mine bool, authors []string, myprs bool, keepSel map[string]bool) tea.Cmd {
 	keep := map[string]bool{}
 	for k, v := range keepSel {
 		keep[k] = v
@@ -337,13 +334,7 @@ func dashboardReloadBranchesCmd(p *dashboardProject, mine bool, authors []string
 		if p == nil || p.loadErr != nil || p.cfg == nil {
 			return dashboardBranchesMsg{err: fmt.Errorf("project not loaded")}
 		}
-		var refs []string
-		var err error
-		if mine || len(authors) > 0 {
-			refs, err = filterRefs(p.src, p.cfg.RepoPath(), p.remote, mine, authors)
-		} else {
-			refs, err = p.src.Refs(p.cfg.RepoPath(), p.remote)
-		}
+		refs, err := dashboardBranchRefs(p.src, p.cfg.RepoPath(), p.remote, mine, authors, myprs)
 		if err != nil {
 			return dashboardBranchesMsg{err: fmt.Errorf("list refs: %w", err)}
 		}
@@ -513,7 +504,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(
 			dashboardRefreshRowsCmd(m.curProject()),
-			dashboardReloadBranchesCmd(m.curProject(), m.mine, m.authors, m.brSel),
+			dashboardReloadBranchesCmd(m.curProject(), m.mine, m.authors, m.myprs, m.brSel),
 			dashboardTickCmd(m.poll),
 		)
 	case dashboardRowsMsg:
@@ -590,7 +581,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(
 			dashboardRefreshRowsCmd(m.curProject()),
-			dashboardReloadBranchesCmd(m.curProject(), m.mine, m.authors, m.brSel),
+			dashboardReloadBranchesCmd(m.curProject(), m.mine, m.authors, m.myprs, m.brSel),
 		)
 	case dashboardFetchDoneMsg:
 		m.busy = false
@@ -669,7 +660,7 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m = m.appendLog("switched to " + m.curProject().desc.Name)
 			return m, tea.Batch(
 				dashboardRefreshRowsCmd(m.curProject()),
-				dashboardFetchBranchesCmd(m.curProject(), m.mine, m.authors, m.brSel),
+				dashboardFetchBranchesCmd(m.curProject(), m.mine, m.authors, m.myprs, m.brSel),
 			)
 		}
 		return m, nil
@@ -724,7 +715,7 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.statusMsg = "refreshing…"
 		return m, tea.Batch(
 			dashboardRefreshRowsCmd(m.curProject()),
-			dashboardReloadBranchesCmd(m.curProject(), m.mine, m.authors, m.brSel),
+			dashboardReloadBranchesCmd(m.curProject(), m.mine, m.authors, m.myprs, m.brSel),
 		)
 	case "R":
 		if m.busy {
@@ -733,11 +724,15 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.busy = true
 		m.busyLabel = "fetch"
 		m = m.appendLog("fetch " + m.curProject().remote + "…")
-		return m, dashboardFetchOpCmd(m.curProject(), m.mine, m.authors, m.brSel)
+		return m, dashboardFetchOpCmd(m.curProject(), m.mine, m.authors, m.myprs, m.brSel)
 	case "m":
 		m.mine = !m.mine
 		m.statusMsg = "mine filter " + map[bool]string{true: "on", false: "off"}[m.mine]
-		return m, dashboardReloadBranchesCmd(m.curProject(), m.mine, m.authors, m.brSel)
+		return m, dashboardReloadBranchesCmd(m.curProject(), m.mine, m.authors, m.myprs, m.brSel)
+	case "P":
+		m.myprs = !m.myprs
+		m.statusMsg = "myprs filter " + map[bool]string{true: "on", false: "off"}[m.myprs]
+		return m, dashboardReloadBranchesCmd(m.curProject(), m.mine, m.authors, m.myprs, m.brSel)
 	case "u":
 		if m.busy {
 			return m, nil
@@ -800,9 +795,9 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // dashboardFetchOpCmd runs a network fetch, then reports branches through
 // dashboardFetchDoneMsg so Update (not the background goroutine) mutates state.
-func dashboardFetchOpCmd(p *dashboardProject, mine bool, authors []string, keepSel map[string]bool) tea.Cmd {
+func dashboardFetchOpCmd(p *dashboardProject, mine bool, authors []string, myprs bool, keepSel map[string]bool) tea.Cmd {
 	return func() tea.Msg {
-		msg := dashboardFetchBranchesCmd(p, mine, authors, keepSel)()
+		msg := dashboardFetchBranchesCmd(p, mine, authors, myprs, keepSel)()
 		bm, ok := msg.(dashboardBranchesMsg)
 		if !ok {
 			return dashboardOpDoneMsg{label: "fetch", err: fmt.Errorf("fetch failed")}
@@ -867,11 +862,11 @@ func (m dashboardModel) View() string {
 		pollInfo = m.poll.String()
 	}
 	next := nextAppPort(p.cfg, stateRecsOf(m.rows))
-	filterInfo := fmt.Sprintf("mine=%v", m.mine)
+	filterInfo := fmt.Sprintf("mine=%v myprs=%v", m.mine, m.myprs)
 	if len(m.authors) > 0 {
 		filterInfo += " authors=" + strings.Join(m.authors, ",")
 	}
-	fmt.Fprintf(&b, "remote %s · fetch %s · poll %s · next app port %d · %s (m toggles mine)\n",
+	fmt.Fprintf(&b, "remote %s · fetch %s · poll %s · next app port %d · %s (m toggles mine, P toggles myprs)\n",
 		p.remote, fetchInfo, pollInfo, next, filterInfo)
 
 	b.WriteString("\n" + m.worktreePane() + "\n")
@@ -993,9 +988,9 @@ func (m dashboardModel) logPane() string {
 
 func dashboardHelpFooter(m dashboardModel) string {
 	if m.showHelp {
-		return "keys: j/k move · space select · 1/2 or ←/→ pane · tab project · u up · d down · a add queued · x remove (confirm y/n) · r refresh · R fetch · m mine-filter · ? help · q quit\n"
+		return "keys: j/k move · space select · 1/2 or ←/→ pane · tab project · u up · d down · a add queued · x remove (confirm y/n) · r refresh · R fetch · m mine-filter · P myprs-filter (GitHub, via gh) · ? help · q quit\n"
 	}
-	return "q quit · 1/2 pane · space select · u/d up/down · a add · x remove · r refresh · R fetch · m mine · tab project · ? help\n"
+	return "q quit · 1/2 pane · space select · u/d up/down · a add · x remove · r refresh · R fetch · m mine · P myprs · tab project · ? help\n"
 }
 
 func max(a, b int) int {
@@ -1010,6 +1005,7 @@ func init() {
 	dashboardCmd.Flags().StringVar(&dashboardRemote, "remote", "", "remote to fetch/list (default: source.git.remote, else origin)")
 	dashboardCmd.Flags().BoolVar(&dashboardMine, "mine", false, "only your branches (tip or branch-exclusive history matches git config user)")
 	dashboardCmd.Flags().StringSliceVar(&dashboardAuthors, "author", nil, "only branches matching author substring in tip or history (repeatable)")
+	dashboardCmd.Flags().BoolVar(&dashboardMyPRS, "myprs", false, "only branches with an open PR involving you (GitHub remotes only, via gh)")
 	dashboardCmd.Flags().StringVar(&dashboardProjectArg, "project", "", "project name from registry (default: local project in cwd)")
 	_ = dashboardCmd.RegisterFlagCompletionFunc("project", completeProjectNames)
 	_ = dashboardCmd.RegisterFlagCompletionFunc("remote", completeRemotes)
