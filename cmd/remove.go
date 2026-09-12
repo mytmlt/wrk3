@@ -28,6 +28,17 @@ var removeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		// The main checkout is implicit and never in state: refuse to
+		// remove it by branch/slug instead of reporting "unknown".
+		if !removeAll {
+			for _, a := range args {
+				if main, err := mainRecord(r, recs); err != nil {
+					return err
+				} else if main != nil && (a == main.Branch || a == main.Slug) {
+					return fmt.Errorf("refusing to remove main worktree %q (repo root is always kept)", main.Branch)
+				}
+			}
+		}
 		targets, err := resolveTargetsRequired(recs, args, removeAll)
 		if err != nil {
 			return err
@@ -50,6 +61,9 @@ func removeOne(cmd *cobra.Command, r *resolved, recs []ports.WorktreeRecord, bra
 	rec := findRecord(recs, branch)
 	if rec == nil {
 		return fmt.Errorf("unknown worktree %q (see status)", branch)
+	}
+	if isMainPath(r, rec.AbsPath) {
+		return fmt.Errorf("refusing to remove main worktree %q (repo root is always kept)", rec.Branch)
 	}
 	rn, err := newRunner(r.cfg, rec.Slug)
 	if err != nil {

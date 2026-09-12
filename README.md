@@ -135,12 +135,17 @@ Full field reference, port table, `.env` mapping, and multi-project patterns:
    `source.git.remote`, else `origin`), skipping already registered or
    checked-out branches.
 2. `wrk3 up` → runs `entry.setup` commands (`sh -c`, `cwd=worktree`,
-   `env=ports`), then `docker compose -p <prefix>-<slug> up`, then
-   `entry.run` — in parallel across worktrees via errgroup with prefixed logs.
-   Bare `up`/`down` apply to all worktrees; pass names to filter.
-3. `wrk3 status` → reads the state file, probes live runner status, prints
-   `WORKTREE/BRANCH/STATUS/APP/COMPOSE_PROJECT`.
+    `env=ports`), then `docker compose -p <prefix>-<slug> up`, then
+    `entry.run` — in parallel across worktrees via errgroup with prefixed logs.
+    Bare `up`/`down` apply to all worktrees including the implicit main
+    checkout (repo root, reserved port index -1, `.env` written on run);
+    pass names to filter.
+3. `wrk3 status` → reads the state file plus the implicit main checkout,
+    probes live runner status, prints
+    `WORKTREE/BRANCH/STATUS/APP/COMPOSE_PROJECT`.
 4. `wrk3 remove` → `compose down -v` + `git worktree remove` + state cleanup.
+    `remove` never touches main (explicit `remove <main-branch>` is refused;
+    `remove --all` covers only managed worktrees).
 
 ## Development
 

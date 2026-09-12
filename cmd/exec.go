@@ -25,9 +25,15 @@ var execCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		rec := findRecord(recs, branch)
+		rec, err := findRecordIncludingMain(r, recs, branch)
+		if err != nil {
+			return err
+		}
 		if rec == nil {
 			return fmt.Errorf("unknown worktree %q (see status)", branch)
+		}
+		if err := ensureMainEnv(r, *rec); err != nil {
+			return err
 		}
 		rn, err := newRunner(r.cfg, rec.Slug)
 		if err != nil {

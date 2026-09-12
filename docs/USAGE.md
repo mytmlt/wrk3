@@ -39,15 +39,15 @@ wrk3 add --remote upstream hotfix   # create one branch, tracking upstream when 
 wrk3 add --local                    # adopt all existing local worktrees (no fetch from origin)
 wrk3 add --local feature-a          # adopt only the named local worktree(s)
 wrk3 up feature-a                   # setup entries + compose up + run entry
-wrk3 up                             # bare = all worktrees, in parallel (errgroup)
-wrk3 status                         # this config (full table)
-wrk3 ls                             # this config (minimal WORKTREE/BRANCH/STATUS/APP)
+wrk3 up                             # bare = all worktrees including main, in parallel (errgroup)
+wrk3 status                         # this config (full table, includes main)
+wrk3 ls                             # this config (minimal WORKTREE/BRANCH/STATUS/APP, includes main)
 wrk3 ls --project myapp             # worktrees in a registered project, from anywhere
 wrk3 project ls                     # all auto-registered projects (NAME/CONFIG/WORKTREES)
 wrk3 logs feature-a [-f]            # entry.logs command
 wrk3 exec feature-a -- <cmd...>     # run inside worktree env (cwd=worktree)
-wrk3 down feature-a | wrk3 down     # bare = all
-wrk3 remove feature-a feature-b | wrk3 remove --all   # compose down -v + worktree remove + state cleanup
+wrk3 down feature-a | wrk3 down     # bare = all including main
+wrk3 remove feature-a feature-b | wrk3 remove --all   # compose down -v + worktree remove + state cleanup (never touches main)
 wrk3 update --check                 # show latest release without installing
 wrk3 update                         # install latest over the current binary (sha256 verified)
 ```
@@ -56,6 +56,12 @@ Branch slugs: `feature/foo` → `feature-foo` (max 50 chars). `add`/`up`/`down`
 accept branch names or slugs interchangeably; `status` shows
 `WORKTREE/BRANCH/STATUS/APP/COMPOSE_PROJECT`, with `?` and
 `stale` when a worktree directory is missing.
+
+Main checkout: the repo root is always included implicitly (no state entry)
+in `up`/`down` (bare = all including main), `status`/`ls`, and as an
+`exec`/`logs` target by branch/slug. It uses reserved port index `-1`
+(e.g. `7900` with defaults) with `.env` written on `up`/`down`/`exec`;
+`remove` refuses main and `remove --all` covers only managed worktrees.
 
 ## Examples
 

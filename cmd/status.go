@@ -33,11 +33,11 @@ var statusCmd = &cobra.Command{
 	},
 }
 
-// printResolvedStatus prints one config's state rows.
+// printResolvedStatus prints state rows plus the implicit main worktree.
 func printResolvedStatus(w *tabwriter.Writer, cfg *config.Config) error {
-	recs, err := ports.Load(cfg.StatePath())
+	recs, err := recordsForDisplay(cfg)
 	if err != nil {
-		return fmt.Errorf("load state: %w", err)
+		return err
 	}
 	if len(recs) == 0 {
 		return nil

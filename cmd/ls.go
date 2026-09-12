@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mytmlt/wrk3/internal/config"
-	"github.com/mytmlt/wrk3/internal/ports"
 )
 
 var lsProject string
@@ -61,11 +60,12 @@ func resolveLsConfig(cmd *cobra.Command) (*config.Config, error) {
 	return r.cfg, nil
 }
 
-// printLsStatus prints minimal per-worktree rows (no compose project).
+// printLsStatus prints minimal per-worktree rows (no compose project),
+// including the implicit main worktree.
 func printLsStatus(w *tabwriter.Writer, cfg *config.Config) error {
-	recs, err := ports.Load(cfg.StatePath())
+	recs, err := recordsForDisplay(cfg)
 	if err != nil {
-		return fmt.Errorf("load state: %w", err)
+		return err
 	}
 	for _, rec := range recs {
 		status, app := rowFor(cfg, rec)
