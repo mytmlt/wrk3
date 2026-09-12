@@ -175,7 +175,7 @@ func extractTarGz(pkg []byte, want string) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read package: %w", err)
 		}
-		if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA {
+		if hdr.Typeflag != tar.TypeReg {
 			continue
 		}
 		if filepath.Base(hdr.Name) != want {
