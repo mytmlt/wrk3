@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-12
+
 ### Fixed
 
 - `fetch --mine` and `add --remote --mine` now match branches whose tip
@@ -159,7 +161,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path-portable and skip linux-only `docker` integration tests on
   Windows so `windows-latest` goes green.
 
-[Unreleased]: https://github.com/mytmlt/wrk3/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/mytmlt/wrk3/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/mytmlt/wrk3/releases/tag/v0.3.2
 [0.3.1]: https://github.com/mytmlt/wrk3/releases/tag/v0.3.1
 [0.3.0]: https://github.com/mytmlt/wrk3/releases/tag/v0.3.0
 [0.2.0]: https://github.com/mytmlt/wrk3/releases/tag/v0.2.0
