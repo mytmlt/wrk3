@@ -177,6 +177,9 @@ func (r *DockerRunner) Up(ctx context.Context, worktreePath string, env map[stri
 	if strings.TrimSpace(worktreePath) == "" {
 		return fmt.Errorf("docker up: empty worktree path")
 	}
+	if err := CheckComposeFiles(worktreePath, r.opts.ComposeFiles); err != nil {
+		return fmt.Errorf("docker up: %w", err)
+	}
 	_, err := r.runCompose(ctx, worktreePath, env, "up", "-d", "--build")
 	return err
 }

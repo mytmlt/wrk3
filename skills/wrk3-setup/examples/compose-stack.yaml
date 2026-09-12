@@ -1,7 +1,7 @@
 # Generic compose-stack template for wrk3.
 # Copy to wrk3.<name>.local.yaml in the repo root, fill in commands from the
 # target repo's own Makefile/README, then:
-#   wrk3 project add <name> --config wrk3.<name>.local.yaml
+#   wrk3 -f wrk3.<name>.local.yaml status
 project:
   worktreeBase: .worktrees
 source:

@@ -1,27 +1,21 @@
 // Package cmd implements the thin wrk3 cobra CLI.
 //
-// Phase 0: stub subcommands only — each prints "not implemented yet".
 // cmd depends on internal/* interfaces only, never on concrete
-// git/docker implementations (those land in Phases 2/4).
+// git/docker implementations.
 package cmd
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/mytmlt/wrk3/internal/config"
 	"github.com/mytmlt/wrk3/internal/ports"
-	"github.com/mytmlt/wrk3/internal/project"
 	"github.com/mytmlt/wrk3/internal/runner"
 	"github.com/mytmlt/wrk3/internal/source"
 )
 
-var (
-	projectFlag string
-	configFlag  string
-)
+var fileFlag string
 
 // Build metadata, injected via -ldflags at release time:
 //
@@ -36,7 +30,6 @@ var (
 	Date    = "unknown"
 )
 
-var _ = project.Project{}
 var _ = config.Config{}
 var _ = ports.Allocator{}
 var _ source.Source
@@ -55,26 +48,21 @@ as git worktrees, each isolated with its own ports and container project.`,
 	Version: Version,
 }
 
-// ResolveProject resolves which project to operate on.
-// Precedence: --config one-shot path > --project flag >
-// $WRK3_PROJECT env > current project > cwd scan for wrk3.yaml.
-func ResolveProject() (*project.Project, error) {
-	if configFlag != "" {
-		abs, err := filepath.Abs(configFlag)
-		if err != nil {
-			return nil, fmt.Errorf("resolve --config %q: %w", configFlag, err)
+// ResolveConfigPath resolves the wrk3.yaml/wrk3.yml to operate on.
+// Precedence: -f/--file flag > upward scan from cwd.
+func ResolveConfigPath() (string, error) {
+	found, err := config.DiscoverFile(fileFlag, "")
+	if err != nil {
+		return "", err
+	}
+	if found == "" {
+		if fileFlag != "" {
+			// DiscoverFile with explicit never returns empty; defensive.
+			return "", fmt.Errorf("config file %q not found", fileFlag)
 		}
-		return &project.Project{Name: "(config-flag)", ConfigPath: filepath.Clean(abs)}, nil
+		return "", fmt.Errorf("no wrk3.yaml found (walked up from cwd); pass -f <path>")
 	}
-	store, err := newProjectStore()
-	if err != nil {
-		return nil, fmt.Errorf("open project registry: %w", err)
-	}
-	p, err := store.Resolve(projectFlag)
-	if err != nil {
-		return nil, err
-	}
-	return p, nil
+	return found, nil
 }
 
 func init() {
@@ -83,9 +71,8 @@ func init() {
 	// commit/date into the template string at init time (ldflags
 	// values are already applied before package inits run).
 	rootCmd.SetVersionTemplate(fmt.Sprintf("wrk3 %s (commit %s built %s)\n", Version, Commit, Date))
-	rootCmd.PersistentFlags().StringVar(&projectFlag, "project", "", "project name to operate on (overrides $WRK3_PROJECT and current project)")
-	rootCmd.PersistentFlags().StringVar(&configFlag, "config", "", "one-shot config path override")
+	rootCmd.PersistentFlags().StringVarP(&fileFlag, "file", "f", "", "config file path (default: find wrk3.yaml/wrk3.yml upwards from cwd)")
+	_ = rootCmd.MarkPersistentFlagFilename("file", "yaml", "yml")
 
-	rootCmd.AddCommand(projectCmd)
 	rootCmd.AddCommand(versionCmd)
 }

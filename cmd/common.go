@@ -11,29 +11,27 @@ import (
 
 	"github.com/mytmlt/wrk3/internal/config"
 	"github.com/mytmlt/wrk3/internal/ports"
-	"github.com/mytmlt/wrk3/internal/project"
 	"github.com/mytmlt/wrk3/internal/runner"
 	"github.com/mytmlt/wrk3/internal/source"
 )
 
-// resolved holds a project + loaded config + backends.
+// resolved holds a loaded config + backends.
 type resolved struct {
-	proj   *project.Project
 	cfg    *config.Config
 	src    source.Source
 	base   string
 	stateP string
 }
 
-// resolveConfig resolves --project/--config and loads wrk3.yaml.
+// resolveConfig resolves -f/--file (or upward scan) and loads wrk3.yaml.
 func resolveConfig() (*resolved, error) {
-	p, err := ResolveProject()
+	path, err := ResolveConfigPath()
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := config.Load(p.ConfigPath)
+	cfg, err := config.Load(path)
 	if err != nil {
-		return nil, fmt.Errorf("load config %q: %w", p.ConfigPath, err)
+		return nil, fmt.Errorf("load config %q: %w", path, err)
 	}
 	src, err := newSource(cfg)
 	if err != nil {
@@ -41,7 +39,6 @@ func resolveConfig() (*resolved, error) {
 	}
 	base := cfg.AbsWorktreeBase()
 	return &resolved{
-		proj:   p,
 		cfg:    cfg,
 		src:    src,
 		base:   base,
@@ -110,8 +107,32 @@ func findRecord(recs []ports.WorktreeRecord, branchOrSlug string) *ports.Worktre
 	return nil
 }
 
-// resolveTargets filters records by explicit branches or --all.
-func resolveTargets(recs []ports.WorktreeRecord, args []string, all bool) ([]ports.WorktreeRecord, error) {
+// resolveTargets filters records by explicit branches; empty args means all
+// (docker compose style: bare up/down applies to every worktree).
+func resolveTargets(recs []ports.WorktreeRecord, args []string) ([]ports.WorktreeRecord, error) {
+	if len(args) == 0 {
+		if len(recs) == 0 {
+			return nil, fmt.Errorf("no worktrees registered")
+		}
+		out := append([]ports.WorktreeRecord(nil), recs...)
+		sort.Slice(out, func(i, j int) bool { return out[i].Branch < out[j].Branch })
+		return out, nil
+	}
+	var out []ports.WorktreeRecord
+	for _, a := range args {
+		rec := findRecord(recs, a)
+		if rec == nil {
+			return nil, fmt.Errorf("unknown worktree %q (see status)", a)
+		}
+		out = append(out, *rec)
+	}
+	return out, nil
+}
+
+// resolveTargetsRequired is like resolveTargets but bare args is an error
+// (used by remove to avoid nuking everything by accident).
+// all=true selects every worktree; passing both names and --all is an error.
+func resolveTargetsRequired(recs []ports.WorktreeRecord, args []string, all bool) ([]ports.WorktreeRecord, error) {
 	if all {
 		if len(args) > 0 {
 			return nil, fmt.Errorf("pass either branch names or --all, not both")
@@ -126,15 +147,7 @@ func resolveTargets(recs []ports.WorktreeRecord, args []string, all bool) ([]por
 	if len(args) == 0 {
 		return nil, fmt.Errorf("pass branch names or --all")
 	}
-	var out []ports.WorktreeRecord
-	for _, a := range args {
-		rec := findRecord(recs, a)
-		if rec == nil {
-			return nil, fmt.Errorf("unknown worktree %q (see status)", a)
-		}
-		out = append(out, *rec)
-	}
-	return out, nil
+	return resolveTargets(recs, args)
 }
 
 // envFromPorts maps an allocation to runner env vars (generic

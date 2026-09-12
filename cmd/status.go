@@ -11,59 +11,30 @@ import (
 
 	"github.com/mytmlt/wrk3/internal/config"
 	"github.com/mytmlt/wrk3/internal/ports"
-	"github.com/mytmlt/wrk3/internal/project"
 )
 
-var statusAll bool
-
 var statusCmd = &cobra.Command{
-	Use:   "status [--project N | --all]",
-	Short: "PROJECT/WORKTREE/BRANCH/STATUS/APP/COMPOSE_PROJECT",
+	Use:   "status",
+	Short: "WORKTREE/BRANCH/STATUS/APP/COMPOSE_PROJECT",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		r, err := resolveConfig()
+		if err != nil {
+			return err
+		}
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-		if _, err := fmt.Fprintln(w, "PROJECT\tWORKTREE\tBRANCH\tSTATUS\tAPP\tCOMPOSE_PROJECT"); err != nil {
+		if _, err := fmt.Fprintln(w, "WORKTREE\tBRANCH\tSTATUS\tAPP\tCOMPOSE_PROJECT"); err != nil {
 			return fmt.Errorf("write output: %w", err)
 		}
-		if statusAll {
-			store, err := newProjectStore()
-			if err != nil {
-				return fmt.Errorf("open project registry: %w", err)
-			}
-			projects, err := store.List()
-			if err != nil {
-				return fmt.Errorf("list projects: %w", err)
-			}
-		for _, p := range projects {
-			if err := printProjectStatus(w, p.Name, p.ConfigPath); err != nil {
-				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-					p.Name, "?", "?", "error", "?", "?")
-			}
-		}
-		} else {
-			r, err := resolveConfig()
-			if err != nil {
-				return err
-			}
-			if err := printResolvedStatus(w, r.proj.Name, r.cfg); err != nil {
-				return err
-			}
+		if err := printResolvedStatus(w, r.cfg); err != nil {
+			return err
 		}
 		return w.Flush()
 	},
 }
 
-// printProjectStatus loads cfg at path and prints its rows.
-func printProjectStatus(w *tabwriter.Writer, name, configPath string) error {
-	cfg, err := config.Load(configPath)
-	if err != nil {
-		return fmt.Errorf("load config %q: %w", configPath, err)
-	}
-	return printResolvedStatus(w, name, cfg)
-}
-
-// printResolvedStatus prints one project's state rows.
-func printResolvedStatus(w *tabwriter.Writer, name string, cfg *config.Config) error {
+// printResolvedStatus prints one config's state rows.
+func printResolvedStatus(w *tabwriter.Writer, cfg *config.Config) error {
 	recs, err := ports.Load(cfg.StatePath())
 	if err != nil {
 		return fmt.Errorf("load state: %w", err)
@@ -73,8 +44,8 @@ func printResolvedStatus(w *tabwriter.Writer, name string, cfg *config.Config) e
 	}
 	for _, rec := range recs {
 		status, app := rowFor(cfg, rec)
-		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-			name, rec.Slug, rec.Branch, status, app, rec.ComposeProject); err != nil {
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+			rec.Slug, rec.Branch, status, app, rec.ComposeProject); err != nil {
 			return fmt.Errorf("write output: %w", err)
 		}
 	}
@@ -124,9 +95,6 @@ func portCell(m map[string]int, name string) string {
 	return fmt.Sprintf("%d", v)
 }
 
-var _ = project.Project{}
-
 func init() {
-	statusCmd.Flags().BoolVar(&statusAll, "all", false, "show all projects")
 	rootCmd.AddCommand(statusCmd)
 }

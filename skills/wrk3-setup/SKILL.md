@@ -5,9 +5,10 @@ description: Author and validate a wrk3.yaml config for any repo so multiple bra
 
 # wrk3 Setup
 
-Goal: a working `wrk3.yaml` for the target repo, registered with
-`wrk3 project add`, verified through `fetch` + `status` (and `add`/`up`
-when the user approves running real workloads).
+Goal: a working `wrk3.yaml` for the target repo, verified through
+`fetch` + `status` (and `add`/`up` when the user approves running real
+workloads). No registration step — wrk3 finds `wrk3.yaml`/`wrk3.yml`
+walking up from cwd (override with `-f/--file <path>`).
 
 Rule 0: `wrk3.yaml` is executable configuration — `entry.setup/run/stop`
 run via `sh -c` on the user's host. Only write commands taken from the repo's
@@ -85,20 +86,23 @@ it). Every name becomes `<NAME>_PORT` (uppercased, non-alphanumerics →
 `_`): `app` → `APP_PORT` (+ `BASE_URL`, `WEBHOOKS_BASE_URL`,
 `ALLOWED_WS_ORIGINS` = `http://localhost:<app>`), `web` → `WEB_PORT`.
 
-Two rules for parallel safety:
+Three rules for parallel safety:
 
 1. The compose files **must** consume these vars for host-port bindings
    (e.g. `"${APP_PORT:-8000}:8000"`). If a compose file hardcodes a
    host port, either parameterize it first or accept the conflict and say so.
-2. Two configs sharing one host need distinct `ports.base` offsets or steps,
+2. The compose files **must not** set `container_name:` — it is global on
+   the daemon and collides across worktrees (`up` fails fast naming the
+   file/services). Delete it; compose generates `<project>-<service>-1`.
+3. Two configs sharing one host need distinct `ports.base` offsets or steps,
    otherwise worktree 0 of project A collides with worktree 0 of project B.
 
-## 3. Register and validate (read-only first)
+## 3. Validate (read-only first)
 
 ```bash
-wrk3 project add <name> --config <path-to-yaml>
-wrk3 --project <name> fetch    # git fetch --prune + list origin/* refs
-wrk3 --project <name> status   # renders empty table on a fresh config
+wrk3 fetch    # git fetch --prune + list origin/* refs (run inside the repo)
+wrk3 status   # renders empty table on a fresh config
+# or from anywhere: wrk3 -f <path-to-yaml> fetch
 ```
 
 Both must exit 0. Typical failures and fixes:
@@ -109,19 +113,21 @@ Both must exit 0. Typical failures and fixes:
 | `unknown source/runner type` | Must be `git` / `docker`; check spelling. |
 | `runner.docker.composeFiles must list at least one` | Add the compose file found in step 1. |
 | `entry.run must not be empty` | Fill `run` and `stop` from repo docs. |
-| `load config ... no such file` | Registry points at a moved file — re-`add` with the right `--config`. |
+| `load config ... no such file` | Wrong `-f` path or no `wrk3.yaml`/`wrk3.yml` above cwd. |
 
 ## 4. Live verification (needs user approval)
 
 `add` creates real worktrees; `up` boots real containers. Confirm before
 running, especially on heavy stacks (double `setup` can take minutes).
+Bare `add` opens the interactive branch picker; bare `up`/`down` apply
+to all worktrees.
 
 ```bash
-wrk3 --project <name> add <branch>            # worktree + ports + .env
-wrk3 --project <name> up <branch>             # setup → compose up → run
-wrk3 --project <name> status                  # expect running + distinct ports
-wrk3 --project <name> down <branch>
-wrk3 --project <name> remove <branch>         # compose down -v + worktree remove
+wrk3 add <branch>            # worktree + ports + .env (or bare `add` to pick)
+wrk3 up                      # setup → compose up → run (all worktrees)
+wrk3 status                  # expect running + distinct ports
+wrk3 down
+wrk3 remove --all            # compose down -v + worktree remove
 ```
 
 For a second parallel instance, `add`/`up` another branch and confirm
@@ -129,7 +135,7 @@ For a second parallel instance, `add`/`up` another branch and confirm
 
 ## 5. Hand off
 
-- Show the user the final config path, project name, and `status` output.
+- Show the user the final config path and `status` output.
 - If the config is meant to be shared, copy it to `wrk3.yaml.example`
   shape — never commit personal local configs.
 - Never commit `wrk3.<name>.local.yaml`, `.wrk3-state.json`,

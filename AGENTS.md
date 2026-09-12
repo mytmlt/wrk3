@@ -22,8 +22,8 @@ hermetic (temp git repos, temp dirs — no network).
 
 - `main.go` → `cmd/` (thin cobra commands) → `internal/*` **interfaces only**.
   `cmd` must never import a concrete `git`/`docker` implementation.
-- `internal/project/` — `Project{Name, ConfigPath, AddedAt}` + `FileStore`
-  registry at `~/.config/wrk3/projects.yaml` (XDG-aware; absolute paths).
+- `internal/config/` — `wrk3.yaml`/`wrk3.yml` load + validation + upward
+  discovery (`discover.go`; `docs/CONFIGURATION.md` is the field reference).
 - `internal/source/` — `Source` iface + `registry.go` + `git.go`.
 - `internal/runner/` — `Runner` iface + `registry.go` + `docker.go`
   (`portainer`/`nomad` are intentional `not implemented` stubs).
@@ -49,21 +49,18 @@ hermetic (temp git repos, temp dirs — no network).
 ## Config and resolution
 
 - Example: `wrk3.yaml.example`. Resolution order for every command:
-  `--config` > `--project` > `$WRK3_PROJECT` > current project > cwd scan
-  for `wrk3.yaml`.
+  `-f/--file <path>` > upward scan from cwd for `wrk3.yaml`, then `wrk3.yml`
+  (nearest directory wins). No registry, no env var — like `docker compose`.
 - For config-authoring questions (new stack, broken config, port mapping),
   follow `skills/wrk3-setup/SKILL.md`.
 
 ## Verifying behavior changes
 
 Unit tests live next to the code (`*_test.go`). For CLI-level verification,
-use an isolated registry and a temp git repo — never touch the user's real
-registry or checkouts:
+use a temp git repo — never touch the user's real checkouts:
 
 ```bash
-export WRK3_CONFIG_HOME="$(mktemp -d)"
-go run . project add demo --config ./wrk3.yaml.example
-go run . status
+go run . -f ./wrk3.yaml.example status
 ```
 
 `add`/`up` create real worktrees/containers — only run them against throwaway

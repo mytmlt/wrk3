@@ -198,13 +198,11 @@ go build ./... && go vet ./... && go test ./... -count=1   # full gate (make tes
 ```
 
 `internal/runner` tests take ~10s (real `docker`); everything else is
-fast/hermetic. For CLI-level checks use an isolated registry and a
+fast/hermetic. For CLI-level checks use a
 throwaway repo — never the real one:
 
 ```bash
-export WRK3_CONFIG_HOME="$(mktemp -d)"
-go run . project add demo --config ./wrk3.yaml.example
-go run . status
+go run . -f ./wrk3.yaml.example status
 ```
 
 `add`/`up` create real worktrees/containers — only run them against

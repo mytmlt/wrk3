@@ -8,9 +8,10 @@ import (
 )
 
 var execCmd = &cobra.Command{
-	Use:   "exec <branch> -- <cmd>",
-	Short: "run command inside worktree environment",
-	Args:  cobra.MinimumNArgs(1),
+	Use:               "exec <branch> -- <cmd>",
+	Short:             "run command inside worktree environment",
+	Args:              cobra.MinimumNArgs(1),
+	ValidArgsFunction: completeWorktreesFirstOnly,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 2 {
 			return fmt.Errorf("usage: wrk3 exec <branch> -- <cmd> [args...]")

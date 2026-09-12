@@ -11,11 +11,10 @@ import (
 	"github.com/mytmlt/wrk3/internal/ports"
 )
 
-var downAll bool
-
 var downCmd = &cobra.Command{
-	Use:   "down [branch...] | --all",
-	Short: "stop worktrees",
+	Use:               "down [branch...]",
+	Short:             "stop worktrees (bare = all worktrees)",
+	ValidArgsFunction: completeWorktrees,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		r, err := resolveConfig()
 		if err != nil {
@@ -25,7 +24,7 @@ var downCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		targets, err := resolveTargets(recs, args, downAll)
+		targets, err := resolveTargets(recs, args)
 		if err != nil {
 			return err
 		}
@@ -65,6 +64,5 @@ func downOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf fu
 }
 
 func init() {
-	downCmd.Flags().BoolVar(&downAll, "all", false, "apply to all worktrees")
 	rootCmd.AddCommand(downCmd)
 }

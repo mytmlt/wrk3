@@ -10,7 +10,7 @@ isolated with its own ports and container project — from any directory.
 
 `wrk3` was built for stacks where one checkout = one full environment
 (e.g. a `docker compose` dev stack): point it at a repo, `add` two branches,
-`up --all`, and get two running copies on distinct ports and distinct compose
+`up`, and get two running copies on distinct ports and distinct compose
 projects. `status` shows every worktree, branch, and port at a glance.
 
 ## Features
@@ -23,10 +23,12 @@ projects. `status` shows every worktree, branch, and port at a glance.
 - **Deterministic ports** — `allocated = base + index * step` per port name,
   written to each worktree's `.env`; `status` reads them back from the state
   file (`?`/`stale` when the directory is missing).
-- **Project registry** — named pointers to `wrk3.yaml` in
-  `~/.config/wrk3/projects.yaml`; every command resolves
-  `--project` > `$WRK3_PROJECT` > current project > cwd scan, so it works
-  from any directory.
+- **Compose-style config** — wrk3 finds `wrk3.yaml`/`wrk3.yml`
+  walking up from cwd (`-f/--file` to override), so it works from any
+  subdirectory. `add` auto-registers the repo for `project ls` /
+  `ls --project`.
+- **Shell completion** — `wrk3 completion <bash|zsh|fish|powershell>` plus
+  dynamic branch/worktree/project completion for `add`/`up`/`down`/`logs`/`exec`/`remove`/`ls --project`.
 - **Single static binary** — Go, no runtime deps besides `git` and `docker`.
 
 ## Install
@@ -55,31 +57,29 @@ Shell completions: `make completion` then source
 
 ```bash
 # 1. Describe your repo (see wrk3.yaml.example + docs/CONFIGURATION.md)
-cp wrk3.yaml.example myproject.yaml
-$EDITOR myproject.yaml   # config lives in the repo root; no repo path needed
+cp wrk3.yaml.example wrk3.yaml
+$EDITOR wrk3.yaml   # config lives in the repo root
 
-# 2. Register it (works from any cwd afterwards)
-wrk3 project add myproject --config "$PWD/myproject.yaml"
-wrk3 project use myproject
-
-# 3. Fetch remote branches, create two isolated worktrees
+# 2. Fetch remote branches, create two isolated worktrees (run inside the repo)
 wrk3 fetch
 wrk3 fetch --mine                    # only your branches (tip author = git config user.name/user.email)
 wrk3 fetch --author alice            # substring match on author name/email
 wrk3 add feature-a feature-b
-# or pick interactively: wrk3 add --select
+# or pick interactively: wrk3 add
 
-# 4. Boot both stacks in parallel (setup entries, compose up, run entry)
-wrk3 up --all
+# 3. Boot both stacks in parallel (setup entries, compose up, run entry)
+wrk3 up
 
-# 5. Inspect, tail, run commands
+# 4. Inspect, tail, run commands
 wrk3 status
+wrk3 ls --project myapp   # same worktrees from any dir (after add registers it)
+wrk3 project ls           # all registered projects
 wrk3 logs feature-a -f
 wrk3 exec feature-a -- make test
 
-# 6. Tear down
-wrk3 down --all
-wrk3 remove feature-a feature-b
+# 5. Tear down
+wrk3 down
+wrk3 remove --all
 ```
 
 ## Configuration
@@ -121,8 +121,9 @@ Full field reference, port table, `.env` mapping, and multi-project patterns:
 2. `wrk3 up` → runs `entry.setup` commands (`sh -c`, `cwd=worktree`,
    `env=ports`), then `docker compose -p <prefix>-<slug> up`, then
    `entry.run` — in parallel across worktrees via errgroup with prefixed logs.
+   Bare `up`/`down` apply to all worktrees; pass names to filter.
 3. `wrk3 status` → reads the state file, probes live runner status, prints
-   `PROJECT/WORKTREE/BRANCH/STATUS/APP/COMPOSE_PROJECT`.
+   `WORKTREE/BRANCH/STATUS/APP/COMPOSE_PROJECT`.
 4. `wrk3 remove` → `compose down -v` + `git worktree remove` + state cleanup.
 
 ## Development

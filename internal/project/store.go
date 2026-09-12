@@ -15,35 +15,30 @@ import (
 // Sentinel errors for registry operations.
 var (
 	ErrNotFound  = errors.New("project not found")
-	ErrNoCurrent = errors.New("no current project set")
+	ErrAmbiguous = errors.New("project name is ambiguous")
 )
-
-// ConfigFileName is the file FindConfigUpwards looks for.
-const ConfigFileName = "wrk3.yaml"
 
 // Env vars controlling path resolution.
 const (
-	envConfigHome  = "XDG_CONFIG_HOME"
-	envOverride    = "WRK3_CONFIG_HOME"
-	envProjectName = "WRK3_PROJECT"
+	envConfigHome = "XDG_CONFIG_HOME"
+	envOverride   = "WRK3_CONFIG_HOME"
 )
 
-// fileEntry is one registry entry on disk.
+// fileEntry is one registry entry on disk, keyed by absolute config path.
 type fileEntry struct {
-	ConfigPath string    `yaml:"configPath"`
-	AddedAt    time.Time `yaml:"addedAt"`
+	Name     string    `yaml:"name"`
+	LastSeen time.Time `yaml:"lastSeen"`
 }
 
-// fileData is the on-disk YAML shape.
+// fileData is the on-disk YAML shape. Keys are absolute config paths
+// so two repos sharing a directory basename never overwrite each other.
 type fileData struct {
-	Projects       map[string]fileEntry `yaml:"projects"`
-	CurrentProject string               `yaml:"currentProject"`
+	Projects map[string]fileEntry `yaml:"projects"`
 }
 
 // FileStore is a YAML-backed Store at ~/.config/wrk3/projects.yaml
-// (XDG-aware). All paths stored are absolute, so commands work from any
-// cwd. Writes are atomic (temp file + rename) under a best-effort
-// lock file.
+// (XDG-aware). Writes are atomic (temp file + rename) under a
+// best-effort lock file.
 type FileStore struct {
 	path string
 	mu   sync.Mutex
@@ -194,8 +189,7 @@ func (s *FileStore) mutate(fn func(d *fileData) error) error {
 	return nil
 }
 
-// absolutize resolves p to an absolute path (relative to cwd at call
-// time) and errors on empty input.
+// absolutize resolves p to an absolute path and errors on empty input.
 func absolutize(p string) (string, error) {
 	if p == "" {
 		return "", fmt.Errorf("config path must not be empty")
@@ -207,9 +201,9 @@ func absolutize(p string) (string, error) {
 	return filepath.Clean(abs), nil
 }
 
-// Add inserts or updates name -> absolute configPath.
-// Relative paths resolve against the cwd at add time.
-func (s *FileStore) Add(name, configPath string) error {
+// Touch inserts or refreshes name -> absolute configPath.
+// Relative paths resolve against the cwd at call time.
+func (s *FileStore) Touch(name, configPath string) error {
 	if name == "" {
 		return fmt.Errorf("project name must not be empty")
 	}
@@ -218,17 +212,13 @@ func (s *FileStore) Add(name, configPath string) error {
 		return err
 	}
 	return s.mutate(func(d *fileData) error {
-		e := d.Projects[name]
-		if e.ConfigPath == "" {
-			e.AddedAt = time.Now().UTC()
-		}
-		e.ConfigPath = abs
-		d.Projects[name] = e
+		d.Projects[abs] = fileEntry{Name: name, LastSeen: time.Now().UTC()}
 		return nil
 	})
 }
 
-// Get returns the project by name.
+// Get returns the project by name. Errors when missing or when
+// several configs share the same name (lists candidates).
 func (s *FileStore) Get(name string) (*Project, error) {
 	if name == "" {
 		return nil, fmt.Errorf("project name must not be empty")
@@ -239,14 +229,29 @@ func (s *FileStore) Get(name string) (*Project, error) {
 	if err != nil {
 		return nil, err
 	}
-	e, ok := d.Projects[name]
-	if !ok {
+	var matches []Project
+	for cfgPath, e := range d.Projects {
+		if e.Name == name {
+			matches = append(matches, Project{Name: e.Name, ConfigPath: cfgPath, LastSeen: e.LastSeen})
+		}
+	}
+	// Also accept a full config path as the selector.
+	if len(matches) == 0 {
+		if e, ok := d.Projects[name]; ok {
+			return &Project{Name: e.Name, ConfigPath: name, LastSeen: e.LastSeen}, nil
+		}
+	}
+	if len(matches) == 0 {
 		return nil, fmt.Errorf("get project %q: %w", name, ErrNotFound)
 	}
-	return &Project{Name: name, ConfigPath: e.ConfigPath, AddedAt: e.AddedAt}, nil
+	if len(matches) > 1 {
+		sort.Slice(matches, func(i, j int) bool { return matches[i].ConfigPath < matches[j].ConfigPath })
+		return nil, fmt.Errorf("get project %q: %w (%d matches, pass full config path)", name, ErrAmbiguous, len(matches))
+	}
+	return &matches[0], nil
 }
 
-// List returns all projects sorted by name.
+// List returns all projects sorted by name, then config path.
 func (s *FileStore) List() ([]Project, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -255,71 +260,16 @@ func (s *FileStore) List() ([]Project, error) {
 		return nil, err
 	}
 	out := make([]Project, 0, len(d.Projects))
-	for name, e := range d.Projects {
-		out = append(out, Project{Name: name, ConfigPath: e.ConfigPath, AddedAt: e.AddedAt})
+	for cfgPath, e := range d.Projects {
+		out = append(out, Project{Name: e.Name, ConfigPath: cfgPath, LastSeen: e.LastSeen})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].ConfigPath < out[j].ConfigPath
+	})
 	return out, nil
-}
-
-// Remove deletes name; clears current if it pointed at name.
-func (s *FileStore) Remove(name string) error {
-	if name == "" {
-		return fmt.Errorf("project name must not be empty")
-	}
-	return s.mutate(func(d *fileData) error {
-		if _, ok := d.Projects[name]; !ok {
-			return fmt.Errorf("remove project %q: %w", name, ErrNotFound)
-		}
-		delete(d.Projects, name)
-		if d.CurrentProject == name {
-			d.CurrentProject = ""
-		}
-		return nil
-	})
-}
-
-// SetCurrent marks name as the current project.
-func (s *FileStore) SetCurrent(name string) error {
-	if name == "" {
-		return fmt.Errorf("project name must not be empty")
-	}
-	return s.mutate(func(d *fileData) error {
-		if _, ok := d.Projects[name]; !ok {
-			return fmt.Errorf("use project %q: %w", name, ErrNotFound)
-		}
-		d.CurrentProject = name
-		return nil
-	})
-}
-
-// CurrentName returns the current project name ("", nil when unset).
-func (s *FileStore) CurrentName() (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	d, err := s.load()
-	if err != nil {
-		return "", err
-	}
-	return d.CurrentProject, nil
-}
-
-// Current returns the current project or ErrNoCurrent when unset.
-func (s *FileStore) Current() (*Project, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	d, err := s.load()
-	if err != nil {
-		return nil, err
-	}
-	if d.CurrentProject == "" {
-		return nil, ErrNoCurrent
-	}
-	e, ok := d.Projects[d.CurrentProject]
-	if !ok {
-		return nil, fmt.Errorf("current project %q: %w", d.CurrentProject, ErrNotFound)
-	}
-	return &Project{Name: d.CurrentProject, ConfigPath: e.ConfigPath, AddedAt: e.AddedAt}, nil
 }
 
 // Compile-time check: FileStore implements Store.

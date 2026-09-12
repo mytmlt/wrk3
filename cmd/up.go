@@ -9,13 +9,13 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/mytmlt/wrk3/internal/ports"
+	"github.com/mytmlt/wrk3/internal/runner"
 )
 
-var upAll bool
-
 var upCmd = &cobra.Command{
-	Use:   "up [branch...] | --all",
-	Short: "parallel setup+run (errgroup, prefixed logs)",
+	Use:               "up [branch...]",
+	Short:             "setup + compose up + run (bare = all worktrees)",
+	ValidArgsFunction: completeWorktrees,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		r, err := resolveConfig()
 		if err != nil {
@@ -25,7 +25,7 @@ var upCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		targets, err := resolveTargets(recs, args, upAll)
+		targets, err := resolveTargets(recs, args)
 		if err != nil {
 			return err
 		}
@@ -58,6 +58,14 @@ func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func
 	rn, err := newRunner(r.cfg, rec.Slug)
 	if err != nil {
 		return fmt.Errorf("up %q: %w", rec.Branch, err)
+	}
+	// Preflight before any setup entry (which typically runs
+	// `docker compose up --wait --build` and would otherwise fail
+	// minutes in with a container-name conflict).
+	if r.cfg.Runner.Type == "docker" {
+		if err := runner.CheckComposeFiles(rec.AbsPath, r.cfg.Runner.Docker.ComposeFiles); err != nil {
+			return fmt.Errorf("up %q: %w", rec.Branch, err)
+		}
 	}
 	env := envFromPorts(rec.Ports)
 	for _, s := range r.cfg.Entry.Setup {
@@ -102,6 +110,5 @@ func markStatus(r *resolved, targets []ports.WorktreeRecord, status string) erro
 }
 
 func init() {
-	upCmd.Flags().BoolVar(&upAll, "all", false, "apply to all worktrees")
 	rootCmd.AddCommand(upCmd)
 }

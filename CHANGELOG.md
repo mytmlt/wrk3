@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- **Breaking:** project registry (`project add|list|use|remove|show`,
+  `~/.config/wrk3/projects.yaml`, `--project`, `$WRK3_PROJECT`, `--config`,
+  `status --all`, `PROJECT` column). Config resolution is now compose-style:
+  `-f/--file <path>` > upward scan for `wrk3.yaml`/`wrk3.yml`.
+- **Breaking:** `up --all` / `down --all` flags — bare `up`/`down` now apply
+  to all worktrees (pass names to filter).
+
+### Added
+
+- `wrk3 completion <bash|zsh|fish|powershell>` (fixes `make completion`).
+- Dynamic completion: `add` completes remote branches; `up`/`down`/`logs`/
+  `exec`/`remove` complete existing worktrees (branch or slug). Offline-safe
+  (no fetch on TAB).
+- `remove [branch...] | --all` (variadic); bare `add` opens the interactive
+  branch picker (same as `--select`).
+- `add --local [branch...]`: adopt branches that already have local git
+  worktrees (port assign + `.env` + state) without fetching from origin.
+  Bare adopts every unregistered local worktree (main checkout, bare repos
+  and detached HEADs skipped); explicit names adopt only those.
+- `internal/config/discover.go` with `wrk3.yaml`/`wrk3.yml` upward discovery.
+- Auto-registered project list: `wrk3 add` records the repo (root dir
+  basename) in `~/.config/wrk3/projects.yaml`; `wrk3 project ls` lists
+  projects (`NAME/CONFIG/WORKTREES`); `wrk3 ls` lists local worktrees
+  (`WORKTREE/BRANCH/STATUS/APP`); `wrk3 ls --project <name>` lists a
+  registered project from anywhere.
+- `up` preflight check: compose files setting `container_name:` fail fast
+  naming the offending file/services (it bypasses `-p <prefix>-<slug>`
+  isolation and collides across worktrees) instead of failing minutes
+  into setup with a daemon conflict.
+
 ## [0.0.1] - 2026-09-11
 
 ### Added
