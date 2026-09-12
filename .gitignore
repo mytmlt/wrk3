@@ -30,6 +30,8 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+# Test fixtures must be committed even though they look like env files.
+!**/testdata/.env*
 
 # Release artifacts
 *.tar.gz
