@@ -22,11 +22,13 @@ var fetchCmd = &cobra.Command{
 
   wrk3 fetch                          list every remote branch
   wrk3 fetch --remote upstream        list branches on upstream (default: source.git.remote, else origin)
-  wrk3 fetch --mine                   only branches whose tip commit author
-                                      or committer matches git config
-                                      user.name/user.email
+  wrk3 fetch --mine                   only your branches: tip author/committer
+                                      matches git config user.name/user.email,
+                                      else any of the last 100 branch-exclusive
+                                      commits does (bot/cursor tips you pushed)
   wrk3 fetch --author alice           substring match (case-insensitive)
-                                      against author name and email;
+                                      against author/committer name and email,
+                                      tip or branch-exclusive history;
                                       repeatable, matches any
   wrk3 fetch --mine --author alice    intersection of both filters`,
 	Args: cobra.NoArgs,
@@ -54,6 +56,15 @@ var fetchCmd = &cobra.Command{
 
 // filterRefs fetches branch names, optionally narrowed to the local user's
 // branches (--mine) and/or an author substring filter (--author).
+//
+// Tip-only matching misses bot/cursor branches you pushed: the tip author
+// and committer are both the bot (e.g. Cursor Agent) even though GitHub's
+// "Yours" lists the branch under you. So when the tip doesn't match, we
+// scan up to source.MineHistoryLimit branch-exclusive commits
+// (<remote>/<branch> --not <remote>/<base>) for your identity/pattern.
+// The base comes from Source.DefaultBranch; when it is unknown we stay
+// tip-only (scanning without a base would match mainline commits and flag
+// every branch).
 func filterRefs(src source.Source, repoPath, remote string, mine bool, authors []string) ([]string, error) {
 	patterns := normalizePatterns(authors)
 	if !mine && len(patterns) == 0 {
@@ -77,17 +88,56 @@ func filterRefs(src source.Source, repoPath, remote string, mine bool, authors [
 			return nil, fmt.Errorf("no git identity configured (set git config user.name/user.email or use --author)")
 		}
 	}
+	// Resolve once for the whole filter pass; unknown base disables the
+	// history fallback (tip-only) rather than failing the command.
+	base, _ := src.DefaultBranch(repoPath, remote)
 	var out []string
 	for _, ref := range detailed {
-		if mine && !matchesIdentity(ref, meName, meEmail) {
-			continue
+		if matchesWithHistory(src, repoPath, remote, base, ref, mine, meName, meEmail, patterns) {
+			out = append(out, ref.Name)
 		}
-		if len(patterns) > 0 && !matchesAuthor(ref, patterns) {
-			continue
-		}
-		out = append(out, ref.Name)
 	}
 	return out, nil
+}
+
+// matchesWithHistory reports whether ref satisfies the mine/author filters.
+// The tip commit is checked first (fast path, no extra git calls); only
+// when the tip misses and a base is known do we scan branch-exclusive
+// history. Mine and author filters intersect: each must match on tip or
+// history (possibly on different commits).
+func matchesWithHistory(src source.Source, repoPath, remote, base string, ref source.BranchRef, mine bool, meName, meEmail string, patterns []string) bool {
+	mineOK := !mine || matchesIdentity(ref, meName, meEmail)
+	authorOK := len(patterns) == 0 || matchesAuthor(ref, patterns)
+	if mineOK && authorOK {
+		return true
+	}
+	if strings.TrimSpace(base) == "" {
+		return false
+	}
+	history, err := src.BranchHistory(repoPath, remote, ref.Name, base, source.MineHistoryLimit)
+	if err != nil {
+		return false
+	}
+	if !mineOK && mine {
+		for _, h := range history {
+			if matchesIdentity(h, meName, meEmail) {
+				mineOK = true
+				break
+			}
+		}
+	}
+	if !mineOK {
+		return false
+	}
+	if !authorOK && len(patterns) > 0 {
+		for _, h := range history {
+			if matchesAuthor(h, patterns) {
+				authorOK = true
+				break
+			}
+		}
+	}
+	return mineOK && authorOK
 }
 
 // normalizePatterns trims, drops empties, and splits comma-separated values
@@ -148,8 +198,8 @@ func matchesAuthor(ref source.BranchRef, patterns []string) bool {
 
 func init() {
 	fetchCmd.Flags().StringVar(&fetchRemote, "remote", "", "remote to fetch/list (default: source.git.remote, else origin)")
-	fetchCmd.Flags().BoolVar(&fetchMine, "mine", false, "only branches whose tip commit author or committer matches git config user.name/user.email")
-	fetchCmd.Flags().StringSliceVar(&fetchAuthor, "author", nil, "only branches whose tip author or committer matches <name-or-email> (substring, case-insensitive; repeatable)")
+	fetchCmd.Flags().BoolVar(&fetchMine, "mine", false, "only your branches (tip or last 100 branch-exclusive commits match git config user.name/user.email)")
+	fetchCmd.Flags().StringSliceVar(&fetchAuthor, "author", nil, "only branches whose tip or branch-exclusive history matches <name-or-email> (substring, case-insensitive; repeatable)")
 	_ = fetchCmd.RegisterFlagCompletionFunc("remote", completeRemotes)
 	rootCmd.AddCommand(fetchCmd)
 }

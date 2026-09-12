@@ -23,6 +23,8 @@ type Source interface {
     Fetch(repoPath, remote string) error
     Refs(repoPath, remote string) ([]string, error)
     RefsDetailed(repoPath, remote string) ([]BranchRef, error)
+    DefaultBranch(repoPath, remote string) (string, error)
+    BranchHistory(repoPath, remote, branch, base string, limit int) ([]BranchRef, error)
     Identity(repoPath string) (name, email string, err error)
     Add(repoPath, branch, worktreePath, remote string) error
     Remove(repoPath, worktreePath string, force bool) error
@@ -39,7 +41,15 @@ Semantics (match `internal/source/git.go`):
   (`Name` short branch, `AuthorName`/`AuthorEmail`/`CommitterName`/
   `CommitterEmail` from the tip commit;
   git: `for-each-ref` over `refs/remotes/<remote>`). Powers
-  `fetch --mine` / `--author` and `add --remote --mine`.
+  `fetch --mine` / `--author` and `add --remote --mine` (tip fast path).
+- `DefaultBranch(repoPath, remote)` — short default-branch name (git:
+  `symbolic-ref refs/remotes/<remote>/HEAD`, else `main`/`master` probe;
+  empty when unknown). Powers the `--mine`/`--author` history fallback.
+- `BranchHistory(repoPath, remote, branch, base string, limit int)` —
+  up to `limit` branch-exclusive commits (`git log <remote>/<branch>
+  --not <remote>/<base>`, newest first; empty base = plain tip log;
+  branch == base = empty). Powers the `--mine`/`--author` history
+  fallback (bot/cursor tips you pushed).
 - `Identity(repoPath)` — local git identity (`git config user.name` /
   `user.email`; empty when unset). Powers `fetch --mine`.
 - `Add(repoPath, branch, worktreePath, remote)` — provision one worktree dir.

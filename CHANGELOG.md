@@ -7,8 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `wrk3 dashboard`: interactive BubbleTea TUI polling worktree state,
+  remote branches, and ports across the current repo and all registered
+  projects (`tab` switches). Keyboard `up`/`down`/`add`/`remove`
+  (`space` selects, `a` adds queued branches, `x` confirms `y/n` and
+  refuses main, `r` refreshes, `R` fetches with `--remote`/`--mine`/
+  `--author` filters, `--poll` controls the interval). CLI commands keep
+  working alongside it; external `add`s appear on next poll/refresh.
+
 ### Fixed
 
+- `fetch --mine` / `--author` (and `add --remote --mine`, dashboard `m`)
+  now fall back to branch-exclusive history when the tip doesn't match:
+  after the `for-each-ref` tip check, branches are matched against up to
+  100 commits in `git log <remote>/<branch> --not <remote>/<base>` (base
+  from `Source.DefaultBranch`). Bot/cursor branches you pushed — tip
+  author and committer both the bot, your commit underneath — now show
+  up, matching GitHub's "Yours". Without a known base the filter stays
+  tip-only (scanning without exclusion would match mainline and flag
+  everything). The dashboard footer now advertises `m mine` and the
+  header shows the active `authors=` filter.
 - `.env` handling is now append-only and self-healing: every
   `add`/`up`/`down`/`exec` ensures the target worktree's `.env` contains
   the wrk3-managed port section, appending only missing keys. Existing

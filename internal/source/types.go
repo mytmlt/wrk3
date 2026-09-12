@@ -32,6 +32,12 @@ type BranchRef struct {
 	CommitterEmail string
 }
 
+// MineHistoryLimit caps how many branch-exclusive commits --mine/--author
+// scan per branch. Cursor/bot branches you pushed usually carry your
+// commit within a handful of exclusive commits; 100 keeps per-branch
+// `git log` output small even on repos with hundreds of remote branches.
+const MineHistoryLimit = 100
+
 // Source provisions worktree directories from branches.
 type Source interface {
 	// Fetch prunes remote refs (git fetch <remote> --prune).
@@ -42,6 +48,17 @@ type Source interface {
 	// RefsDetailed lists remote branches with tip-commit authors and
 	// committers (for-each-ref over refs/remotes/<remote>).
 	RefsDetailed(repoPath, remote string) ([]BranchRef, error)
+	// DefaultBranch returns the short name of the remote's default branch
+	// (e.g. "main"). Empty means unknown — callers must fall back to
+	// tip-only matching (scanning full history without a base would match
+	// mainline commits and flag every branch).
+	DefaultBranch(repoPath, remote string) (string, error)
+	// BranchHistory lists up to limit branch-exclusive commits (newest
+	// first) as BranchRefs (Name is the branch; author/committer fields
+	// describe each commit). Base is the short default-branch name from
+	// DefaultBranch; empty base means plain `log <remote>/<branch>`
+	// with no exclusion. Limit <= 0 means MineHistoryLimit.
+	BranchHistory(repoPath, remote, branch, base string, limit int) ([]BranchRef, error)
 	// Identity returns git config user.name/user.email for repoPath.
 	// Empty strings mean unset (no error).
 	Identity(repoPath string) (name, email string, err error)

@@ -9,6 +9,8 @@ import (
 type stubSource struct {
 	refs     []string
 	detailed []source.BranchRef
+	history  map[string][]source.BranchRef
+	base     string
 	name     string
 	email    string
 }
@@ -19,6 +21,15 @@ func (s *stubSource) Refs(repoPath, remote string) ([]string, error) {
 }
 func (s *stubSource) RefsDetailed(repoPath, remote string) ([]source.BranchRef, error) {
 	return s.detailed, nil
+}
+func (s *stubSource) DefaultBranch(repoPath, remote string) (string, error) {
+	return s.base, nil
+}
+func (s *stubSource) BranchHistory(repoPath, remote, branch, base string, limit int) ([]source.BranchRef, error) {
+	if h, ok := s.history[branch]; ok {
+		return h, nil
+	}
+	return nil, nil
 }
 func (s *stubSource) Identity(repoPath string) (string, string, error) {
 	return s.name, s.email, nil
@@ -143,5 +154,69 @@ func TestFilterRefs_MineAndAuthorIntersect(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("intersection should be empty, got %v", got)
+	}
+}
+
+func botTipFixture() []source.BranchRef {
+	return []source.BranchRef{
+		// Tip is fully bot-owned (author + committer are the bot) —
+		// the superplane cursor case from the issue.
+		{Name: "cursor/bot-tip", AuthorName: "Cursor Agent", AuthorEmail: "cursoragent@cursor.com", CommitterName: "Cursor Agent", CommitterEmail: "cursoragent@cursor.com"},
+		{Name: "other/bot-tip", AuthorName: "Cursor Agent", AuthorEmail: "cursoragent@cursor.com", CommitterName: "Cursor Agent", CommitterEmail: "cursoragent@cursor.com"},
+	}
+}
+
+func TestFilterRefs_MineMatchesHistory(t *testing.T) {
+	history := map[string][]source.BranchRef{
+		"cursor/bot-tip": {
+			{Name: "cursor/bot-tip", AuthorName: "Cursor Agent", AuthorEmail: "cursoragent@cursor.com", CommitterName: "Cursor Agent", CommitterEmail: "cursoragent@cursor.com"},
+			{Name: "cursor/bot-tip", AuthorName: "Cursor Agent", AuthorEmail: "cursoragent@cursor.com", CommitterName: "Ada", CommitterEmail: "ada@example.com"},
+		},
+		"other/bot-tip": {
+			{Name: "other/bot-tip", AuthorName: "Cursor Agent", AuthorEmail: "cursoragent@cursor.com", CommitterName: "Cursor Agent", CommitterEmail: "cursoragent@cursor.com"},
+		},
+	}
+	s := &stubSource{detailed: botTipFixture(), history: history, base: "main", name: "Ada", email: "ada@example.com"}
+	got, err := filterRefs(s, ".", "origin", true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "cursor/bot-tip" {
+		t.Errorf("mine should match branch-exclusive history, got %v", got)
+	}
+}
+
+func TestFilterRefs_MineHistoryDisabledWithoutBase(t *testing.T) {
+	history := map[string][]source.BranchRef{
+		"cursor/bot-tip": {
+			{Name: "cursor/bot-tip", AuthorName: "Cursor Agent", AuthorEmail: "cursoragent@cursor.com", CommitterName: "Ada", CommitterEmail: "ada@example.com"},
+		},
+	}
+	// No base: history must not be consulted (otherwise mainline commits
+	// would flag every branch). Tip-only => empty.
+	s := &stubSource{detailed: botTipFixture(), history: history, base: "", name: "Ada", email: "ada@example.com"}
+	got, err := filterRefs(s, ".", "origin", true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Errorf("without base, mine must stay tip-only, got %v", got)
+	}
+}
+
+func TestFilterRefs_AuthorMatchesHistory(t *testing.T) {
+	history := map[string][]source.BranchRef{
+		"cursor/bot-tip": {
+			{Name: "cursor/bot-tip", AuthorName: "Someone", AuthorEmail: "s@s", CommitterName: "Someone", CommitterEmail: "s@s"},
+			{Name: "cursor/bot-tip", AuthorName: "Ada Lovelace", AuthorEmail: "ada@example.com", CommitterName: "Ada Lovelace", CommitterEmail: "ada@example.com"},
+		},
+	}
+	s := &stubSource{detailed: botTipFixture(), history: history, base: "main"}
+	got, err := filterRefs(s, ".", "origin", false, []string{"ada"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "cursor/bot-tip" {
+		t.Errorf("author should match branch-exclusive history, got %v", got)
 	}
 }

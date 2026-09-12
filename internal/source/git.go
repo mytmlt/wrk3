@@ -85,6 +85,59 @@ func (g *GitSource) Identity(repoPath string) (string, string, error) {
 	return name, email, nil
 }
 
+// DefaultBranch returns the short default-branch name for remote
+// (e.g. "main"). It prefers refs/remotes/<remote>/HEAD, then probes
+// main/master. Empty means unknown (callers fall back to tip-only).
+func (g *GitSource) DefaultBranch(repoPath, remote string) (string, error) {
+	remote = normalizeRemote(remote)
+	if out, err := g.run(repoPath, "symbolic-ref", "--quiet", "refs/remotes/"+remote+"/HEAD"); err == nil {
+		sym := strings.TrimSpace(out)
+		// Symbolic value looks like refs/remotes/<remote>/<branch>.
+		if rest, ok := strings.CutPrefix(sym, "refs/remotes/"+remote+"/"); ok && rest != "" && rest != "HEAD" {
+			return rest, nil
+		}
+	}
+	for _, cand := range []string{"main", "master"} {
+		if g.refExists(repoPath, "refs/remotes/"+remote+"/"+cand) {
+			return cand, nil
+		}
+	}
+	return "", nil
+}
+
+// BranchHistory lists up to limit branch-exclusive commits (newest first).
+// With a non-empty base it runs git log <remote>/<branch> --not
+// <remote>/<base>; with an empty base it logs the branch tip directly.
+// Each entry carries the branch name plus one commit's author/committer.
+func (g *GitSource) BranchHistory(repoPath, remote, branch, base string, limit int) ([]BranchRef, error) {
+	remote = normalizeRemote(remote)
+	if strings.TrimSpace(branch) == "" {
+		return nil, fmt.Errorf("git log: empty branch")
+	}
+	if limit <= 0 {
+		limit = MineHistoryLimit
+	}
+	target := remote + "/" + strings.TrimSpace(branch)
+	base = strings.TrimSpace(base)
+	branch = strings.TrimSpace(branch)
+	// The default branch has no exclusive commits by definition.
+	if base != "" && base == branch {
+		return nil, nil
+	}
+	format := "%an%x00%ae%x00%cn%x00%ce"
+	// --no-merges would drop your "Merge main into ..." commits, which
+	// often carry your identity on cursor branches — keep merges.
+	args := []string{"log", "--format=" + format, "-n", fmt.Sprintf("%d", limit), target}
+	if base != "" {
+		args = append(args, "--not", remote+"/"+base)
+	}
+	out, err := g.run(repoPath, args...)
+	if err != nil {
+		return nil, err
+	}
+	return parseBranchHistory(out, strings.TrimSpace(branch)), nil
+}
+
 // configValue reads one git config key; unset keys yield "" with nil error
 // (the repo itself must exist — Fetch surfaces that failure first).
 func (g *GitSource) configValue(repoPath, key string) (string, error) {
@@ -248,6 +301,30 @@ func parseRefsDetailed(out, remote string) []BranchRef {
 				}
 				return ""
 			}(),
+		})
+	}
+	return refs
+}
+
+// parseBranchHistory parses `git log --format=%an%00%ae%00%cn%00%ce`
+// output (one commit per line, NUL-separated fields) into BranchRefs.
+// Every entry carries branch as Name so cmd matching helpers apply.
+func parseBranchHistory(out, branch string) []BranchRef {
+	var refs []BranchRef
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\x00", 4)
+		if len(parts) != 4 {
+			continue
+		}
+		refs = append(refs, BranchRef{
+			Name:           branch,
+			AuthorName:     strings.TrimSpace(parts[0]),
+			AuthorEmail:    strings.Trim(strings.TrimSpace(parts[1]), "<>"),
+			CommitterName:  strings.TrimSpace(parts[2]),
+			CommitterEmail: strings.Trim(strings.TrimSpace(parts[3]), "<>"),
 		})
 	}
 	return refs

@@ -409,7 +409,7 @@ func init() {
 	addCmd.Flags().BoolVar(&addSelect, "select", false, "interactive branch select")
 	addCmd.Flags().BoolVar(&addLocal, "local", false, "adopt existing local worktrees (no fetch)")
 	addCmd.Flags().StringVar(&addRemote, "remote", "", "create worktrees from remote branches (default: source.git.remote, else origin)")
-	addCmd.Flags().BoolVar(&addMine, "mine", false, "with --remote: only branches whose tip commit author or committer matches git config user.name/user.email")
+	addCmd.Flags().BoolVar(&addMine, "mine", false, "with --remote: only your branches (tip or branch-exclusive history matches git config user)")
 	_ = addCmd.RegisterFlagCompletionFunc("remote", completeRemotes)
 	rootCmd.AddCommand(addCmd)
 }

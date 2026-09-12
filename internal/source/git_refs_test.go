@@ -247,3 +247,97 @@ func TestFetchAndRefs_CustomRemote(t *testing.T) {
 		}
 	}
 }
+
+func TestParseBranchHistory(t *testing.T) {
+	out := "Cursor Agent\x00<bot@cursor.com>\x00Cursor Agent\x00<bot@cursor.com>\n" +
+		"Ada\x00<ada@example.com>\x00Ada\x00<ada@example.com>\n" +
+		"broken\n" +
+		"\n"
+	refs := parseBranchHistory(out, "cursor/feat")
+	if len(refs) != 2 {
+		t.Fatalf("got %+v", refs)
+	}
+	if refs[0].Name != "cursor/feat" || refs[0].AuthorName != "Cursor Agent" || refs[0].AuthorEmail != "bot@cursor.com" {
+		t.Errorf("wrong first entry: %+v", refs[0])
+	}
+	if refs[1].CommitterName != "Ada" || refs[1].CommitterEmail != "ada@example.com" {
+		t.Errorf("wrong second entry: %+v", refs[1])
+	}
+}
+
+func TestDefaultBranch_PrefersMain(t *testing.T) {
+	origin := t.TempDir()
+	runGit(t, origin, "init", "--bare")
+	repo := initRepo(t)
+	runGit(t, repo, "remote", "add", "origin", origin)
+	runGit(t, repo, "push", "origin", "main")
+
+	src := &GitSource{}
+	base, err := src.DefaultBranch(repo, "origin")
+	if err != nil {
+		t.Fatalf("DefaultBranch: %v", err)
+	}
+	if base != "main" {
+		t.Errorf("DefaultBranch = %q, want main", base)
+	}
+}
+
+func TestDefaultBranch_UnknownRemoteEmpty(t *testing.T) {
+	repo := initRepo(t)
+	src := &GitSource{}
+	base, err := src.DefaultBranch(repo, "origin")
+	if err != nil {
+		t.Fatalf("DefaultBranch: %v", err)
+	}
+	if base != "" {
+		t.Errorf("expected empty base without remotes, got %q", base)
+	}
+}
+
+func TestBranchHistory_ExclusiveOnly(t *testing.T) {
+	origin := t.TempDir()
+	runGit(t, origin, "init", "--bare")
+	repo := initRepo(t)
+	runGit(t, repo, "remote", "add", "origin", origin)
+	runGit(t, repo, "push", "origin", "main")
+	// Bot authors the tip, human commits underneath — cursor-agent case.
+	pushAsSeparate(t, repo, "cursor/bot-feat", "Cursor Bot", "bot@cursor.com", "Ada", "ada@example.com")
+	runGit(t, repo, "checkout", "-q", "main")
+	pushAs(t, repo, "other/human-feat", "Ada", "ada@example.com")
+
+	src := &GitSource{}
+	if err := src.Fetch(repo, "origin"); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	hist, err := src.BranchHistory(repo, "origin", "cursor/bot-feat", "main", 10)
+	if err != nil {
+		t.Fatalf("BranchHistory: %v", err)
+	}
+	if len(hist) == 0 {
+		t.Fatal("expected exclusive commits")
+	}
+	foundHuman := false
+	for _, h := range hist {
+		if h.Name != "cursor/bot-feat" {
+			t.Errorf("history entry wrong branch: %+v", h)
+		}
+		if h.CommitterEmail == "ada@example.com" || h.AuthorEmail == "ada@example.com" {
+			foundHuman = true
+		}
+		// Mainline-only author must not leak into exclusive history.
+		if h.AuthorName == "t" && h.AuthorEmail == "t@t" && len(hist) == 1 {
+			t.Errorf("exclusive history should not be just mainline: %+v", h)
+		}
+	}
+	if !foundHuman {
+		t.Errorf("exclusive history missing human commit: %+v", hist)
+	}
+	// Main itself has no exclusive commits.
+	mainHist, err := src.BranchHistory(repo, "origin", "main", "main", 10)
+	if err != nil {
+		t.Fatalf("BranchHistory main: %v", err)
+	}
+	if len(mainHist) != 0 {
+		t.Errorf("main exclusive history should be empty, got %+v", mainHist)
+	}
+}

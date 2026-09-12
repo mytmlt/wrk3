@@ -29,8 +29,8 @@ fetches from the network — it uses the last `fetch` results.
 ```bash
 wrk3 fetch                          # git fetch --prune, list origin/* refs
 wrk3 fetch --remote upstream        # same against upstream (default: source.git.remote, else origin)
-wrk3 fetch --mine                   # only branches whose tip commit author or committer matches git config user.name/user.email
-wrk3 fetch --author alice           # substring match on author/committer name/email (case-insensitive; repeatable, comma-split)
+wrk3 fetch --mine                   # only your branches: tip or last 100 branch-exclusive commits match git config user.name/user.email (covers bot/cursor tips you pushed)
+wrk3 fetch --author alice           # substring match on author/committer name/email in tip or history (case-insensitive; repeatable, comma-split)
 wrk3 add feature-a feature-b        # worktree add + ports + .env ensure
 wrk3 add                            # bare = interactive picker over remote branches
 wrk3 add --remote upstream --mine   # fetch upstream, create all my branches (skip registered/checked-out)
@@ -48,6 +48,8 @@ wrk3 logs feature-a [-f]            # entry.logs command
 wrk3 exec feature-a -- <cmd...>     # run inside worktree env (cwd=worktree)
 wrk3 down feature-a | wrk3 down     # bare = all including main
 wrk3 remove feature-a feature-b | wrk3 remove --all   # compose down -v + worktree remove + state cleanup (never touches main)
+wrk3 dashboard                       # interactive TUI: worktrees + branches + ports, up/down/add/remove
+wrk3 dashboard --project myapp       # same, starting from a registered project
 wrk3 update --check                 # show latest release without installing
 wrk3 update                         # install latest over the current binary (sha256 verified)
 ```
@@ -62,6 +64,21 @@ in `up`/`down` (bare = all including main), `status`/`ls`, and as an
 `exec`/`logs` target by branch/slug. It uses reserved port index `-1`
 (e.g. `7900` with defaults) with the managed `.env` section ensured on `up`/`down`/`exec`;
 `remove` refuses main and `remove --all` covers only managed worktrees.
+
+## Dashboard (TUI)
+
+`wrk3 dashboard` opens an interactive view over the current repo plus every
+registered project (`tab` switches projects). It polls worktree state and
+remote branches (default every 15s, `--poll 0` disables), shows the worktree
+table with ports and the next free `app` port, and runs the same operations
+as the CLI: `space` selects, `u`/`d` up/down (cursor worktree when nothing
+is selected), `a` adds queued branches, `x` removes (asks `y/n`, refuses
+main like `remove`), `r` refreshes state, `R` fetches the remote
+(`--remote`/`--mine`/`--author` filter the branch list, `m` toggles mine),
+`1`/`2` or `←`/`→` switch panes, `?` shows all keys, `q` quits.
+
+The CLI keeps working alongside it: `wrk3 add` in another terminal shows
+up on the next poll or manual refresh.
 
 ## Examples
 

@@ -32,6 +32,10 @@ projects. `status` shows every worktree, branch, and port at a glance.
 - **Shell completion** — `wrk3 completion <bash|zsh|fish|powershell>` plus
   dynamic branch/worktree/project completion for `add`/`up`/`down`/`logs`/`exec`/`remove`/`ls --project`.
 - **Single static binary** — Go, no runtime deps besides `git` and `docker`.
+- **Interactive dashboard** — `wrk3 dashboard` polls worktrees, remote
+  branches, and ports across the current repo and registered projects
+  (`tab` switches), with `up`/`down`/`add`/`remove` from the keyboard.
+  The CLI keeps working alongside it.
 
 ## Install
 
@@ -72,8 +76,8 @@ $EDITOR wrk3.yaml   # config lives in the repo root
 
 # 2. Fetch remote branches, create two isolated worktrees (run inside the repo)
 wrk3 fetch
-wrk3 fetch --mine                    # only your branches (tip author or committer = git config user.name/user.email)
-wrk3 fetch --author alice            # substring match on author/committer name/email
+wrk3 fetch --mine                    # only your branches (tip or last 100 branch-exclusive commits match git config user)
+wrk3 fetch --author alice            # substring match on author/committer name/email (tip or history)
 wrk3 add feature-a feature-b
 # or pick interactively: wrk3 add
 # or bulk-create from a remote: wrk3 add --remote upstream --mine
@@ -83,6 +87,7 @@ wrk3 up
 
 # 4. Inspect, tail, run commands
 wrk3 status
+wrk3 dashboard                  # or drive it all from the TUI
 wrk3 ls --project myapp   # same worktrees from any dir (after add registers it)
 wrk3 project ls           # all registered projects
 wrk3 logs feature-a -f
