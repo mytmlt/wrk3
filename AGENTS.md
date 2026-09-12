@@ -52,7 +52,11 @@ hermetic (temp git repos, temp dirs — no network).
   `-f/--file <path>` > upward scan from cwd for `wrk3.yaml`, then `wrk3.yml`
   (nearest directory wins). No registry, no env var — like `docker compose`.
 - For config-authoring questions (new stack, broken config, port mapping),
-  follow `skills/wrk3-setup/SKILL.md`.
+  follow the skills in the standalone `wrk3-skills` repo
+  (`../wrk3-skills/skills/wrk3-compat/SKILL.md` for the read-only
+  compose/local-setup compatibility triage, then
+  `../wrk3-skills/skills/wrk3-setup/SKILL.md` to author the config).
+  See `skills/README.md`.
 
 ## Verifying behavior changes
 
