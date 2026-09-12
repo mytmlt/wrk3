@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Dashboard redesign: worktrees and remote branches render as real
+  `bubbles/table` tables (aligned columns, scrolling viewport around the
+  cursor, no more 20-row truncation) inside bordered panes — side-by-side
+  on wide terminals (≥132 cols), stacked below that. The shortcut bar is
+  now always visible (two lines: navigate + act, `?` for the grouped full
+  help), the log is a scrolling viewport, and the focused pane gets the
+  accent border and cursor style. No key semantics changed.
+
 ## [0.6.0] - 2026-09-12
 
 ### Added

@@ -292,6 +292,93 @@ func TestDashboardModel_TabCyclesProjects(t *testing.T) {
 	}
 }
 
+func TestDashboardKeys_ShortAndFullHelp(t *testing.T) {
+	keys := newDashboardKeys()
+	short := keys.ShortHelp()
+	if len(short) == 0 {
+		t.Fatal("ShortHelp must not be empty (sticky shortcut bar)")
+	}
+	for _, b := range short {
+		if !b.Enabled() {
+			t.Errorf("short-help binding %q must be enabled", b.Help().Key)
+		}
+	}
+	full := keys.FullHelp()
+	if len(full) != 4 {
+		t.Errorf("FullHelp groups = %d, want 4", len(full))
+	}
+}
+
+func dashboardViewModel(t *testing.T) dashboardModel {
+	t.Helper()
+	m := testDashboardModel()
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfig(t, repo)
+	m.projects[0].cfg = cfg
+	m.projects[0].remote = "origin"
+	m.keys = newDashboardKeys()
+	m.log = []string{"dashboard started — r refresh, R fetch, ? help"}
+	return m
+}
+
+func TestDashboardView_TablesAndHelp(t *testing.T) {
+	m := dashboardViewModel(t)
+	out := m.View()
+	for _, want := range []string{
+		"wrk3 dashboard", "myapp",
+		"WORKTREES", "REMOTE BRANCHES", "LOG",
+		"WORKTREE", "BRANCH", "STATUS", "APP", "PROJECT", "STATE",
+		"feature-a", "feature-b", "pr-1", "pr-2",
+		"running", "stopped", "registered",
+		"space", "select", "quit", "dashboard started",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("view missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "truncated to 20") {
+		t.Errorf("branch list must scroll via the table, not truncate:\n%s", out)
+	}
+}
+
+func TestDashboardView_FullHelp(t *testing.T) {
+	m := dashboardViewModel(t)
+	m.showHelp = true
+	m.help.ShowAll = true
+	out := m.View()
+	for _, want := range []string{"project", "myprs", "remove", "refresh"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("full help missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestDashboardView_WideAndNarrow(t *testing.T) {
+	for _, w := range []int{80, 140, 200} {
+		m := dashboardViewModel(t)
+		m.width, m.height = w, 40
+		out := m.View()
+		if !strings.Contains(out, "feature-a") || !strings.Contains(out, "pr-1") {
+			t.Errorf("width %d: view missing rows:\n%s", w, out)
+		}
+	}
+}
+
+func TestDashboardView_MainMarkerAndSelection(t *testing.T) {
+	m := dashboardViewModel(t)
+	m.rows = append(m.rows, dashboardRow{
+		Rec:    ports.WorktreeRecord{Branch: "main", Slug: "main", Index: mainWorktreeIndex},
+		Status: "running", App: "8000", IsMain: true,
+	})
+	m.workSel["feature-a"] = true
+	out := m.View()
+	for _, want := range []string{"(main)", "[x]"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("view missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestDashboardView_Smoke(t *testing.T) {
 	m := testDashboardModel()
 	// View needs a loaded project; stub a minimal one via temp config.

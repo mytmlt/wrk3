@@ -79,7 +79,9 @@ is selected), `a` adds queued branches, `x` removes (asks `y/n`, refuses
 main like `remove`), `r` refreshes state, `R` fetches the remote
 (`--remote`/`--mine`/`--author`/`--myprs` filter the branch list, `m`
 toggles mine, `P` toggles myprs), `1`/`2` or `←`/`→` switch panes, `?`
-shows all keys, `q` quits.
+shows all keys, `q` quits. Worktrees and branches render as tables in
+bordered panes (side-by-side on terminals ≥132 cols, stacked otherwise),
+the shortcut bar is always visible at the bottom, and the log scrolls.
 
 The CLI keeps working alongside it: `wrk3 add` in another terminal shows
 up on the next poll or manual refresh.

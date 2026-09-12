@@ -9,7 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
@@ -160,6 +164,9 @@ type dashboardModel struct {
 	height     int
 	spinner    spinner.Model
 	showHelp   bool
+	keys       dashboardKeys
+	help       help.Model
+	logView    viewport.Model
 }
 
 func newDashboardModel(descs []dashboardProjectDesc, poll time.Duration, remote string, mine bool, authors []string, myprs bool) dashboardModel {
@@ -169,6 +176,11 @@ func newDashboardModel(descs []dashboardProjectDesc, poll time.Duration, remote 
 	}
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
+	lv := viewport.New(78, dashboardLogHeight)
+	lv.SetContent("dashboard started — r refresh, R fetch, ? help")
+	lv.GotoBottom()
+	hp := help.New()
+	hp.ShowAll = false
 	return dashboardModel{
 		projects: projects,
 		workSel:  map[string]bool{},
@@ -178,6 +190,9 @@ func newDashboardModel(descs []dashboardProjectDesc, poll time.Duration, remote 
 		authors:  append([]string(nil), authors...),
 		myprs:    myprs,
 		spinner:  sp,
+		keys:     newDashboardKeys(),
+		help:     hp,
+		logView:  lv,
 		log:      []string{"dashboard started — r refresh, R fetch, ? help"},
 	}
 }
@@ -646,6 +661,7 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "?":
 		m.showHelp = !m.showHelp
+		m.help.ShowAll = m.showHelp
 		return m, nil
 	case "tab":
 		if len(m.projects) > 1 {
@@ -823,15 +839,205 @@ func branchesOf(recs []ports.WorktreeRecord) string {
 }
 
 // View.
-var (
-	dashTitleStyle = lipgloss.NewStyle().Bold(true)
-	dashSelStyle   = lipgloss.NewStyle().Bold(true)
-	dashDimStyle   = lipgloss.NewStyle().Faint(true)
-	dashErrStyle   = lipgloss.NewStyle().Bold(true)
+
+// Layout tuning: side-by-side panes need roughly this many columns;
+// narrower terminals stack the panes vertically instead.
+const (
+	dashboardWideLayout = 132
+	dashboardLogHeight  = 5
 )
 
-func (m dashboardModel) View() string {
-	var b strings.Builder
+// Dashboard key bindings. They double as the always-visible shortcut bar:
+// the footer renders ShortHelp, `?` toggles the full grouped view. The
+// bindings are display-only; handleKey still owns dispatch so selection
+// and op semantics stay in one place (and stay unit-testable).
+type dashboardKeys struct {
+	Move, Select, Pane, Project   key.Binding
+	OpUp, OpDown, OpAdd, OpRemove key.Binding
+	Refresh, Fetch, Mine, MyPRS   key.Binding
+	Help, Quit                    key.Binding
+}
+
+func newDashboardKeys() dashboardKeys {
+	return dashboardKeys{
+		Move:     key.NewBinding(key.WithKeys("j", "k", "up", "down"), key.WithHelp("j/k", "move")),
+		Select:   key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "select")),
+		Pane:     key.NewBinding(key.WithKeys("1", "2", "left", "right"), key.WithHelp("1/2", "pane")),
+		Project:  key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "project")),
+		OpUp:     key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "up")),
+		OpDown:   key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "down")),
+		OpAdd:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
+		OpRemove: key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "remove")),
+		Refresh:  key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
+		Fetch:    key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "fetch")),
+		Mine:     key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "mine")),
+		MyPRS:    key.NewBinding(key.WithKeys("P"), key.WithHelp("P", "myprs")),
+		Help:     key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "keys")),
+		Quit:     key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+	}
+}
+
+// ShortHelp implements help.KeyMap: the sticky shortcut bar, first line
+// (navigation). The bar is split in two so every shortcut stays visible
+// on 80-column terminals; the help bubble would otherwise truncate the
+// tail (hiding `q quit`).
+func (k dashboardKeys) ShortHelp() []key.Binding {
+	return []key.Binding{k.Move, k.Select, k.Pane, k.Project, k.Help, k.Quit}
+}
+
+// ActHelp is the second sticky-bar line (worktree/branch operations).
+func (k dashboardKeys) ActHelp() []key.Binding {
+	return []key.Binding{
+		k.OpUp, k.OpDown, k.OpAdd, k.OpRemove,
+		k.Refresh, k.Fetch, k.Mine, k.MyPRS,
+	}
+}
+
+// FullHelp implements help.KeyMap: the `?` overlay groups.
+func (k dashboardKeys) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.Move, k.Select, k.Pane, k.Project},
+		{k.OpUp, k.OpDown, k.OpAdd, k.OpRemove},
+		{k.Refresh, k.Fetch, k.Mine, k.MyPRS},
+		{k.Help, k.Quit},
+	}
+}
+
+// dashboardWorkColumns scales the text columns to the available width so
+// the table never exceeds its pane: ✓/STATUS/APP have fixed widths, the
+// rest split 25/45/30 across WORKTREE/BRANCH/PROJECT.
+func dashboardWorkColumns(width int) []table.Column {
+	rest := max(width-3-9-6-12, 30)
+	wt := max(rest*25/100, 8)
+	br := max(rest*45/100, 12)
+	pr := max(rest-wt-br, 8)
+	return []table.Column{
+		{Title: "✓", Width: 3},
+		{Title: "WORKTREE", Width: wt},
+		{Title: "BRANCH", Width: br},
+		{Title: "STATUS", Width: 9},
+		{Title: "APP", Width: 6},
+		{Title: "PROJECT", Width: pr},
+	}
+}
+
+// dashboardBranchColumns gives everything left after ✓/STATE/padding to
+// the BRANCH column.
+func dashboardBranchColumns(width int) []table.Column {
+	br := max(width-3-13-6, 20)
+	return []table.Column{
+		{Title: "✓", Width: 3},
+		{Title: "BRANCH", Width: br},
+		{Title: "STATE", Width: 13},
+	}
+}
+
+var (
+	dashTitleStyle = lipgloss.NewStyle().Bold(true).
+			Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).
+			Padding(0, 1)
+	dashMetaStyle    = lipgloss.NewStyle().Faint(true)
+	dashDimStyle     = lipgloss.NewStyle().Faint(true)
+	dashErrStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))
+	dashConfirmStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11"))
+
+	dashPaneTitleFocused = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+	dashPaneTitleBlurred = lipgloss.NewStyle().Bold(true).Faint(true)
+	dashLogTitleStyle    = lipgloss.NewStyle().Bold(true).Faint(true)
+)
+
+// dashboardPaneStyle borders a pane; the focused one gets the accent
+// border so the active pane is obvious at a glance.
+func dashboardPaneStyle(focused bool) lipgloss.Style {
+	if focused {
+		return lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("62")).
+			Padding(0, 1)
+	}
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(0, 1)
+}
+
+// dashboardTableStyles keeps header/cell padding identical so the cursor
+// row never shifts the columns; only the focused pane gets the bright
+// cursor style.
+func dashboardTableStyles(focused bool) table.Styles {
+	s := table.DefaultStyles()
+	s.Header = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("244")).Padding(0, 1)
+	s.Cell = lipgloss.NewStyle().Padding(0, 1)
+	if focused {
+		s.Selected = lipgloss.NewStyle().Bold(true).
+			Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).
+			Padding(0, 1)
+	} else {
+		s.Selected = lipgloss.NewStyle().Faint(true).Padding(0, 1)
+	}
+	return s
+}
+
+// buildWorkTable renders the worktree pane as a real table: aligned
+// columns, a scrolling viewport around the cursor, and a ✓ marker column
+// for the multi-select set. Cell values stay plain text on purpose —
+// bubbles/table truncates with runewidth (not ANSI-aware), so embedded
+// color codes would break column alignment.
+func (m dashboardModel) buildWorkTable(width, height int, focused bool) table.Model {
+	t := table.New(
+		table.WithColumns(dashboardWorkColumns(width)),
+		table.WithFocused(false),
+		table.WithStyles(dashboardTableStyles(focused)),
+	)
+	rows := make([]table.Row, 0, len(m.rows))
+	for _, row := range m.rows {
+		box := "[ ]"
+		if m.workSel[row.Rec.Branch] {
+			box = "[x]"
+		}
+		branch := row.Rec.Branch
+		if row.IsMain {
+			branch += " (main)"
+		}
+		rows = append(rows, table.Row{box, row.Rec.Slug, branch, row.Status, row.App, row.Rec.ComposeProject})
+	}
+	t.SetRows(rows)
+	t.SetWidth(max(width, 10))
+	t.SetHeight(max(height, 4))
+	t.SetCursor(m.workCursor)
+	return t
+}
+
+// buildBranchTable renders the remote-branch pane: queued branches get
+// [x], already-registered/checked-out ones [·] with their STATE so it is
+// obvious why they cannot be queued.
+func (m dashboardModel) buildBranchTable(width, height int, focused bool) table.Model {
+	t := table.New(
+		table.WithColumns(dashboardBranchColumns(width)),
+		table.WithFocused(false),
+		table.WithStyles(dashboardTableStyles(focused)),
+	)
+	rows := make([]table.Row, 0, len(m.branches))
+	for _, e := range m.branches {
+		box, state := "[ ]", "new"
+		switch {
+		case e.Registered:
+			box, state = "[·]", "registered"
+		case e.CheckedOut:
+			box, state = "[·]", "checked out"
+		case m.brSel[e.Name]:
+			box = "[x]"
+		}
+		rows = append(rows, table.Row{box, e.Name, state})
+	}
+	t.SetRows(rows)
+	t.SetWidth(max(width, 10))
+	t.SetHeight(max(height, 4))
+	t.SetCursor(m.brCursor)
+	return t
+}
+
+func (m dashboardModel) dashboardTitle() string {
 	p := m.curProject()
 	title := "wrk3 dashboard"
 	if p != nil {
@@ -843,16 +1049,11 @@ func (m dashboardModel) View() string {
 	if m.busy {
 		title += "  " + m.spinner.View() + " " + m.busyLabel + "…"
 	}
-	b.WriteString(dashTitleStyle.Render(title) + "\n")
-	if p == nil || p.loadErr != nil || p.cfg == nil {
-		err := "project not loaded"
-		if p != nil && p.loadErr != nil {
-			err = p.loadErr.Error()
-		}
-		b.WriteString(dashErrStyle.Render(err) + "\n")
-		b.WriteString(dashboardHelpFooter(m))
-		return b.String()
-	}
+	return title
+}
+
+func (m dashboardModel) dashboardMeta() string {
+	p := m.curProject()
 	fetchInfo := "never"
 	if !m.fetchedAt.IsZero() {
 		fetchInfo = m.fetchedAt.Format("15:04:05")
@@ -866,20 +1067,31 @@ func (m dashboardModel) View() string {
 	if len(m.authors) > 0 {
 		filterInfo += " authors=" + strings.Join(m.authors, ",")
 	}
-	fmt.Fprintf(&b, "remote %s · fetch %s · poll %s · next app port %d · %s (m toggles mine, P toggles myprs)\n",
+	return fmt.Sprintf("remote %s · fetch %s · poll %s · next app port %d · %s (m toggles mine, P toggles myprs)",
 		p.remote, fetchInfo, pollInfo, next, filterInfo)
+}
 
-	b.WriteString("\n" + m.worktreePane() + "\n")
-	b.WriteString("\n" + m.branchPane() + "\n")
-	b.WriteString("\n" + m.logPane() + "\n")
-	if m.statusMsg != "" {
-		b.WriteString(dashErrStyle.Render(m.statusMsg) + "\n")
+// helpKeys guards zero-value models (tests build dashboardModel
+// literally): fall back to the default set so the bar always renders.
+func (m dashboardModel) helpKeys() dashboardKeys {
+	if m.keys.Move.Enabled() {
+		return m.keys
 	}
-	if m.confirm != "" {
-		fmt.Fprintf(&b, "confirm %s %s? press y/n\n", m.confirm, strings.Join(m.pendingX, ", "))
+	return newDashboardKeys()
+}
+
+func (m dashboardModel) helpBar(width int) string {
+	hp := m.help
+	if hp.ShortSeparator == "" {
+		hp = help.New()
 	}
-	b.WriteString(dashboardHelpFooter(m))
-	return b.String()
+	hp.ShowAll = m.showHelp
+	hp.Width = width
+	keys := m.helpKeys()
+	if m.showHelp {
+		return hp.FullHelpView(keys.FullHelp())
+	}
+	return hp.ShortHelpView(keys.ShortHelp()) + "\n" + hp.ShortHelpView(keys.ActHelp())
 }
 
 func stateRecsOf(rows []dashboardRow) []ports.WorktreeRecord {
@@ -893,104 +1105,103 @@ func stateRecsOf(rows []dashboardRow) []ports.WorktreeRecord {
 	return out
 }
 
-func (m dashboardModel) worktreePane() string {
-	var b strings.Builder
-	head := "WORKTREES (1)"
-	if m.pane == 0 {
-		head = dashSelStyle.Render("WORKTREES (1) ●")
+func (m dashboardModel) worktreePane(width, height int) string {
+	focused := m.pane == 0
+	title := "WORKTREES (1)"
+	if focused {
+		title = dashPaneTitleFocused.Render("WORKTREES (1) ●")
+	} else {
+		title = dashPaneTitleBlurred.Render("WORKTREES (1)")
 	}
-	b.WriteString(head + "\n")
-	b.WriteString("WORKTREE  BRANCH  STATUS  APP  COMPOSE_PROJECT\n")
+	body := m.buildWorkTable(max(width-2, 10), height, focused).View()
 	if len(m.rows) == 0 {
-		b.WriteString(dashDimStyle.Render("  (no worktrees — queue branches below, press a)") + "\n")
-		return b.String()
+		body += "\n" + dashDimStyle.Render("  (no worktrees — queue branches below, press a)")
 	}
-	for i, row := range m.rows {
-		cursor := "  "
-		if m.pane == 0 && i == m.workCursor {
-			cursor = "> "
-		}
-		box := "[ ]"
-		if m.workSel[row.Rec.Branch] {
-			box = "[x]"
-		}
-		main := ""
-		if row.IsMain {
-			main = " (main)"
-		}
-		line := fmt.Sprintf("%s%s %s  %s  %s  %s  %s%s", cursor, box,
-			row.Rec.Slug, row.Rec.Branch, row.Status, row.App, row.Rec.ComposeProject, main)
-		if row.Stale {
-			line = dashDimStyle.Render(line)
-		} else if m.pane == 0 && i == m.workCursor {
-			line = dashSelStyle.Render(line)
-		}
-		b.WriteString(line + "\n")
-	}
-	return b.String()
+	return dashboardPaneStyle(focused).Width(width).Render(title + "\n" + body)
 }
 
-func (m dashboardModel) branchPane() string {
-	var b strings.Builder
-	head := "REMOTE BRANCHES (2)"
-	if m.pane == 1 {
-		head = dashSelStyle.Render("REMOTE BRANCHES (2) ●")
+func (m dashboardModel) branchPane(width, height int) string {
+	focused := m.pane == 1
+	title := "REMOTE BRANCHES (2)"
+	if focused {
+		title = dashPaneTitleFocused.Render("REMOTE BRANCHES (2) ●")
+	} else {
+		title = dashPaneTitleBlurred.Render("REMOTE BRANCHES (2)")
 	}
-	b.WriteString(head + "\n")
+	body := m.buildBranchTable(max(width-2, 10), height, focused).View()
 	if len(m.branches) == 0 {
-		b.WriteString(dashDimStyle.Render("  (no branches — press R to fetch)") + "\n")
+		body += "\n" + dashDimStyle.Render("  (no branches — press R to fetch)")
+	}
+	return dashboardPaneStyle(focused).Width(width).Render(title + "\n" + body)
+}
+
+func (m dashboardModel) logPane(width int) string {
+	lv := m.logView
+	lv.Width = max(width-2, 10)
+	lv.Height = dashboardLogHeight
+	// Re-render from the model log each frame: viewport is view state,
+	// m.log stays the source of truth.
+	lv.SetContent(strings.Join(m.log, "\n"))
+	lv.GotoBottom()
+	return dashboardPaneStyle(false).Width(width).Render(
+		dashLogTitleStyle.Render("LOG") + "\n" + lv.View())
+}
+
+func (m dashboardModel) View() string {
+	w := m.width
+	if w <= 0 {
+		w = 80
+	}
+	h := m.height
+	if h <= 0 {
+		h = 24
+	}
+	var b strings.Builder
+	b.WriteString(dashTitleStyle.Width(w).MaxWidth(w).Render(m.dashboardTitle()) + "\n")
+	p := m.curProject()
+	if p == nil || p.loadErr != nil || p.cfg == nil {
+		err := "project not loaded"
+		if p != nil && p.loadErr != nil {
+			err = p.loadErr.Error()
+		}
+		b.WriteString(dashErrStyle.Render(err) + "\n")
+		b.WriteString(m.helpBar(w) + "\n")
 		return b.String()
 	}
-	shown := 0
-	for i, e := range m.branches {
-		if shown >= 20 && i < len(m.branches)-1 {
-			fmt.Fprintf(&b, "  … %d more (fetch list truncated to 20)\n", len(m.branches)-shown)
-			break
-		}
-		shown++
-		cursor := "  "
-		if m.pane == 1 && i == m.brCursor {
-			cursor = "> "
-		}
-		var line string
-		switch {
-		case e.Registered:
-			line = dashDimStyle.Render(fmt.Sprintf("%s[·] %s (registered)", cursor, e.Name))
-		case e.CheckedOut:
-			line = dashDimStyle.Render(fmt.Sprintf("%s[·] %s (checked out)", cursor, e.Name))
-		default:
-			box := "[ ]"
-			if m.brSel[e.Name] {
-				box = "[x]"
-			}
-			line = fmt.Sprintf("%s%s %s", cursor, box, e.Name)
-			if m.pane == 1 && i == m.brCursor {
-				line = dashSelStyle.Render(line)
-			}
-		}
-		b.WriteString(line + "\n")
-	}
-	return b.String()
-}
+	b.WriteString(dashMetaStyle.Render(m.dashboardMeta()) + "\n\n")
 
-func (m dashboardModel) logPane() string {
-	var b strings.Builder
-	b.WriteString("LOG\n")
-	tail := m.log
-	if len(tail) > 8 {
-		tail = tail[len(tail)-8:]
-	}
-	for _, l := range tail {
-		b.WriteString("  " + l + "\n")
-	}
-	return b.String()
-}
+	// Vertical budget: header (2) + gap (1) + footer (help 1-2 + status
+	// 0-1 + confirm 0-1, reserve 4) + log box + body split.
+	const footerReserve = 4
+	logBoxH := dashboardLogHeight + 3 // title + viewport + border
+	bodyH := max(h-2-1-footerReserve-logBoxH-1, 8)
 
-func dashboardHelpFooter(m dashboardModel) string {
-	if m.showHelp {
-		return "keys: j/k move · space select · 1/2 or ←/→ pane · tab project · u up · d down · a add queued · x remove (confirm y/n) · r refresh · R fetch · m mine-filter · P myprs-filter (GitHub, via gh) · ? help · q quit\n"
+	if w >= dashboardWideLayout {
+		// lazydocker-style: worktrees left, branches right.
+		workBoxW := w*3/5 - 1
+		brBoxW := w - workBoxW - 1
+		tableH := max(bodyH-3, 4) // pane title + borders
+		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top,
+			m.worktreePane(workBoxW-2, tableH),
+			" ",
+			m.branchPane(brBoxW-2, tableH),
+		) + "\n")
+	} else {
+		workH := max(bodyH*3/5, 4)
+		brH := max(bodyH-workH, 4)
+		b.WriteString(m.worktreePane(w-2, max(workH-3, 4)) + "\n")
+		b.WriteString(m.branchPane(w-2, max(brH-3, 4)) + "\n")
 	}
-	return "q quit · 1/2 pane · space select · u/d up/down · a add · x remove · r refresh · R fetch · m mine · P myprs · tab project · ? help\n"
+	b.WriteString("\n" + m.logPane(w-2) + "\n")
+	if m.statusMsg != "" {
+		b.WriteString(dashErrStyle.Render(m.statusMsg) + "\n")
+	}
+	if m.confirm != "" {
+		fmt.Fprintf(&b, "%s\n", dashConfirmStyle.Render(
+			fmt.Sprintf("confirm %s %s? press y/n", m.confirm, strings.Join(m.pendingX, ", "))))
+	}
+	b.WriteString(m.helpBar(w) + "\n")
+	return b.String()
 }
 
 func max(a, b int) int {
