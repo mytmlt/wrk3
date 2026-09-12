@@ -163,9 +163,9 @@ func recordsForDisplay(cfg *config.Config) ([]ports.WorktreeRecord, error) {
 	return recordsWithMain(r, recs)
 }
 
-// ensureMainEnv writes .env for the implicit main checkout so entry
-// commands and compose see allocated ports. No-op for managed worktrees
-// (their .env is written at add time).
+// ensureMainEnv upserts managed .env keys for the implicit main checkout
+// so entry commands and compose see allocated ports. No-op for managed
+// worktrees (their .env is upserted at add time).
 func ensureMainEnv(r *resolved, rec ports.WorktreeRecord) error {
 	if !isMainPath(r, rec.AbsPath) {
 		return nil

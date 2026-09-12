@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mytmlt/wrk3/internal/config"
@@ -242,5 +243,33 @@ func TestEnsureMainEnv_WritesDotEnv(t *testing.T) {
 	}
 	if len(content) == 0 {
 		t.Error("empty .env")
+	}
+}
+
+func TestEnsureMainEnv_PreservesSecrets(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfig(t, repo)
+	r := &resolved{cfg: cfg, src: &source.GitSource{}}
+	rec, err := mainRecord(r, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret := "SECRET=topsecret\n"
+	if err := os.WriteFile(filepath.Join(repo, ".env"), []byte(secret), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureMainEnv(r, *rec); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(repo, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(content)
+	if !strings.Contains(s, secret) {
+		t.Errorf("secret lost from main .env.\n%s", s)
+	}
+	if !strings.Contains(s, "APP_PORT=7900\n") {
+		t.Errorf("managed APP_PORT missing from main .env.\n%s", s)
 	}
 }

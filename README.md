@@ -21,8 +21,9 @@ projects. `status` shows every worktree, branch, and port at a glance.
   behind a `Runner` interface (`docker` ships; `portainer`/`nomad` stubs
   return `not implemented`).
 - **Deterministic ports** — `allocated = base + index * step` per port name,
-  written to each worktree's `.env`; `status` reads them back from the state
-  file (`?`/`stale` when the directory is missing).
+  upserted into each worktree's `.env` (managed keys updated in place or
+  appended; your other lines and secrets are never touched); `status` reads
+  them back from the state file (`?`/`stale` when the directory is missing).
 - **Compose-style config** — wrk3 finds `wrk3.yaml`/`wrk3.yml`
   walking up from cwd (`-f/--file` to override), so it works from any
   subdirectory. `add` auto-registers the repo for `project ls` /
@@ -128,7 +129,8 @@ Full field reference, port table, `.env` mapping, and multi-project patterns:
 
 1. `wrk3 add <branch>` → `git worktree add <base>/<slug>` (tracking
    `<remote>/<branch>` when remote-only), assigns the
-   next index, allocates `base + index*step` ports, writes `.env`, appends
+   next index, allocates `base + index*step` ports, upserts managed keys into
+   `.env` (never overwrites your secrets), appends
    `{branch, slug, absPath, index, ports, composeProject, status}` to
    `<worktreeBase>/.wrk3-state.json` (absolute paths → cwd-independent).
    `add --remote <name> [--mine]` bulk-creates from a remote (default:
@@ -138,7 +140,7 @@ Full field reference, port table, `.env` mapping, and multi-project patterns:
     `env=ports`), then `docker compose -p <prefix>-<slug> up`, then
     `entry.run` — in parallel across worktrees via errgroup with prefixed logs.
     Bare `up`/`down` apply to all worktrees including the implicit main
-    checkout (repo root, reserved port index -1, `.env` written on run);
+    checkout (repo root, reserved port index -1, managed `.env` keys upserted on run);
     pass names to filter.
 3. `wrk3 status` → reads the state file plus the implicit main checkout,
     probes live runner status, prints

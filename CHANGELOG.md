@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `.env` handling no longer overwrites secrets: `add`/`up`/`down`/`exec`
+  upsert only wrk3-managed keys (`<NAME>_PORT`, `BASE_URL`,
+  `WEBHOOKS_BASE_URL`, `ALLOWED_WS_ORIGINS`) into an existing `.env`
+  (updated in place or appended under a `# Managed by wrk3` marker),
+  preserving all other lines. `remove` strips only managed keys instead of
+  deleting the file.
+
 ### Added
 
 - Main checkout (repo root) is now included implicitly in `up`/`down`

@@ -21,7 +21,7 @@ var (
 
 var addCmd = &cobra.Command{
 	Use:               "add [branch...] | --select | --local | --remote <name> [--mine]",
-	Short:             "worktree add + port assign + .env write (bare = select)",
+	Short:             "worktree add + port assign + .env upsert (bare = select)",
 	ValidArgsFunction: completeAddBranches,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		r, err := resolveConfig()
@@ -318,7 +318,7 @@ func lookupLocalBranch(byBranch map[string]string, branchOrSlug string) string {
 	return ""
 }
 
-// addOne creates one worktree: git add + port assign + state + .env.
+// addOne creates one worktree: git add + port assign + state + .env upsert.
 // Remote-only branches are created as tracking branches (--track -b).
 func addOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, branch, remote string) error {
 	slug := source.Slugify(branch)
@@ -351,7 +351,7 @@ func addOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, b
 }
 
 // adoptOne registers one pre-existing worktree path: port assign +
-// state + .env. No git worktree add — the checkout already exists.
+// state + .env upsert. No git worktree add — the checkout already exists.
 func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, branch, path string) error {
 	slug := source.Slugify(branch)
 	if existing := findRecord(*recs, slug); existing != nil && existing.Branch != branch {

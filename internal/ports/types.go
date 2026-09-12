@@ -1,4 +1,5 @@
-// Package ports allocates per-worktree host ports and writes .env files.
+// Package ports allocates per-worktree host ports and upserts managed keys
+// into .env files (other lines are preserved).
 //
 // Allocation rule: allocated = base + index*step per port name. Runtime
 // state lives in <worktreeBase>/.wrk3-state.json with absolute paths
