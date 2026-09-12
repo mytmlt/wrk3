@@ -6,6 +6,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/mytmlt/wrk3/internal/ports"
 	"github.com/mytmlt/wrk3/internal/runner"
 	"github.com/mytmlt/wrk3/internal/source"
+	"github.com/mytmlt/wrk3/internal/update"
 )
 
 var fileFlag string
@@ -46,6 +48,10 @@ var rootCmd = &cobra.Command{
 	Long: `wrk3 runs multiple versions (branches) of the same repo in parallel
 as git worktrees, each isolated with its own ports and container project.`,
 	Version: Version,
+	// Daily update notice: best-effort, never blocks the command.
+	PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+		maybePrintUpdateNotice(cmd)
+	},
 }
 
 // ResolveConfigPath resolves the wrk3.yaml/wrk3.yml to operate on.
@@ -75,4 +81,23 @@ func init() {
 	_ = rootCmd.MarkPersistentFlagFilename("file", "yaml", "yml")
 
 	rootCmd.AddCommand(versionCmd)
+}
+
+// maybePrintUpdateNotice prints the "new version available" hint to stderr.
+// Best-effort and silent on failure: dev builds, help/version output,
+// and the update/version/completion commands themselves never nag.
+func maybePrintUpdateNotice(cmd *cobra.Command) {
+	switch cmd.Name() {
+	case "update", "version", "completion":
+		return
+	}
+	for _, a := range os.Args[1:] {
+		switch a {
+		case "-h", "--help", "-V", "--version":
+			return
+		}
+	}
+	if msg := update.Notice(Version); msg != "" {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), msg)
+	}
 }

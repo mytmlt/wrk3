@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-12
+
+### Added
+
+- `wrk3 update [--version vX.Y.Z] [--check]`: self-update from GitHub
+  releases — downloads the matching prebuilt asset, verifies sha256, and
+  atomically replaces the running binary. No Go toolchain required.
+- Daily update notice: commands print `A new version of wrk3 is
+  available: vX.Y.Z (you have vA.B.C). Run "wrk3 update" to update.` to
+  stderr when GitHub reports a newer release. Cached for 24h in
+  `~/.cache/wrk3/latest-check.json`, 2s timeout, silent offline, skipped
+  for `dev` builds / `version` / `completion` / `update` / `--help`;
+  opt out with `WRK3_NO_UPDATE_CHECK=1`.
+
+### Changed
+
+- `scripts/install.sh` is now fully Go-free: no `go install` fallback
+  (errors with a releases link instead), `X.Y.Z`/`vX.Y.Z` normalization,
+  `--bindir`/`BINDIR` support, `--no-verify` flag, `wget` fallback,
+  permission/PATH hints, and `wrk3 update` as the update path.
+- Install docs (`README.md`, `docs/INSTALL.md`) lead with prebuilt
+  binaries; building from source is documented as developers-only.
+
 ## [0.2.0] - 2026-09-12
 
 ### Added
@@ -117,7 +140,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path-portable and skip linux-only `docker` integration tests on
   Windows so `windows-latest` goes green.
 
-[Unreleased]: https://github.com/mytmlt/wrk3/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/mytmlt/wrk3/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/mytmlt/wrk3/releases/tag/v0.3.0
 [0.2.0]: https://github.com/mytmlt/wrk3/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mytmlt/wrk3/releases/tag/v0.1.0
 [0.0.1]: https://github.com/mytmlt/wrk3/releases/tag/v0.0.1

@@ -48,6 +48,8 @@ wrk3 logs feature-a [-f]            # entry.logs command
 wrk3 exec feature-a -- <cmd...>     # run inside worktree env (cwd=worktree)
 wrk3 down feature-a | wrk3 down     # bare = all
 wrk3 remove feature-a feature-b | wrk3 remove --all   # compose down -v + worktree remove + state cleanup
+wrk3 update --check                 # show latest release without installing
+wrk3 update                         # install latest over the current binary (sha256 verified)
 ```
 
 Branch slugs: `feature/foo` → `feature-foo` (max 50 chars). `add`/`up`/`down`

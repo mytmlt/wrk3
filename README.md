@@ -33,21 +33,29 @@ projects. `status` shows every worktree, branch, and port at a glance.
 
 ## Install
 
-Requires Go ≥ 1.26 only for the `go install` path; `git` and `docker` at
-runtime. Full details: [docs/INSTALL.md](docs/INSTALL.md).
+No Go toolchain needed — `git` and `docker` at runtime
+(docker only for the `docker` runner). Full details:
+[docs/INSTALL.md](docs/INSTALL.md).
 
 ```bash
 # Option 1 — release assets (linux/darwin/windows, checksums verified)
 curl -fsSL https://raw.githubusercontent.com/mytmlt/wrk3/main/scripts/install.sh | bash
 
-# Option 2 — Go toolchain
-go install github.com/mytmlt/wrk3@latest
-wrk3 version
+# Option 2 — download the asset manually from GitHub releases
+# (see docs/INSTALL.md for the verify + install steps)
 
-# Option 3 — from source
+# Option 3 — from source (developers only, requires Go ≥ 1.26)
 git clone https://github.com/mytmlt/wrk3.git && cd wrk3
 make install            # installs to /usr/local/bin (PREFIX overridable)
 wrk3 version
+```
+
+`wrk3` notifies you when a new release exists
+(`WRK3_NO_UPDATE_CHECK=1` to silence) and updates in place:
+
+```bash
+wrk3 update --check
+wrk3 update
 ```
 
 Shell completions: `make completion` then source
