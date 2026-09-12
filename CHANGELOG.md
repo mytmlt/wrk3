@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-12
+
 ### Removed
 
 - **Breaking:** project registry (`project add|list|use|remove|show`,
@@ -86,4 +88,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path-portable and skip linux-only `docker` integration tests on
   Windows so `windows-latest` goes green.
 
+[Unreleased]: https://github.com/mytmlt/wrk3/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/mytmlt/wrk3/releases/tag/v0.1.0
 [0.0.1]: https://github.com/mytmlt/wrk3/releases/tag/v0.0.1
