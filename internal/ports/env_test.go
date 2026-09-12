@@ -82,11 +82,11 @@ func TestRender_CustomPorts(t *testing.T) {
 
 func TestEnvVarForPort(t *testing.T) {
 	cases := map[string]string{
-		"app":    "APP_PORT",
-		"web":    "WEB_PORT",
-		"api-v2": "API_V2_PORT",
+		"app":     "APP_PORT",
+		"web":     "WEB_PORT",
+		"api-v2":  "API_V2_PORT",
 		"dbAdmin": "DBADMIN_PORT",
-		"":       "PORT",
+		"":        "PORT",
 	}
 	for in, want := range cases {
 		if got := EnvVarForPort(in); got != want {
@@ -138,7 +138,7 @@ func TestEnsure_NeverOverridesExisting(t *testing.T) {
 		"# my project\n",
 		"SECRET=topsecret\n",
 		"DATABASE_URL=postgres://u:p@db/x\n",
-		"APP_PORT=9999\n", // left intact, never overwritten
+		"APP_PORT=9999\n",                  // left intact, never overwritten
 		"BASE_URL=http://localhost:8000\n", // missing: appended
 	} {
 		if !strings.Contains(s, want) {

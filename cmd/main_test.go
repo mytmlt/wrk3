@@ -157,7 +157,7 @@ func TestMainRecord_PortCollision(t *testing.T) {
 	// Reserved index collision: state must never hold mainWorktreeIndex.
 	recs := []ports.WorktreeRecord{{
 		Branch: "feature", Slug: "feature", AbsPath: "/other",
-		Index:  mainWorktreeIndex, Ports: map[string]int{"app": 7900},
+		Index: mainWorktreeIndex, Ports: map[string]int{"app": 7900},
 	}}
 	if _, err := mainRecord(r, recs); err == nil {
 		t.Fatal("expected port collision error")
@@ -172,7 +172,7 @@ func TestMainRecord_PortValueCollision(t *testing.T) {
 	r := &resolved{cfg: cfg, src: &source.GitSource{}}
 	recs := []ports.WorktreeRecord{{
 		Branch: "feature", Slug: "feature", AbsPath: "/other",
-		Index:  0, Ports: map[string]int{"app": 8000, "web": 7900},
+		Index: 0, Ports: map[string]int{"app": 8000, "web": 7900},
 	}}
 	if _, err := mainRecord(r, recs); err == nil {
 		t.Fatal("expected port value collision error")
