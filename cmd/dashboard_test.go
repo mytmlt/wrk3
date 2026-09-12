@@ -17,7 +17,7 @@ func TestMapDashboardRows_SortsAndMarksMain(t *testing.T) {
 		{Branch: "feature-a", Slug: "feature-a", Index: 0},
 	}
 	rows := mapDashboardRows(recs, "main", func(r ports.WorktreeRecord) (string, string, bool) {
-		return "running", "8000", false
+		return "running", "app=8000", false
 	})
 	if len(rows) != 3 {
 		t.Fatalf("got %d rows, want 3", len(rows))
@@ -35,7 +35,7 @@ func TestMapDashboardRows_SortsAndMarksMain(t *testing.T) {
 	rows = mapDashboardRows(recs, "main", func(r ports.WorktreeRecord) (string, string, bool) {
 		return "stopped", "?", true
 	})
-	if !rows[2].Stale || rows[2].App != "?" {
+	if !rows[2].Stale || rows[2].Ports != "?" {
 		t.Errorf("statusFn values not propagated: %+v", rows[2])
 	}
 }
@@ -160,8 +160,8 @@ func testDashboardModel() dashboardModel {
 		poll:    0,
 	}
 	m.rows = []dashboardRow{
-		{Rec: ports.WorktreeRecord{Branch: "feature-a", Slug: "feature-a", Index: 0}, Status: "running", App: "8000"},
-		{Rec: ports.WorktreeRecord{Branch: "feature-b", Slug: "feature-b", Index: 1}, Status: "stopped", App: "8100"},
+		{Rec: ports.WorktreeRecord{Branch: "feature-a", Slug: "feature-a", Index: 0}, Status: "running", Ports: "app=8000"},
+		{Rec: ports.WorktreeRecord{Branch: "feature-b", Slug: "feature-b", Index: 1}, Status: "stopped", Ports: "app=8100"},
 	}
 	m.branches = []branchEntry{
 		{Name: "pr-1"},
@@ -327,7 +327,7 @@ func TestDashboardView_TablesAndHelp(t *testing.T) {
 	for _, want := range []string{
 		"wrk3 dashboard", "myapp",
 		"WORKTREES", "REMOTE BRANCHES", "LOG",
-		"WORKTREE", "BRANCH", "STATUS", "APP", "PROJECT", "STATE",
+		"WORKTREE", "BRANCH", "STATUS", "PORTS", "PROJECT", "STATE",
 		"feature-a", "feature-b", "pr-1", "pr-2",
 		"running", "stopped", "registered",
 		"space", "select", "quit", "dashboard started",
@@ -368,7 +368,7 @@ func TestDashboardView_MainMarkerAndSelection(t *testing.T) {
 	m := dashboardViewModel(t)
 	m.rows = append(m.rows, dashboardRow{
 		Rec:    ports.WorktreeRecord{Branch: "main", Slug: "main", Index: mainWorktreeIndex},
-		Status: "running", App: "8000", IsMain: true,
+		Status: "running", Ports: "app=8000", IsMain: true,
 	})
 	m.workSel["feature-a"] = true
 	out := m.View()
@@ -404,7 +404,7 @@ func TestProbeDashboardRows_StaleWithoutDocker(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("got %d rows", len(rows))
 	}
-	if !rows[0].Stale || rows[0].Status != "stale" || rows[0].App != "?" {
+	if !rows[0].Stale || rows[0].Status != "stale" || rows[0].Ports != "?" {
 		t.Errorf("missing dir must be stale/?: %+v", rows[0])
 	}
 }

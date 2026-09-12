@@ -7,8 +7,8 @@
 package ports
 
 // PortApp is the canonical port name. It is required in every allocation:
-// derived URLs (BASE_URL family) build from it and `status` shows it in
-// the APP column. Any additional names in Allocator.Base are allowed and
+// derived URLs (BASE_URL family) build from it and `status` lists it first
+// in the PORTS column. Any additional names in Allocator.Base are allowed and
 // map to generic <NAME>_PORT .env vars.
 const PortApp = "app"
 
@@ -38,6 +38,13 @@ type Allocator struct {
 
 // WorktreeRecord is one entry in <worktreeBase>/.wrk3-state.json.
 // AbsPath is always absolute so commands work from any cwd.
+//
+// Status is the last-known lifecycle state written by up/down:
+// running, stopped, setting up (up in progress), or failed (up error).
+// Display prefers stored transitional/terminal states (setting up,
+// failed) over the live runner probe so the table stays honest while
+// setup/run entries are still executing. "stale" and "unknown" are
+// display-only and never persisted.
 type WorktreeRecord struct {
 	Branch         string         `json:"branch"`
 	Slug           string         `json:"slug"`
@@ -46,6 +53,20 @@ type WorktreeRecord struct {
 	Ports          map[string]int `json:"ports"`
 	ComposeProject string         `json:"composeProject"`
 	Status         string         `json:"status"`
+}
+
+// Stored lifecycle states for WorktreeRecord.Status.
+const (
+	StatusRunning   = "running"
+	StatusStopped   = "stopped"
+	StatusSettingUp = "setting up"
+	StatusFailed    = "failed"
+)
+
+// StoredStatusOverridesLive reports whether a stored status must win over
+// the live runner probe in display (transitional setup or terminal failure).
+func StoredStatusOverridesLive(status string) bool {
+	return status == StatusSettingUp || status == StatusFailed
 }
 
 // StateFileName is the state file basename under worktreeBase.

@@ -59,8 +59,8 @@ Requires Go ≥ 1.26:
 ```bash
 git clone https://github.com/mytmlt/wrk3.git && cd wrk3
 make build          # ./bin/wrk3, version-stamped from git
-make install-user   # to ~/.local/bin, no sudo needed (ensure it is on PATH)
-make install        # to /usr/local/bin instead (system-wide, may need sudo; override: make install PREFIX=~/.local)
+make install        # to ~/.local/bin, no sudo needed (ensure it is on PATH)
+sudo make install PREFIX=/usr/local   # machine-wide instead (all users)
 wrk3 version
 ```
 

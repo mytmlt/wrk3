@@ -22,7 +22,7 @@ var lsCmd = &cobra.Command{
 			return err
 		}
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-		if _, err := fmt.Fprintln(w, "WORKTREE\tBRANCH\tSTATUS\tAPP"); err != nil {
+		if _, err := fmt.Fprintln(w, "WORKTREE\tBRANCH\tSTATUS\tPORTS"); err != nil {
 			return fmt.Errorf("write output: %w", err)
 		}
 		if err := printLsStatus(w, cfg); err != nil {
@@ -68,9 +68,9 @@ func printLsStatus(w *tabwriter.Writer, cfg *config.Config) error {
 		return err
 	}
 	for _, rec := range recs {
-		status, app := rowFor(cfg, rec)
+		status, portText := rowFor(cfg, rec)
 		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-			rec.Slug, rec.Branch, status, app); err != nil {
+			rec.Slug, rec.Branch, status, portText); err != nil {
 			return fmt.Errorf("write output: %w", err)
 		}
 	}

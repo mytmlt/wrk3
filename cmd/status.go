@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -15,7 +17,7 @@ import (
 
 var statusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "WORKTREE/BRANCH/STATUS/APP/COMPOSE_PROJECT",
+	Short: "WORKTREE/BRANCH/STATUS/PORTS/COMPOSE_PROJECT",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		r, err := resolveConfig()
@@ -23,7 +25,7 @@ var statusCmd = &cobra.Command{
 			return err
 		}
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-		if _, err := fmt.Fprintln(w, "WORKTREE\tBRANCH\tSTATUS\tAPP\tCOMPOSE_PROJECT"); err != nil {
+		if _, err := fmt.Fprintln(w, "WORKTREE\tBRANCH\tSTATUS\tPORTS\tCOMPOSE_PROJECT"); err != nil {
 			return fmt.Errorf("write output: %w", err)
 		}
 		if err := printResolvedStatus(w, r.cfg); err != nil {
@@ -43,9 +45,9 @@ func printResolvedStatus(w *tabwriter.Writer, cfg *config.Config) error {
 		return nil
 	}
 	for _, rec := range recs {
-		status, app := rowFor(cfg, rec)
+		status, portText := rowFor(cfg, rec)
 		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			rec.Slug, rec.Branch, status, app, rec.ComposeProject); err != nil {
+			rec.Slug, rec.Branch, status, portText, rec.ComposeProject); err != nil {
 			return fmt.Errorf("write output: %w", err)
 		}
 	}
@@ -53,20 +55,26 @@ func printResolvedStatus(w *tabwriter.Writer, cfg *config.Config) error {
 }
 
 // rowFor derives display cells: "?" + "stale" when the dir is missing,
-// otherwise live runner status with the app port from the state file.
-func rowFor(cfg *config.Config, rec ports.WorktreeRecord) (status, app string) {
+// otherwise the stored transitional/terminal status (setting up, failed)
+// wins over the live runner probe so the table stays honest while
+// setup/run entries are still executing; all other cases use live
+// runner status with all allocated ports from the state file.
+func rowFor(cfg *config.Config, rec ports.WorktreeRecord) (status, portText string) {
 	if _, err := os.Stat(rec.AbsPath); err != nil {
 		return "stale", "?"
 	}
-	app = portCell(rec.Ports, ports.PortApp)
+	portText = portsCell(rec.Ports)
+	if ports.StoredStatusOverridesLive(rec.Status) {
+		return rec.Status, portText
+	}
 	st, err := liveStatus(cfg, rec)
 	if err != nil {
 		if rec.Status != "" {
-			return rec.Status, app
+			return rec.Status, portText
 		}
-		return "unknown", app
+		return "unknown", portText
 	}
-	return st, app
+	return st, portText
 }
 
 // liveStatus queries the runner for running/stopped/unknown.
@@ -84,15 +92,33 @@ func liveStatus(cfg *config.Config, rec ports.WorktreeRecord) (string, error) {
 	return string(st.State), nil
 }
 
-func portCell(m map[string]int, name string) string {
-	if m == nil {
+// portsCell renders every allocated port as a sorted name=value list with
+// app first (e.g. "app=8000,db=5432,web=3000"). Returns "?" when empty.
+func portsCell(m map[string]int) string {
+	if len(m) == 0 {
 		return "?"
 	}
-	v, ok := m[name]
-	if !ok {
-		return "?"
+	names := make([]string, 0, len(m))
+	for name := range m {
+		names = append(names, name)
 	}
-	return fmt.Sprintf("%d", v)
+	sort.Strings(names)
+	// Pin app first for scannability; rest stays alphabetical.
+	ordered := make([]string, 0, len(names))
+	if _, ok := m[ports.PortApp]; ok {
+		ordered = append(ordered, ports.PortApp)
+	}
+	for _, name := range names {
+		if name == ports.PortApp {
+			continue
+		}
+		ordered = append(ordered, name)
+	}
+	parts := make([]string, 0, len(ordered))
+	for _, name := range ordered {
+		parts = append(parts, fmt.Sprintf("%s=%d", name, m[name]))
+	}
+	return strings.Join(parts, ",")
 }
 
 func init() {

@@ -1,9 +1,10 @@
 # wrk3 — install, build, test, release.
 #
 #   make build      compile ./bin/wrk3 (stamped with version)
-#   make install    install to $(PREFIX)/bin (default /usr/local, may need sudo)
-#   make install-user install to ~/.local/bin (no sudo needed)
+#   make install    install to ~/.local/bin (no sudo needed)
+#   make install-user same as install (alias)
 #   make uninstall  remove installed binary + completions
+#   machine-wide instead: sudo make install PREFIX=/usr/local
 #   make test       go vet + go test
 #   make lint       golangci-lint (if installed)
 #   make completion generate shell completions into ./completions
@@ -14,7 +15,9 @@
 MODULE      := github.com/mytmlt/wrk3
 BIN         := wrk3
 BINDIR      := bin
-PREFIX      ?= /usr/local
+# Default is user-local (~/.local/bin) so plain `make install` needs no sudo.
+# Machine-wide install (all users): sudo make install PREFIX=/usr/local
+PREFIX      ?= $(HOME)/.local
 DESTDIR     ?=
 INSTALL_DIR := $(DESTDIR)$(PREFIX)/bin
 
@@ -37,16 +40,16 @@ build: ## Compile ./bin/wrk3 with version stamp
 	@mkdir -p $(BINDIR)
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BINDIR)/$(BIN) .
 
-install: build ## Install wrk3 to $(PREFIX)/bin (system-wide; may need sudo)
+install: build ## Install wrk3 to ~/.local/bin (no sudo; PREFIX overridable)
 	install -d $(INSTALL_DIR)
 	install -m 0755 $(BINDIR)/$(BIN) $(INSTALL_DIR)/$(BIN)
 	@echo "installed $(INSTALL_DIR)/$(BIN) ($(VERSION))"
+	@echo "note: ensure $(INSTALL_DIR) is on PATH (see docs/INSTALL.md)"
 
-install-user: ## Install wrk3 to ~/.local/bin (no sudo needed)
+install-user: ## Alias for install (user-local, no sudo needed)
 	@$(MAKE) install PREFIX=$(HOME)/.local
-	@echo "note: ensure \$$HOME/.local/bin is on PATH (see docs/INSTALL.md)"
 
-uninstall: ## Remove installed wrk3
+uninstall: ## Remove installed wrk3 from $(PREFIX)/bin
 	rm -f $(INSTALL_DIR)/$(BIN)
 	@echo "removed $(INSTALL_DIR)/$(BIN)"
 

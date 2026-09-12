@@ -52,8 +52,8 @@ curl -fsSL https://raw.githubusercontent.com/mytmlt/wrk3/main/scripts/install.sh
 
 # Option 3 — from source (developers only, requires Go ≥ 1.26)
 git clone https://github.com/mytmlt/wrk3.git && cd wrk3
-make install-user       # installs to ~/.local/bin, no sudo (ensure it is on PATH)
-# machine-wide instead: sudo make install   # installs to /usr/local/bin (PREFIX overridable)
+make install            # installs to ~/.local/bin, no sudo (ensure it is on PATH)
+# machine-wide instead: sudo make install PREFIX=/usr/local
 wrk3 version
 ```
 
@@ -152,7 +152,7 @@ Full field reference, port table, `.env` mapping, and multi-project patterns:
     pass names to filter.
 3. `wrk3 status` → reads the state file plus the implicit main checkout,
     probes live runner status, prints
-    `WORKTREE/BRANCH/STATUS/APP/COMPOSE_PROJECT`.
+    `WORKTREE/BRANCH/STATUS/PORTS/COMPOSE_PROJECT`.
 4. `wrk3 remove` → `compose down -v` + `git worktree remove` + state cleanup.
     `remove` never touches main (explicit `remove <main-branch>` is refused;
     `remove --all` covers only managed worktrees).

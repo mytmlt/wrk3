@@ -45,7 +45,7 @@ var downCmd = &cobra.Command{
 		if err := g.Wait(); err != nil {
 			return err
 		}
-		return markStatus(r, targets, "stopped")
+		return markStatus(r, targets, ports.StatusStopped)
 	},
 }
 

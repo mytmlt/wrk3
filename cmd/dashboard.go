@@ -262,10 +262,12 @@ func dashboardRefreshRowsCmd(p *dashboardProject) tea.Cmd {
 
 // probeDashboardRows maps records to rows, probing live runner status in
 // parallel. Missing dirs short-circuit to stale/? without docker calls.
+// Stored transitional/terminal states (setting up, failed) win over the
+// live probe so rows stay honest while setup/run entries execute.
 func probeDashboardRows(cfg *config.Config, recs []ports.WorktreeRecord, mainBranch string) []dashboardRow {
 	type cell struct {
 		status string
-		app    string
+		ports  string
 		stale  bool
 	}
 	cells := make([]cell, len(recs))
@@ -274,20 +276,24 @@ func probeDashboardRows(cfg *config.Config, recs []ports.WorktreeRecord, mainBra
 		i, rec := i, rec
 		g.Go(func() error {
 			if _, err := os.Stat(rec.AbsPath); err != nil {
-				cells[i] = cell{status: "stale", app: "?", stale: true}
+				cells[i] = cell{status: "stale", ports: "?", stale: true}
 				return nil
 			}
-			app := portCell(rec.Ports, ports.PortApp)
+			portText := portsCell(rec.Ports)
+			if ports.StoredStatusOverridesLive(rec.Status) {
+				cells[i] = cell{status: rec.Status, ports: portText}
+				return nil
+			}
 			st, err := liveStatus(cfg, rec)
 			if err != nil {
 				if rec.Status != "" {
-					cells[i] = cell{status: rec.Status, app: app}
+					cells[i] = cell{status: rec.Status, ports: portText}
 				} else {
-					cells[i] = cell{status: "unknown", app: app}
+					cells[i] = cell{status: "unknown", ports: portText}
 				}
 				return nil
 			}
-			cells[i] = cell{status: st, app: app}
+			cells[i] = cell{status: st, ports: portText}
 			return nil
 		})
 	}
@@ -297,7 +303,7 @@ func probeDashboardRows(cfg *config.Config, recs []ports.WorktreeRecord, mainBra
 		rows = append(rows, dashboardRow{
 			Rec:    rec,
 			Status: cells[i].status,
-			App:    cells[i].app,
+			Ports:  cells[i].ports,
 			Stale:  cells[i].stale,
 			IsMain: mainBranch != "" && rec.Branch == mainBranch && rec.Index == mainWorktreeIndex,
 		})
@@ -391,15 +397,7 @@ func dashboardUpCmd(p *dashboardProject, targets []ports.WorktreeRecord) tea.Cmd
 			return fmt.Errorf("project not loaded")
 		}
 		r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
-		g, ctx := errgroup.WithContext(context.Background())
-		for _, rec := range targets {
-			rec := rec
-			g.Go(func() error { return upOne(ctx, r, rec, logf) })
-		}
-		if err := g.Wait(); err != nil {
-			return err
-		}
-		return markStatus(r, targets, "running")
+		return runUpTargets(context.Background(), r, targets, logf)
 	})
 }
 
@@ -417,7 +415,7 @@ func dashboardDownCmd(p *dashboardProject, targets []ports.WorktreeRecord) tea.C
 		if err := g.Wait(); err != nil {
 			return err
 		}
-		return markStatus(r, targets, "stopped")
+		return markStatus(r, targets, ports.StatusStopped)
 	})
 }
 
@@ -638,6 +636,25 @@ func (m dashboardModel) selectedWorktrees() []ports.WorktreeRecord {
 	return out
 }
 
+// markRowsSettingUp flips the in-memory rows for targets to setting up so
+// the table updates instantly on `u`, before the background op writes state
+// and the next refresh picks it up. Stale rows (missing dirs) are left
+// alone. The implicit main worktree has no state-file entry, so the
+// in-memory flip is its only setting-up signal.
+func (m dashboardModel) markRowsSettingUp(targets []ports.WorktreeRecord) dashboardModel {
+	want := map[string]bool{}
+	for _, t := range targets {
+		want[t.Branch] = true
+	}
+	for i := range m.rows {
+		if want[m.rows[i].Rec.Branch] && !m.rows[i].Stale {
+			m.rows[i].Status = ports.StatusSettingUp
+			m.rows[i].Rec.Status = ports.StatusSettingUp
+		}
+	}
+	return m
+}
+
 func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Pending remove confirm.
 	if m.confirm != "" {
@@ -761,6 +778,7 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.busy = true
 		m.busyLabel = "up"
 		m = m.appendLog("up " + branchesOf(targets))
+		m = m.markRowsSettingUp(targets)
 		return m, dashboardUpCmd(m.curProject(), targets)
 	case "d":
 		if m.busy {
@@ -904,19 +922,21 @@ func (k dashboardKeys) FullHelp() [][]key.Binding {
 }
 
 // dashboardWorkColumns scales the text columns to the available width so
-// the table never exceeds its pane: ✓/STATUS/APP have fixed widths, the
-// rest split 25/45/30 across WORKTREE/BRANCH/PROJECT.
+// the table never exceeds its pane: ✓/STATUS have fixed widths (STATUS fits
+// "setting up"), PORTS gets a wider fixed width for multi-port lists
+// (bubbles/table truncates excess), the rest split 25/40/35 across
+// WORKTREE/BRANCH/PROJECT.
 func dashboardWorkColumns(width int) []table.Column {
-	rest := max(width-3-9-6-12, 30)
+	rest := max(width-3-11-28-12, 30)
 	wt := max(rest*25/100, 8)
-	br := max(rest*45/100, 12)
+	br := max(rest*40/100, 12)
 	pr := max(rest-wt-br, 8)
 	return []table.Column{
 		{Title: "✓", Width: 3},
 		{Title: "WORKTREE", Width: wt},
 		{Title: "BRANCH", Width: br},
-		{Title: "STATUS", Width: 9},
-		{Title: "APP", Width: 6},
+		{Title: "STATUS", Width: 11},
+		{Title: "PORTS", Width: 28},
 		{Title: "PROJECT", Width: pr},
 	}
 }
@@ -999,7 +1019,7 @@ func (m dashboardModel) buildWorkTable(width, height int, focused bool) table.Mo
 		if row.IsMain {
 			branch += " (main)"
 		}
-		rows = append(rows, table.Row{box, row.Rec.Slug, branch, row.Status, row.App, row.Rec.ComposeProject})
+		rows = append(rows, table.Row{box, row.Rec.Slug, branch, row.Status, row.Ports, row.Rec.ComposeProject})
 	}
 	t.SetRows(rows)
 	t.SetWidth(max(width, 10))

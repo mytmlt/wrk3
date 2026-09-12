@@ -9,11 +9,11 @@ import (
 )
 
 // dashboardRow is one worktree row for the dashboard worktree pane.
-// Status/App mirror `status` cells; Stale is true when the dir is missing.
+// Status/Ports mirror `status` cells; Stale is true when the dir is missing.
 type dashboardRow struct {
 	Rec    ports.WorktreeRecord
 	Status string
-	App    string
+	Ports  string
 	Stale  bool
 	IsMain bool
 }
@@ -34,16 +34,16 @@ type dashboardProjectDesc struct {
 }
 
 // mapDashboardRows converts records to rows using a status lookup.
-// statusFn reports (status, app, stale) per record; callers wire the live
+// statusFn reports (status, ports, stale) per record; callers wire the live
 // probe (os.Stat + runner) or a stub in tests.
 func mapDashboardRows(recs []ports.WorktreeRecord, mainBranch string, statusFn func(ports.WorktreeRecord) (string, string, bool)) []dashboardRow {
 	rows := make([]dashboardRow, 0, len(recs))
 	for _, rec := range recs {
-		status, app, stale := statusFn(rec)
+		status, portText, stale := statusFn(rec)
 		rows = append(rows, dashboardRow{
 			Rec:    rec,
 			Status: status,
-			App:    app,
+			Ports:  portText,
 			Stale:  stale,
 			IsMain: mainBranch != "" && rec.Branch == mainBranch && rec.Index == mainWorktreeIndex,
 		})

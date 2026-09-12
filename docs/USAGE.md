@@ -44,7 +44,7 @@ wrk3 add --local feature-a          # adopt only the named local worktree(s)
 wrk3 up feature-a                   # setup entries + compose up + run entry
 wrk3 up                             # bare = all worktrees including main, in parallel (errgroup)
 wrk3 status                         # this config (full table, includes main)
-wrk3 ls                             # this config (minimal WORKTREE/BRANCH/STATUS/APP, includes main)
+wrk3 ls                             # this config (minimal WORKTREE/BRANCH/STATUS/PORTS, includes main)
 wrk3 ls --project myapp             # worktrees in a registered project, from anywhere
 wrk3 project ls                     # all auto-registered projects (NAME/CONFIG/WORKTREES)
 wrk3 logs feature-a [-f]            # entry.logs command
@@ -59,8 +59,14 @@ wrk3 update                         # install latest over the current binary (sh
 
 Branch slugs: `feature/foo` → `feature-foo` (max 50 chars). `add`/`up`/`down`
 accept branch names or slugs interchangeably; `status` shows
-`WORKTREE/BRANCH/STATUS/APP/COMPOSE_PROJECT`, with `?` and
-`stale` when a worktree directory is missing.
+`WORKTREE/BRANCH/STATUS/PORTS/COMPOSE_PROJECT`, with `?` and
+`stale` when a worktree directory is missing. `PORTS` lists every
+allocated port as `name=value` (`app` first, rest alphabetical,
+e.g. `app=8000,web=3000`).
+`up` marks targets `setting up` at start (kept over the live probe while
+setup/run entries execute), then `running` on success or `failed` on
+error — so the table never claims `running` mid-setup. A failed `up`
+stays `failed` until the next `up`/`down`.
 
 Main checkout: the repo root is always included implicitly (no state entry)
 in `up`/`down` (bare = all including main), `status`/`ls`, and as an
@@ -82,6 +88,9 @@ toggles mine, `P` toggles myprs), `1`/`2` or `←`/`→` switch panes, `?`
 shows all keys, `q` quits. Worktrees and branches render as tables in
 bordered panes (side-by-side on terminals ≥132 cols, stacked otherwise),
 the shortcut bar is always visible at the bottom, and the log scrolls.
+Pressing `u` flips the selected rows to `setting up` immediately; the
+rows keep that status (not `running`) until setup/run entries finish,
+even when the setup itself already started containers.
 
 The CLI keeps working alongside it: `wrk3 add` in another terminal shows
 up on the next poll or manual refresh.
@@ -93,9 +102,9 @@ up on the next poll or manual refresh.
 wrk3 add pr-101 pr-102
 wrk3 up
 wrk3 status
-# WORKTREE  BRANCH  STATUS   APP   COMPOSE_PROJECT
-# pr-101    pr-101  running  8000  demo-pr-101
-# pr-102    pr-102  running  8100  demo-pr-102
+# WORKTREE  BRANCH  STATUS   PORTS       COMPOSE_PROJECT
+# pr-101    pr-101  running  app=8000    demo-pr-101
+# pr-102    pr-102  running  app=8100    demo-pr-102
 
 # Run tests inside one worktree without cd'ing there
 wrk3 exec pr-101 -- go test ./... -count=1

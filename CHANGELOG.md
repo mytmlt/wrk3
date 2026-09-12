@@ -7,14 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New `setting up` / `failed` worktree statuses for `up`: targets are
+  marked `setting up` at start (shown in `status`, `ls`, and the
+  dashboard instead of a premature `running` while setup/run entries
+  still execute), then `running` on success or `failed` on error.
+  Pressing `u` in the dashboard flips rows immediately; the dashboard
+  `STATUS` column is wider (11 cols) to fit the new value.
+
 ### Changed
 
-- Sudo-less installs are now the default: `scripts/install.sh` installs to
-  `~/.local/bin` with no root required (machine-wide `/usr/local/bin`
-  is opt-in via `--system`), and `make install-user` does the same from
-  source (`make install` stays system-wide for packaging). The installer
-  prints per-shell `PATH` wiring when needed, and `wrk3 update`
-  permission errors now hint at sudo vs user-local reinstall.
+- `status`, `ls`, and the dashboard worktree table now show every
+  allocated port in a `PORTS` column (was `APP` with only the `app`
+  port): `name=value` list with `app` first, rest alphabetical
+  (e.g. `app=8000,web=3000`). The TUI column is wider (28 cols) and
+  truncates excess like other columns.
+- Sudo-less installs are now the default: `scripts/install.sh` and plain
+  `make install` both install to `~/.local/bin` with no root required
+  (`make install-user` stays as an alias). Machine-wide `/usr/local/bin`
+  is opt-in via `install.sh --system` or `sudo make install
+  PREFIX=/usr/local`. The installer prints per-shell `PATH` wiring when
+  needed, and `wrk3 update` permission errors now hint at sudo vs
+  user-local reinstall.
 
 ## [0.7.0] - 2026-09-12
 

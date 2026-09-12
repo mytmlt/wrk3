@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -36,20 +37,7 @@ var upCmd = &cobra.Command{
 			defer mu.Unlock()
 			_, _ = fmt.Fprintf(out, format+"\n", a...)
 		}
-		g, ctx := errgroup.WithContext(context.Background())
-		for _, rec := range targets {
-			rec := rec
-			g.Go(func() error {
-				return upOne(ctx, r, rec, logf)
-			})
-		}
-		if err := g.Wait(); err != nil {
-			return err
-		}
-		if err := markStatus(r, targets, "running"); err != nil {
-			return err
-		}
-		return nil
+		return runUpTargets(context.Background(), r, targets, logf)
 	},
 }
 
@@ -96,6 +84,50 @@ func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func
 	}
 	logf("[%s] up", rec.Slug)
 	return nil
+}
+
+// runUpTargets marks every target as setting up up front (so status and
+// the dashboard stay honest while setup/run entries execute), runs upOne
+// per target in parallel, then marks successes running and failures
+// failed. The implicit main worktree has no state-file entry, so it is
+// silently skipped by markStatus. Returns the joined per-target errors.
+func runUpTargets(ctx context.Context, r *resolved, targets []ports.WorktreeRecord, logf func(string, ...any)) error {
+	if err := markStatus(r, targets, ports.StatusSettingUp); err != nil {
+		return err
+	}
+	errs := make([]error, len(targets))
+	g, ctx := errgroup.WithContext(ctx)
+	for i, rec := range targets {
+		i, rec := i, rec
+		g.Go(func() error {
+			if err := upOne(ctx, r, rec, logf); err != nil {
+				errs[i] = err
+			}
+			return nil
+		})
+	}
+	_ = g.Wait()
+	var succeeded, failed []ports.WorktreeRecord
+	var joined error
+	for i, rec := range targets {
+		if errs[i] != nil {
+			failed = append(failed, rec)
+			joined = errors.Join(joined, errs[i])
+		} else {
+			succeeded = append(succeeded, rec)
+		}
+	}
+	if len(succeeded) > 0 {
+		if err := markStatus(r, succeeded, ports.StatusRunning); err != nil {
+			return errors.Join(joined, err)
+		}
+	}
+	if len(failed) > 0 {
+		if err := markStatus(r, failed, ports.StatusFailed); err != nil {
+			return errors.Join(joined, err)
+		}
+	}
+	return joined
 }
 
 // markStatus reloads state and sets status for targets.

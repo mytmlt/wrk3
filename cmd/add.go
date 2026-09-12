@@ -372,7 +372,7 @@ func addOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, b
 		Index:          idx,
 		Ports:          allocation.Ports,
 		ComposeProject: composeProject,
-		Status:         "stopped",
+		Status:         ports.StatusStopped,
 	})
 	if err := saveState(r, *recs); err != nil {
 		return nil, err
@@ -409,7 +409,7 @@ func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator,
 		Index:          idx,
 		Ports:          allocation.Ports,
 		ComposeProject: composeProject,
-		Status:         "stopped",
+		Status:         ports.StatusStopped,
 	})
 	if err := saveState(r, *recs); err != nil {
 		return nil, err
