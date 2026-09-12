@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-12
+
 ### Changed
 
 - Dashboard redesign: worktrees and remote branches render as real
@@ -241,7 +243,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path-portable and skip linux-only `docker` integration tests on
   Windows so `windows-latest` goes green.
 
-[Unreleased]: https://github.com/mytmlt/wrk3/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/mytmlt/wrk3/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/mytmlt/wrk3/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/mytmlt/wrk3/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/mytmlt/wrk3/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/mytmlt/wrk3/releases/tag/v0.4.0
