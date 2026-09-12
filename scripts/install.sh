@@ -52,103 +52,16 @@ case "$VERSION" in
 esac
 
 # download URL -> file (curl preferred, wget fallback).
-# Extra args are appended to the downloader (e.g. -H "Accept: ...").
-# NOTE: no auth is sent on browser download URLs — github.com web URLs
-# don't accept Bearer tokens (private repos go through the API instead;
-# see fetch_asset).
 download() {
-  _url="$1"; _out="$2"; shift 2
+  _url="$1"; _out="$2"
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$@" "$_url" -o "$_out"
+    curl -fsSL "$_url" -o "$_out"
   elif command -v wget >/dev/null 2>&1; then
-    _headers=""
-    _next_is_header=0
-    for _a in "$@"; do
-      if [ "$_next_is_header" = "1" ]; then
-        _headers="$_headers --header=$_a"
-        _next_is_header=0
-      elif [ "$_a" = "-H" ]; then
-        _next_is_header=1
-      fi
-    done
-    # shellcheck disable=SC2086
-    wget -q $_headers -O "$_out" "$_url"
+    wget -q -O "$_out" "$_url"
   else
     echo "curl or wget is required to download releases" >&2
     return 1
   fi
-}
-
-# AUTH_HDR holds the curl-style auth header args (empty when no token).
-# Supports GITHUB_TOKEN and GH_TOKEN (gh CLI convention).
-AUTH_HDR=()
-if [ -n "${GITHUB_TOKEN:-}" ]; then
-  AUTH_HDR=(-H "Authorization: Bearer $GITHUB_TOKEN")
-elif [ -n "${GH_TOKEN:-}" ]; then
-  AUTH_HDR=(-H "Authorization: Bearer $GH_TOKEN")
-fi
-
-# api_download fetches a release asset by name through the GitHub API.
-# Needed for private repos (browser URLs 404 there even with a token).
-api_download() {
-  _name="$1"; _out="$2"
-  _tag="$VERSION"
-  _api="https://api.github.com/repos/$REPO/releases/tags/$_tag"
-  if command -v python3 >/dev/null 2>&1; then
-    download "$_api" "$tmp/release.json" "${AUTH_HDR[@]}" -H "Accept: application/vnd.github+json" || return 1
-    _id="$(python3 -c '
-import json, sys
-with open(sys.argv[1]) as f:
-    rel = json.load(f)
-for a in rel.get("assets", []):
-    if a.get("name") == sys.argv[2]:
-        print(a["id"])
-        break
-else:
-    sys.exit(1)
-' "$tmp/release.json" "$_name")" || return 1
-  elif command -v jq >/dev/null 2>&1; then
-    download "$_api" "$tmp/release.json" "${AUTH_HDR[@]}" -H "Accept: application/vnd.github+json" || return 1
-    _id="$(jq -r --arg n "$_name" '.assets[] | select(.name == $n) | .id' "$tmp/release.json" | grep -E '^[0-9]+$')" || return 1
-  else
-    echo "python3 or jq is required to install from a private repo (or install gh)" >&2
-    return 1
-  fi
-  [ -n "$_id" ] || return 1
-  _api="https://api.github.com/repos/$REPO/releases/assets/$_id"
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "${AUTH_HDR[@]}" -H "Accept: application/octet-stream" "$_api" -o "$_out"
-  elif command -v wget >/dev/null 2>&1; then
-    _auth_header=""
-    [ "${#AUTH_HDR[@]}" -eq 2 ] && _auth_header="--header=${AUTH_HDR[1]}"
-    # shellcheck disable=SC2086
-    wget -q $_auth_header --header="Accept: application/octet-stream" -O "$_out" "$_api"
-  else
-    return 1
-  fi
-}
-
-# fetch_asset downloads a release file, trying in order:
-#   1. browser download URL (public repos, no auth needed)
-#   2. `gh release download` (private repos, uses gh auth)
-#   3. GitHub API + token (private repos, GITHUB_TOKEN/GH_TOKEN)
-fetch_asset() {
-  _name="$1"; _out="$2"; _url="$3"
-  if download "$_url" "$_out" 2>/dev/null; then
-    return 0
-  fi
-  if command -v gh >/dev/null 2>&1; then
-    if gh release download "$VERSION" -R "$REPO" -p "$_name" -D "$tmp/gh-dl" >/dev/null 2>&1; then
-      mv "$tmp/gh-dl/$_name" "$_out"
-      return 0
-    fi
-  fi
-  if [ -n "${GITHUB_TOKEN:-}" ] || [ -n "${GH_TOKEN:-}" ]; then
-    if api_download "$_name" "$_out" 2>/dev/null; then
-      return 0
-    fi
-  fi
-  return 1
 }
 
 os="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -195,17 +108,14 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 echo "installing $BIN $VERSION ($os/$arch) to $BINDIR"
-if ! fetch_asset "$asset" "$tmp/pkg.$ext" "$url"; then
+if ! download "$url" "$tmp/pkg.$ext"; then
   echo "no release asset at $url" >&2
-  if [ -z "${GITHUB_TOKEN:-}" ] && [ -z "${GH_TOKEN:-}" ] && ! command -v gh >/dev/null 2>&1; then
-    echo "if this is a private repo, set GITHUB_TOKEN (or install gh) and retry" >&2
-  fi
   echo "see https://github.com/$REPO/releases for available versions" >&2
   exit 1
 fi
 
 if [ "$VERIFY" = "1" ]; then
-  if fetch_asset "checksums.txt" "$tmp/checksums.txt" "$checksum_url" 2>/dev/null; then
+  if download "$checksum_url" "$tmp/checksums.txt" 2>/dev/null; then
     (cd "$tmp" && grep " $asset\$" checksums.txt > asset.sha 2>/dev/null || true)
     if [ -s "$tmp/asset.sha" ]; then
       if command -v sha256sum >/dev/null 2>&1; then

@@ -14,10 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Asset filename had a wrong `v` prefix (`wrk3_v0.3.0_...`); GoReleaser
   strips it (`wrk3_0.3.0_...`). `wrk3 update` and `scripts/install.sh`
   now build the correct name (tag/URLs keep the `v`).
-- Private repos: `wrk3 update` and `scripts/install.sh` fall back to the
-  GitHub API (`gh release download`, else `GITHUB_TOKEN`/`GH_TOKEN` with
-  `python3`/`jq`) when browser download URLs 404. Anonymous checks stay
-  silent; `GITHUB_TOKEN`/`GH_TOKEN` also accepted for the daily notice.
 - `scripts/install.sh` extracted the wrong path after checksum
   verification (renamed package); it now tracks the renamed file.
 - Lint: drop deprecated `tar.TypeRegA` in the update extractor.
