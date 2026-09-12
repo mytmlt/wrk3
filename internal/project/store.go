@@ -235,10 +235,14 @@ func (s *FileStore) Get(name string) (*Project, error) {
 			matches = append(matches, Project{Name: e.Name, ConfigPath: cfgPath, LastSeen: e.LastSeen})
 		}
 	}
-	// Also accept a full config path as the selector.
+	// Also accept a full config path as the selector (absolutized,
+	// mirroring Touch, so "/tmp/a/wrk3.yaml" resolves on Windows
+	// where the stored key is "C:\tmp\a\wrk3.yaml").
 	if len(matches) == 0 {
-		if e, ok := d.Projects[name]; ok {
-			return &Project{Name: e.Name, ConfigPath: name, LastSeen: e.LastSeen}, nil
+		if abs, err := absolutize(name); err == nil {
+			if e, ok := d.Projects[abs]; ok {
+				return &Project{Name: e.Name, ConfigPath: abs, LastSeen: e.LastSeen}, nil
+			}
 		}
 	}
 	if len(matches) == 0 {
