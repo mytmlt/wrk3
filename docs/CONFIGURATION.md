@@ -49,6 +49,10 @@ ports:
 
 - Each `add` takes the next index (`max(index)+1`, starting at 0) and writes
   the allocation into the worktree's `.env` plus the state file.
+- The repo-root main checkout is implicit (no state entry) with reserved
+  index `-1` (e.g. `7900` with `base: {app: 8000}, step: 100`). Its `.env`
+  is written on `up`/`down`/`exec`. Port/project collisions with managed
+  worktrees surface as errors.
 - `.env` variable mapping (`internal/ports`, `cmd/common.go`): every port
   name becomes `<NAME>_PORT` (uppercased, non-alphanumerics → `_`), sorted
   for stable output. Examples: `app` → `APP_PORT`, `web` → `WEB_PORT`.

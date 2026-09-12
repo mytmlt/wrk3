@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Main checkout (repo root) is now included implicitly in `up`/`down`
+  (bare = all including main), `status`/`ls`, and as an `exec`/`logs`
+  target. No state entry; reserved port index `-1` with `.env` written on
+  run. `remove` refuses main and `remove --all` covers only managed
+  worktrees.
+
 ## [0.3.1] - 2026-09-12
 
 ### Fixed
