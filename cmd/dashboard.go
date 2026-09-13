@@ -262,8 +262,8 @@ func dashboardRefreshRowsCmd(p *dashboardProject) tea.Cmd {
 
 // probeDashboardRows maps records to rows, probing live runner status in
 // parallel. Missing dirs short-circuit to stale/? without docker calls.
-// Stored transitional/terminal states (setting up, failed) win over the
-// live probe so rows stay honest while setup/run entries execute.
+// Stored transitional/terminal states (setting up, stopping, failed) win
+// over the live probe so rows stay honest while entries execute.
 func probeDashboardRows(cfg *config.Config, recs []ports.WorktreeRecord, mainBranch string) []dashboardRow {
 	type cell struct {
 		status string
@@ -407,15 +407,7 @@ func dashboardDownCmd(p *dashboardProject, targets []ports.WorktreeRecord) tea.C
 			return fmt.Errorf("project not loaded")
 		}
 		r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
-		g, ctx := errgroup.WithContext(context.Background())
-		for _, rec := range targets {
-			rec := rec
-			g.Go(func() error { return downOne(ctx, r, rec, logf) })
-		}
-		if err := g.Wait(); err != nil {
-			return err
-		}
-		return markStatus(r, targets, ports.StatusStopped)
+		return runDownTargets(context.Background(), r, targets, logf)
 	})
 }
 
@@ -642,14 +634,27 @@ func (m dashboardModel) selectedWorktrees() []ports.WorktreeRecord {
 // alone. The implicit main worktree has no state-file entry, so the
 // in-memory flip is its only setting-up signal.
 func (m dashboardModel) markRowsSettingUp(targets []ports.WorktreeRecord) dashboardModel {
+	return m.markRowsStatus(targets, ports.StatusSettingUp)
+}
+
+// markRowsStopping flips the in-memory rows for targets to stopping so
+// the table updates instantly on `d`, before the background op writes state
+// and the next refresh picks it up. Stale rows (missing dirs) are left
+// alone. The implicit main worktree has no state-file entry, so the
+// in-memory flip is its only stopping signal.
+func (m dashboardModel) markRowsStopping(targets []ports.WorktreeRecord) dashboardModel {
+	return m.markRowsStatus(targets, ports.StatusStopping)
+}
+
+func (m dashboardModel) markRowsStatus(targets []ports.WorktreeRecord, status string) dashboardModel {
 	want := map[string]bool{}
 	for _, t := range targets {
 		want[t.Branch] = true
 	}
 	for i := range m.rows {
 		if want[m.rows[i].Rec.Branch] && !m.rows[i].Stale {
-			m.rows[i].Status = ports.StatusSettingUp
-			m.rows[i].Rec.Status = ports.StatusSettingUp
+			m.rows[i].Status = status
+			m.rows[i].Rec.Status = status
 		}
 	}
 	return m
@@ -792,6 +797,7 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.busy = true
 		m.busyLabel = "down"
 		m = m.appendLog("down " + branchesOf(targets))
+		m = m.markRowsStopping(targets)
 		return m, dashboardDownCmd(m.curProject(), targets)
 	case "a":
 		if m.busy {

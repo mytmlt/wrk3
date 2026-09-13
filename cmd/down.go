@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -35,18 +36,47 @@ var downCmd = &cobra.Command{
 			defer mu.Unlock()
 			_, _ = fmt.Fprintf(out, format+"\n", a...)
 		}
-		g, ctx := errgroup.WithContext(context.Background())
-		for _, rec := range targets {
-			rec := rec
-			g.Go(func() error {
-				return downOne(ctx, r, rec, logf)
-			})
-		}
-		if err := g.Wait(); err != nil {
-			return err
-		}
-		return markStatus(r, targets, ports.StatusStopped)
+		return runDownTargets(context.Background(), r, targets, logf)
 	},
+}
+
+// runDownTargets marks every target as stopping up front (so status and
+// the dashboard stay honest while compose down executes), runs downOne
+// per target in parallel, then marks successes stopped. Failures keep the
+// stopping status until the next down fixes them (same pattern as failed
+// for up). The implicit main worktree has no state-file entry, so it is
+// silently skipped by markStatus. Returns the joined per-target errors.
+func runDownTargets(ctx context.Context, r *resolved, targets []ports.WorktreeRecord, logf func(string, ...any)) error {
+	if err := markStatus(r, targets, ports.StatusStopping); err != nil {
+		return err
+	}
+	errs := make([]error, len(targets))
+	g, ctx := errgroup.WithContext(ctx)
+	for i, rec := range targets {
+		i, rec := i, rec
+		g.Go(func() error {
+			if err := downOne(ctx, r, rec, logf); err != nil {
+				errs[i] = err
+			}
+			return nil
+		})
+	}
+	_ = g.Wait()
+	var succeeded []ports.WorktreeRecord
+	var joined error
+	for i, rec := range targets {
+		if errs[i] != nil {
+			joined = errors.Join(joined, errs[i])
+		} else {
+			succeeded = append(succeeded, rec)
+		}
+	}
+	if len(succeeded) > 0 {
+		if err := markStatus(r, succeeded, ports.StatusStopped); err != nil {
+			return errors.Join(joined, err)
+		}
+	}
+	return joined
 }
 
 func downOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func(string, ...any)) error {

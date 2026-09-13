@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still execute), then `running` on success or `failed` on error.
   Pressing `u` in the dashboard flips rows immediately; the dashboard
   `STATUS` column is wider (11 cols) to fit the new value.
+- New `stopping` worktree status for `down`: targets are marked
+  `stopping` at start (shown in `status`, `ls`, and the dashboard
+  instead of a premature `stopped` while compose down still executes),
+  then `stopped` on success. Pressing `d` in the dashboard flips rows
+  immediately; failures keep `stopping` until the next `down`.
 
 ### Changed
 

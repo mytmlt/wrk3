@@ -55,9 +55,9 @@ func printResolvedStatus(w *tabwriter.Writer, cfg *config.Config) error {
 }
 
 // rowFor derives display cells: "?" + "stale" when the dir is missing,
-// otherwise the stored transitional/terminal status (setting up, failed)
-// wins over the live runner probe so the table stays honest while
-// setup/run entries are still executing; all other cases use live
+// otherwise the stored transitional/terminal status (setting up, stopping,
+// failed) wins over the live runner probe so the table stays honest while
+// entries are still executing; all other cases use live
 // runner status with all allocated ports from the state file.
 func rowFor(cfg *config.Config, rec ports.WorktreeRecord) (status, portText string) {
 	if _, err := os.Stat(rec.AbsPath); err != nil {

@@ -66,7 +66,10 @@ e.g. `app=8000,web=3000`).
 `up` marks targets `setting up` at start (kept over the live probe while
 setup/run entries execute), then `running` on success or `failed` on
 error — so the table never claims `running` mid-setup. A failed `up`
-stays `failed` until the next `up`/`down`.
+stays `failed` until the next `up`/`down`. `down` marks targets
+`stopping` at start (kept over the live probe while compose down
+executes), then `stopped` on success; failures keep `stopping` until the
+next `down` fixes them.
 
 Main checkout: the repo root is always included implicitly (no state entry)
 in `up`/`down` (bare = all including main), `status`/`ls`, and as an
@@ -90,7 +93,9 @@ bordered panes (side-by-side on terminals ≥132 cols, stacked otherwise),
 the shortcut bar is always visible at the bottom, and the log scrolls.
 Pressing `u` flips the selected rows to `setting up` immediately; the
 rows keep that status (not `running`) until setup/run entries finish,
-even when the setup itself already started containers.
+even when the setup itself already started containers. Pressing `d`
+flips the selected rows to `stopping` immediately until compose down
+finishes.
 
 The CLI keeps working alongside it: `wrk3 add` in another terminal shows
 up on the next poll or manual refresh.

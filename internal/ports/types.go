@@ -40,9 +40,10 @@ type Allocator struct {
 // AbsPath is always absolute so commands work from any cwd.
 //
 // Status is the last-known lifecycle state written by up/down:
-// running, stopped, setting up (up in progress), or failed (up error).
+// running, stopped, setting up (up in progress), stopping (down in
+// progress), or failed (up error).
 // Display prefers stored transitional/terminal states (setting up,
-// failed) over the live runner probe so the table stays honest while
+// stopping, failed) over the live runner probe so the table stays honest while
 // setup/run entries are still executing. "stale" and "unknown" are
 // display-only and never persisted.
 type WorktreeRecord struct {
@@ -60,13 +61,14 @@ const (
 	StatusRunning   = "running"
 	StatusStopped   = "stopped"
 	StatusSettingUp = "setting up"
+	StatusStopping  = "stopping"
 	StatusFailed    = "failed"
 )
 
 // StoredStatusOverridesLive reports whether a stored status must win over
-// the live runner probe in display (transitional setup or terminal failure).
+// the live runner probe in display (transitional setup/stop or terminal failure).
 func StoredStatusOverridesLive(status string) bool {
-	return status == StatusSettingUp || status == StatusFailed
+	return status == StatusSettingUp || status == StatusStopping || status == StatusFailed
 }
 
 // StateFileName is the state file basename under worktreeBase.
