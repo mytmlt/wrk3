@@ -55,6 +55,7 @@ wrk3 dashboard                       # interactive TUI: worktrees + branches + p
 wrk3 dashboard --project myapp       # same, starting from a registered project
 wrk3 update --check                 # show latest release without installing
 wrk3 update                         # install latest over the current binary (sha256 verified)
+wrk3 skill                          # print the bundled agent setup guide (compat triage + wrk3.yaml template) to stdout; needs no config
 ```
 
 Branch slugs: `feature/foo` → `feature-foo` (max 50 chars). `add`/`up`/`down`

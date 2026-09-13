@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `wrk3 skill`: prints the bundled agent setup guide (compose/local-setup
+  compatibility triage, `wrk3.yaml` template and field rules, validation
+  step) as markdown to stdout. Needs no config file, so an agent can use
+  it to configure wrk3 for any app.
 - New `setting up` / `failed` worktree statuses for `up`: targets are
   marked `setting up` at start (shown in `status`, `ls`, and the
   dashboard instead of a premature `running` while setup/run entries

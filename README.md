@@ -127,7 +127,9 @@ Full field reference, port table, `.env` mapping, and multi-project patterns:
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md). Command reference:
 [docs/USAGE.md](docs/USAGE.md).
 
-> **Agents / automation:** the [`wrk3-compat`](https://github.com/mytmlt/wrk3-skills/tree/main/skills/wrk3-compat)
+> **Agents / automation:** run `wrk3 skill` to print the bundled setup
+> guide (compat triage + `wrk3.yaml` template + validation) to stdout —
+> no config needed. The [`wrk3-compat`](https://github.com/mytmlt/wrk3-skills/tree/main/skills/wrk3-compat)
 > and [`wrk3-setup`](https://github.com/mytmlt/wrk3-skills/tree/main/skills/wrk3-setup)
 > skills (standalone [`mytmlt/wrk3-skills`](https://github.com/mytmlt/wrk3-skills) repo,
 > sibling checkout `../wrk3-skills`) analyze a project's compose/local setup

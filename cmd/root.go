@@ -85,10 +85,10 @@ func init() {
 
 // maybePrintUpdateNotice prints the "new version available" hint to stderr.
 // Best-effort and silent on failure: dev builds, help/version output,
-// and the update/version/completion commands themselves never nag.
+// and the update/version/completion/skill commands themselves never nag.
 func maybePrintUpdateNotice(cmd *cobra.Command) {
 	switch cmd.Name() {
-	case "update", "version", "completion":
+	case "update", "version", "completion", "skill":
 		return
 	}
 	for _, a := range os.Args[1:] {
