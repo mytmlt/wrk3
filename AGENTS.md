@@ -29,6 +29,9 @@ hermetic (temp git repos, temp dirs — no network).
   (`portainer`/`nomad` are intentional `not implemented` stubs).
 - `internal/ports/` — `allocated = base + index*step` allocator, `.env`
   writer, `<worktreeBase>/.wrk3-state.json` state file.
+- `internal/task/` — portable stack definition: analyze compose/host,
+  project onto compose/swarm/portainer/host without writing source
+  (`docs/TASK.md`).
 - `internal/config/` — `wrk3.yaml` load + validation (`docs/CONFIGURATION.md`
   is the field reference).
 

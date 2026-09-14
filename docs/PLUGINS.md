@@ -124,6 +124,12 @@ Semantics (match `internal/runner/docker.go`):
   docker uses 5 min, git 60 s) and wrap errors with context:
   `fmt.Errorf("myrunner up (dir=%s): %w", worktreePath, err)`.
 
+Portable stack shape (compose analyzed into an environment-agnostic
+document, then projected onto compose/swarm/Portainer/host without
+changing source) lives in `internal/task` — see [TASK.md](TASK.md).
+Runners may consume a `task.Task` later; v1 still executes via compose
+entry strings.
+
 `runner.Options{ComposeFiles, ProjectPrefix, Slug}` is docker-specific.
 Generic backends should take their own options struct (or none, like the
 `PortainerRunner{}`/`NomadRunner{}` stubs).

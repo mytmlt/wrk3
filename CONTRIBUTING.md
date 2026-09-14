@@ -21,7 +21,7 @@ go test ./... -count=1
 Project layout:
 
 - `cmd/` — thin cobra commands; depend on `internal/*` **interfaces only**
-- `internal/project|source|runner|ports|config` — registry + implementations
+- `internal/project|source|runner|ports|config|task` — registry + implementations
 - `docs/` — user docs: installation, configuration, usage
 
 ## Workflow

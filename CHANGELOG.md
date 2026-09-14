@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Internal task definition: `wrk3 task` analyzes docker compose (or a
+  host plan) into a portable stack document and projects it onto
+  `compose`, `swarm`, `portainer`, or `host` without modifying source
+  files. Compose → host is `docker run` / process commands; host →
+  compose round-trips image services and process commands. See
+  [docs/TASK.md](docs/TASK.md).
 - `wrk3 skill`: prints the bundled agent setup guide (compose/local-setup
   compatibility triage, `wrk3.yaml` template and field rules, validation
   step) as markdown to stdout. Needs no config file, so an agent can use

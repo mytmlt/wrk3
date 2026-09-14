@@ -123,6 +123,9 @@ errors ambiguous instead of guessing.
 
 Runtime state (`<worktreeBase>/.wrk3-state.json`) lives next to the repo.
 
+To project the stack onto Portainer, Swarm, or the host without editing
+compose files, see [TASK.md](TASK.md) (`wrk3 task`).
+
 ## Local configs
 
 Place `wrk3.yaml` (or personal variants) in the repo root — the config

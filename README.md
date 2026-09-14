@@ -17,6 +17,10 @@ projects. `status` shows every worktree, branch, and port at a glance.
 
 - **Parallel worktrees** — `git worktree add/remove/list` behind a `Source`
   interface (`git` ships; the shape reserves future backends).
+- **Portable task definition** — `wrk3 task` analyzes compose (or a host
+  plan) into an internal stack document and projects it onto compose,
+  Portainer, Swarm, or the host without changing source files
+  ([docs/TASK.md](docs/TASK.md)).
 - **Isolated runners** — `docker compose -p <prefix>-<slug>` per worktree
   behind a `Runner` interface (`docker` ships; `portainer`/`nomad` stubs
   return `not implemented`).
@@ -125,7 +129,8 @@ ports:
 
 Full field reference, port table, `.env` mapping, and multi-project patterns:
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md). Command reference:
-[docs/USAGE.md](docs/USAGE.md).
+[docs/USAGE.md](docs/USAGE.md). Portable compose/host/swarm/Portainer
+projection: [docs/TASK.md](docs/TASK.md).
 
 > **Agents / automation:** run `wrk3 skill` to print the bundled setup
 > guide (compat triage + `wrk3.yaml` template + validation) to stdout —

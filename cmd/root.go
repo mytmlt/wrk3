@@ -88,7 +88,7 @@ func init() {
 // and the update/version/completion/skill commands themselves never nag.
 func maybePrintUpdateNotice(cmd *cobra.Command) {
 	switch cmd.Name() {
-	case "update", "version", "completion", "skill":
+	case "update", "version", "completion", "skill", "task":
 		return
 	}
 	for _, a := range os.Args[1:] {

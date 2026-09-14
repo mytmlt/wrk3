@@ -56,6 +56,8 @@ wrk3 dashboard --project myapp       # same, starting from a registered project
 wrk3 update --check                 # show latest release without installing
 wrk3 update                         # install latest over the current binary (sha256 verified)
 wrk3 skill                          # print the bundled agent setup guide (compat triage + wrk3.yaml template) to stdout; needs no config
+wrk3 task                           # analyze compose in cwd into the internal task definition (needs no wrk3.yaml; source files unchanged)
+wrk3 task --to swarm                # project that definition onto swarm / portainer / host / compose
 ```
 
 Branch slugs: `feature/foo` → `feature-foo` (max 50 chars). `add`/`up`/`down`
@@ -77,6 +79,20 @@ in `up`/`down` (bare = all including main), `status`/`ls`, and as an
 `exec`/`logs` target by branch/slug. It uses reserved port index `-1`
 (e.g. `7900` with defaults) with the managed `.env` section ensured on `up`/`down`/`exec`;
 `remove` refuses main and `remove --all` covers only managed worktrees.
+
+## Task definition
+
+`wrk3 task` builds a portable internal definition from the project's
+compose files (or `--from host <file>`) and prints it, or projects it
+with `--to compose|swarm|portainer|host`. Source files are never
+modified. Notes go to stderr. Full schema and environment rules:
+[TASK.md](TASK.md).
+
+```bash
+wrk3 task --dir /path/to/app
+wrk3 task --to host
+wrk3 task --from host plan.yaml --to compose
+```
 
 ## Dashboard (TUI)
 
@@ -124,7 +140,7 @@ wrk3 down pr-102 && wrk3 remove pr-102
 | Symptom | Likely cause / fix |
 | ------- | ------------------ |
 | `unknown source type "x" (available sources: [git])` | Typo in `source.type`; only `git` ships in v1. |
-| `unknown runner type "x" (available runners: [docker portainer nomad])` | Only `docker` is implemented; stubs return `not implemented`. |
+| `unknown environment "x" (available environments: ...)` | `wrk3 task --to` typo; valid: `internal`, `compose`, `swarm`, `portainer`, `host`. |
 | `project.worktreeBase must not be empty` | `project.worktreeBase` is required. |
 | `no wrk3.yaml found ...` | Not inside a repo checkout, or config named differently — `cd` in or pass `-f <path>`. |
 | `unknown worktree "foo"` | Name/slug not in state — check `wrk3 status`. |
