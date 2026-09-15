@@ -70,6 +70,10 @@ type Source interface {
 	// When the branch has no local ref but <remote>/<branch> exists, Add
 	// creates a tracking branch (--track -b). Empty remote means default.
 	Add(repoPath, branch, worktreePath, remote string) error
+	// AddNew creates a worktree at worktreePath with a NEW local branch
+	// starting at base (git worktree add -b <branch> <worktreePath>
+	// <base>). Base is a start point like "<remote>/<default>" or "HEAD".
+	AddNew(repoPath, branch, worktreePath, base string) error
 	// Remove deletes the worktree at worktreePath (git worktree remove).
 	Remove(repoPath, worktreePath string, force bool) error
 	// List returns existing worktrees (git worktree list --porcelain).

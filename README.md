@@ -83,6 +83,7 @@ wrk3 fetch --author alice            # substring match on author/committer name/
 wrk3 fetch --myprs                   # branches with an open PR involving you (GitHub remotes only, via gh)
 wrk3 add feature-a feature-b
 # or pick interactively: wrk3 add
+# or kick off something new (prompts to create from origin/<default>): wrk3 add feat/new-thing
 # or bulk-create from a remote: wrk3 add --remote upstream --mine
 
 # 3. Boot both stacks in parallel (setup entries, compose up, run entry)
@@ -144,7 +145,9 @@ for where the `docker` / `portainer` / `nomad` / bare-machine runners stand.
 ## How it works
 
 1. `wrk3 add <branch>` → `git worktree add <base>/<slug>` (tracking
-    `<remote>/<branch>` when remote-only), copies `source.git.copy`
+   `<remote>/<branch>` when remote-only; prompts to create from
+   `<remote>/<default>` — `--create`/`--no-create` — when the name matches
+   nothing), copies `source.git.copy`
     includes (if any), assigns the
     next index, allocates `base + index*step` ports, ensures managed keys in
     `.env` (append-only, never overwrites your values), appends

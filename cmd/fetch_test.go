@@ -39,6 +39,9 @@ func (s *stubSource) Identity(repoPath string) (string, string, error) {
 	return s.name, s.email, nil
 }
 func (s *stubSource) Add(repoPath, branch, worktreePath, remote string) error { return nil }
+func (s *stubSource) AddNew(repoPath, branch, worktreePath, base string) error {
+	return nil
+}
 func (s *stubSource) Remove(repoPath, worktreePath string, force bool) error {
 	return nil
 }

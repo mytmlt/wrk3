@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `wrk3 add <new-branch>` now offers to create the branch when the name
+  matches no local or remote branch: it refreshes the remote once (stale
+  cache guard, offline-safe), then prompts `Create new branch from
+  <remote>/<default>? [y/N]` and creates the worktree with
+  `git worktree add -b` from the remote default branch (falls back to
+  `HEAD` with a warning when the default is unknown). `--create` skips
+  the prompt, `--no-create` fails fast instead (for scripts/CI). Only
+  explicit branch names ever create; `--select`, `--local`, and bulk
+  `--remote`/`--mine`/`--myprs` never do.
+
 ### Security
 
 - `scripts/install.sh` now fails closed when checksum verification is

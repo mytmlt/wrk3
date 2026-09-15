@@ -42,6 +42,9 @@ wrk3 add --remote upstream hotfix   # create one branch, tracking upstream when 
 wrk3 add --local                    # adopt all existing local worktrees (no fetch from origin)
 wrk3 add --local feature-a          # adopt only the named local worktree(s)
 wrk3 add feature-a                  # adopts the on-disk worktree when one exists, else creates it
+wrk3 add feat/new-feature           # unknown name: refresh remote, then prompt to create from origin/<default> ([y/N])
+wrk3 add feat/new-feature --create  # same, without prompting (for scripts: no prompt, no hang on EOF)
+wrk3 add feat/new-feature --no-create # fail fast on unknown names instead of prompting
 wrk3 up feature-a                   # setup entries + compose up + run entry
 wrk3 up                             # bare = all worktrees including main, in parallel (errgroup)
 wrk3 status                         # this config (full table, includes main)
@@ -101,7 +104,9 @@ worktree `.env` when complete and collision-free, else a fresh
 allocation; existing `.env` values are never overwritten, divergences
 warn). Deleting the state file therefore rebuilds it on next use.
 Branches with no checkout never enter state — `add <branch>` (local or
-remote ref) and the dashboard create them. Runtime status is synced the
+remote ref) and the dashboard create them. A name matching neither offers
+to create a new branch from the remote default (`--create`/`--no-create`
+to skip the prompt). Runtime status is synced the
 same way: every read probes the configured runner backend (docker compose
 today, other orchestrators via the same Runner interface tomorrow) and
 persists `running`/`stopped` drift back to the state file (logged as
