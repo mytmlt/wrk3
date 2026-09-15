@@ -17,6 +17,19 @@ linters:
       - linters: [gosec]
         path: _test\.go
         text: G101|G102|G103|G106
+      # By design: wrk3 shells out to git/gh/docker and runs entry.*
+      # strings via sh -c — subprocess-with-variable is the product.
+      - linters: [gosec]
+        text: G204
+      # By design: state/.env/config paths come from wrk3.yaml + state
+      # file — file-inclusion-via-variable is the product.
+      - linters: [gosec]
+        text: G304
+      # By design: managed .env files and worktree dirs are 0644/0755
+      # (ports must be readable by composed services; secrets are
+      # inherited, never overwritten). See docs/CONFIGURATION.md.
+      - linters: [gosec]
+        text: G301|G306
 issues:
   max-issues-per-linter: 50
   max-same-issues: 20
