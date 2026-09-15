@@ -11,9 +11,59 @@ isolated with its own ports and container project — from any directory.
 `wrk3` was built for stacks where one checkout = one full environment
 (e.g. a `docker compose` dev stack): point it at a repo, `add` two branches,
 `up`, and get two running copies on distinct ports and distinct compose
-projects. `status` shows every worktree, branch, and port at a glance.
+projects.
+
+![wrk3 dashboard](docs/dashboard.png)
+
+## Dashboard (start here)
+
+```bash
+wrk3 dashboard
+```
+
+The dashboard is the fastest way to drive `wrk3` — one TUI over the
+current repo plus every registered project (`tab` switches). It polls
+worktree state and remote branches (default every 15s, `--poll 0`
+disables), and runs the same operations as the CLI without leaving the
+screen.
+
+Three panes (side-by-side on terminals ≥132 cols, stacked otherwise):
+
+- **WORKTREES (left)** — `WORKTREE/BRANCH/STATUS/PORTS/PROJECT`, live
+  runner status included (`running`, `stopped`, `setting up`,
+  `stopping`, `failed`, `stale`/`?` when the directory is missing).
+- **REMOTE BRANCHES (right)** — queueable refs with `STATE`
+  (`new` queueable, `orphan` = on-disk worktree missing from state and
+  adoptable, `registered`/`checked out` not queueable).
+- **LOG (bottom)** — operation output, scrollable with
+  `pgup`/`pgdn`/`home`/`end`.
+
+| Keys | Action |
+| ---- | ------ |
+| `j/k` or `↑/↓` | move cursor |
+| `space` | select (multi-select; `u`/`d`/`x` fall back to the cursor row) |
+| `1`/`2` or `←`/`→` | switch pane |
+| `tab` | switch project |
+| `u` / `d` | `up` / `down` selected worktrees (rows flip to `setting up`/`stopping` immediately) |
+| `a` | `add` queued branches (creates the checkout, or adopts the on-disk worktree) |
+| `x` / `X` | `remove` / `remove --force` selected worktrees (asks `y/n`, never touches main) |
+| `r` / `R` | refresh state / fetch remote |
+| `m` / `P` | toggle `mine` / `myprs` branch filters |
+| `?` / `q` | all keys / quit |
+
+Filters and targets: `--remote`/`--mine`/`--author`/`--myprs` seed the
+branch list (`m`/`P` toggle live), `--project <name>` starts from a
+registered project, `--poll <dur>` tunes polling. The CLI keeps working
+alongside — `wrk3 add` in another terminal shows up on the next poll or
+`r`. Full key/flag reference: [docs/USAGE.md](docs/USAGE.md#dashboard-tui).
 
 ## Features
+
+- **Interactive dashboard** — `wrk3 dashboard` polls worktrees, remote
+  branches, and ports across the current repo and registered projects
+  (`tab` switches), with `up`/`down`/`add`/`remove` from the keyboard
+  (`x` removes, `X` force-removes like `remove --force`).
+  The CLI keeps working alongside it.
 
 - **Parallel worktrees** — `git worktree add/remove/list` behind a `Source`
   interface (`git` ships; the shape reserves future backends).
@@ -88,9 +138,9 @@ wrk3 add feature-a feature-b
 # 3. Boot both stacks in parallel (setup entries, compose up, run entry)
 wrk3 up
 
-# 4. Inspect, tail, run commands
+# 4. Inspect, tail, run commands (dashboard first, CLI alongside)
+wrk3 dashboard                  # start here — worktrees + branches + up/down/add/remove
 wrk3 status
-wrk3 dashboard                  # or drive it all from the TUI
 wrk3 ls --project myapp   # same worktrees from any dir (after add registers it)
 wrk3 project ls           # all registered projects
 wrk3 logs feature-a -f
@@ -159,12 +209,18 @@ for where the `docker` / `portainer` / `nomad` / bare-machine runners stand.
     Bare `up`/`down` apply to all worktrees including the implicit main
     checkout (repo root, reserved port index -1, managed `.env` section ensured on run);
     pass names to filter.
-3. `wrk3 status` → reads the state file plus the implicit main checkout,
-    probes live runner status, prints
+3. `wrk3 status` → reconciles the state file against `git worktree list`
+    (on-disk worktrees missing from state are adopted, ports recovered
+    from `.env` or freshly allocated), probes live runner status
+    (`compose ps -q`, then label-based fallbacks so out-of-band
+    `docker compose up` counts as `running`), syncs drift back to the
+    state file, and prints
     `WORKTREE/BRANCH/STATUS/PORTS/COMPOSE_PROJECT` (plus `URL` when
     `proxy.enabled` → `http://<slug>.localhost:<port>` via the stdlib
     gateway; `up` auto-starts it, `wrk3 proxy status|open|hosts-sync`
-    manage it).
+    manage it). Every read (`status`/`ls`/`up`/`down`/dashboard) syncs
+    the same way — live `running` always wins, `unknown` never persists.
+    Details: [docs/USAGE.md](docs/USAGE.md).
 4. `wrk3 remove` → `compose down -v` + `git worktree remove` + state cleanup.
     `remove` never touches main (explicit `remove <main-branch>` is refused;
     `remove --all` covers only managed worktrees).

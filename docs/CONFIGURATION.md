@@ -121,7 +121,8 @@ runner (not set in `.env`).
 Only use the port names your compose files read — extra names are
 harmless. To adapt: change `ports.base` keys/values and make sure your
 compose/`entry` commands consume the matching `.env` vars (e.g.
-`"${APP_PORT:-8000}:8000"`).
+`"${APP_PORT:-8000}:8000"`). How recovered ports, reconcile, and live
+docker status sync on every read: [USAGE.md](USAGE.md).
 
 ## Local gateway (`proxy`)
 
