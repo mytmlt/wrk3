@@ -98,22 +98,61 @@ in `up`/`down` (bare = all including main), `status`/`ls`, and as an
 
 State recovery: the state file (`.wrk3-state.json` under `worktreeBase`)
 is a cache, not the truth. Every read (`status`, `ls`, `up`, `down`,
-dashboard) reconciles it against `git worktree list`: on-disk worktrees
-missing from state are adopted automatically (ports recovered from the
-worktree `.env` when complete and collision-free, else a fresh
-allocation; existing `.env` values are never overwritten, divergences
-warn). Deleting the state file therefore rebuilds it on next use.
-Branches with no checkout never enter state — `add <branch>` (local or
-remote ref) and the dashboard create them. A name matching neither offers
-to create a new branch from the remote default (`--create`/`--no-create`
-to skip the prompt). Runtime status is synced the
-same way: every read probes the configured runner backend (docker compose
-today, other orchestrators via the same Runner interface tomorrow) and
-persists `running`/`stopped` drift back to the state file (logged as
-`synced runtime state: ...`); stacks started out-of-band via plain
-`docker compose up` are detected through the worktree folder-name project
-as well as the configured `<prefix>-<slug>`. Unknown probes (e.g. daemon
-unreachable) never overwrite stored state.
+dashboard) reconciles it against `git worktree list` and syncs runtime
+status back into it (writes happen only when something changed; CLI logs
+`reconciled state: ...` / `synced runtime state: ...` on stderr, the
+dashboard shows them in its log pane). Deleting the state file therefore
+rebuilds it on next use. Branches with no checkout never enter state —
+`add <branch>` (local or remote ref) and the dashboard create them. A name
+matching neither offers to create a new branch from the remote default
+(`--create`/`--no-create` to skip the prompt).
+
+### Worktree reconcile
+
+On-disk worktrees missing from state (orphans from a deleted state file
+or out-of-band `git worktree add`) are adopted automatically, in sorted
+branch order for deterministic indexes:
+
+- Ports are recovered from the worktree `.env` only when the set is a
+  complete, valid grid point (`app` on `base + index*step`, full map
+  equals `Allocate(index)`) with no collisions (main index `-1` included);
+  otherwise a fresh next-available index is assigned (collision scan, so a
+  `ports.base`/`step` change never reuses a taken port). The worktree
+  `.env` is gap-filled (existing values never overwritten, divergences
+  warn). Adopted records start as `stopped` — display overlays the live
+  probe.
+- Slug or compose-project collisions are hard errors (state is never
+  half-written).
+- A `git worktree list` failure degrades to no adoption (offline-safe)
+  rather than failing the read.
+
+### Runtime sync + display
+
+Every read probes the configured runner backend (docker compose today,
+other orchestrators via the same Runner interface tomorrow) in parallel
+(30s timeout per worktree). Missing directories short-circuit to
+`stale`/`?` with no runner call; probe errors surface as `unknown`. The
+implicit main checkout has no state entry — only managed records sync,
+main is synthesized afterwards for display.
+
+Persist rules (`running`/`stopped` drift is written back to the state
+file): live `running` always persists (even over `setting up` /
+`stopping` / `failed`, so an out-of-band `up` clears stale status);
+live `stopped` only clears `running` / `failed` (a transient empty probe
+mid-`up` never clobbers an in-progress transitional state); `unknown`
+never persists (e.g. daemon unreachable).
+
+Display rules (same for `status` / `ls` / dashboard): live `running`
+always wins; otherwise stored `setting up` / `stopping` / `failed` win
+over a non-running probe while entries execute; a probe error falls back
+to stored state (`unknown` when nothing is stored).
+
+Docker probe order: primary `docker compose -p <prefix>-<slug> ps -q`,
+then label-based `docker ps --filter label=com.docker.compose.project=…`
+fallbacks covering stacks started out-of-band via plain
+`docker compose up` — slug, worktree folder basename, and stored project
+(label check is independent of compose files and cwd). Any candidate with
+>0 containers counts as `running`, else `stopped`.
 
 ## Dashboard (TUI)
 

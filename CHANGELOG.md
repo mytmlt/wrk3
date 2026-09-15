@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the prompt, `--no-create` fails fast instead (for scripts/CI). Only
   explicit branch names ever create; `--select`, `--local`, and bulk
   `--remote`/`--mine`/`--myprs` never do.
+- `README.md` now leads with the `dashboard`: screenshot
+  (`docs/dashboard.png`), a `Dashboard (start here)` section first
+  (panes, key table, flags), dashboard-first `Features` list and
+  Quickstart.
+- Docs now explain worktree reconcile + docker runtime sync: `USAGE.md`
+  gains `Worktree reconcile` / `Runtime sync + display` subsections
+  (adoption order, grid-validity + collision scan, hard-error collisions,
+  offline-safe list, parallel probes, persist/display matrices, docker
+  primary + label-based fallbacks); `README.md` summarizes with a link,
+  `CONFIGURATION.md` points at it.
 
 ### Security
 

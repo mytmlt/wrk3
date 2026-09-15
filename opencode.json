@@ -12,6 +12,10 @@
     "wrk3-status": {
       "description": "Validate the example wrk3 config with status.",
       "template": "Run `go run . -f ./wrk3.yaml.example status` in the wrk3 repo and report the worktree table."
+    },
+    "wrk3-checks": {
+      "description": "Watch a PR's CI checks until they complete, then report pass/fail.",
+      "template": "Poll `gh pr checks $ARGUMENTS` (empty $ARGUMENTS means the current branch's PR) roughly every 30 seconds until no check is pending, queued, or in progress. Then report each check as pass/fail with its run URL. If any check fails, also run `gh pr view $ARGUMENTS --json state,mergeable,mergeStateStatus` and summarize whether the PR is mergeable."
     }
   }
 }
