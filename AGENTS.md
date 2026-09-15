@@ -5,6 +5,35 @@ each isolated with its own ports and container project. Single static Go
 binary (`Go ≥ 1.26`); runtime deps are `git` and `docker` (docker only for
 the `docker` runner).
 
+## Agent development workflow (binding)
+
+Every code or docs task runs on an isolated branch + worktree, with
+tests. The agent commits, pushes, opens PRs, and watches checks
+autonomously; the human merges when green. See the full
+checklist in `skills/wrk3-dev-flow/SKILL.md`.
+
+1. **Isolate.** `git fetch origin`; create `type/short-slug` from updated
+   `main` (`feat/`, `fix/`, `docs:`, `chore:`, `test:` per
+   `CONTRIBUTING.md`); then `wrk3 fetch` → `wrk3 add <branch>` (`git
+   worktree add` fallback only when no `wrk3.yaml` resolves — log why).
+   Never implement in the user's checkout or on `main`. Run `wrk3 up`
+   only when the repo has a runnable `docker` stack; otherwise work
+   directly in the worktree (Go gate below).
+2. **Test.** New functionality → new co-located `*_test.go` covering it.
+   Behavior change → update the existing tests for those paths.
+   Finish with the full gate green (Essential commands above).
+3. **Autonomy.** The agent commits, pushes, opens PRs, and watches
+   checks on its own — no per-step approval prompts. PR title/body
+   follows `.github/PULL_REQUEST_TEMPLATE.md` with Verification
+   evidence. Never push to `main`, never `--force-push` (rebase +
+   re-run the gate instead), never merge anything — merging is the
+   human's job.
+4. **After PR open.** Watch checks with `gh pr checks <number> --watch`
+   until they finish; fix failures with new commits on the same branch
+   (commit, push, re-watch). When everything is green, the agent is
+   done — the human merges. The agent never merges: no `gh pr merge`,
+   no GitHub UI merges, no local merges, never on red.
+
 ## Essential commands
 
 ```bash
