@@ -1,0 +1,12 @@
+# wrk3 gitleaks config — default rules plus an allowlist for the obvious
+# fake secrets used in Go test fixtures (SECRET=topsecret/xyz/x, ...).
+# These are assertions about .env preservation, never real credentials.
+title = "wrk3 gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlist]]
+description = "Fake fixture secrets in Go test files"
+paths = ['''.*_test\.go$''']
+regexes = ['''(?i)(topsecret|SECRET=x\b|SECRET=xyz\b|SEED_SECRET=from-main|OWN_SECRET=mine)''']
