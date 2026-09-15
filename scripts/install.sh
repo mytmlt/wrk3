@@ -146,22 +146,28 @@ if ! download "$url" "$tmp/pkg.$ext"; then
 fi
 
 if [ "$VERIFY" = "1" ]; then
-  if download "$checksum_url" "$tmp/checksums.txt" 2>/dev/null; then
-    (cd "$tmp" && grep " $asset\$" checksums.txt > asset.sha 2>/dev/null || true)
-    if [ -s "$tmp/asset.sha" ]; then
-      if command -v sha256sum >/dev/null 2>&1; then
-        (cd "$tmp" && mv "pkg.$ext" "$asset" && sha256sum -c asset.sha)
-      elif command -v shasum >/dev/null 2>&1; then
-        (cd "$tmp" && mv "pkg.$ext" "$asset" && shasum -a 256 -c asset.sha)
-      else
-        echo "warning: no sha256 tool (sha256sum/shasum), skipping checksum verification" >&2
-      fi
-    else
-      echo "warning: checksum entry for $asset not found, skipping verification" >&2
-    fi
-  else
-    echo "warning: could not download checksums.txt, skipping verification" >&2
+  if ! download "$checksum_url" "$tmp/checksums.txt" 2>/dev/null; then
+    echo "error: could not download checksums.txt from $checksum_url" >&2
+    echo "refusing to install unverified binary (re-run with --no-verify to override)" >&2
+    exit 1
   fi
+  (cd "$tmp" && grep " $asset\$" checksums.txt > asset.sha 2>/dev/null || true)
+  if [ ! -s "$tmp/asset.sha" ]; then
+    echo "error: checksum entry for $asset not found in checksums.txt" >&2
+    echo "refusing to install unverified binary (re-run with --no-verify to override)" >&2
+    exit 1
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$tmp" && mv "pkg.$ext" "$asset" && sha256sum -c asset.sha)
+  elif command -v shasum >/dev/null 2>&1; then
+    (cd "$tmp" && mv "pkg.$ext" "$asset" && shasum -a 256 -c asset.sha)
+  else
+    echo "error: no sha256 tool (sha256sum/shasum), cannot verify checksum" >&2
+    echo "refusing to install unverified binary (re-run with --no-verify to override)" >&2
+    exit 1
+  fi
+else
+  echo "warning: checksum verification disabled (--no-verify), installing unverified binary" >&2
 fi
 
 # The verified package may have been renamed to $asset above.
