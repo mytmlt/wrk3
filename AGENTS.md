@@ -26,11 +26,13 @@ checklist in `skills/wrk3-dev-flow/SKILL.md`.
    checks on its own — no per-step approval prompts. PR title/body
    follows `.github/PULL_REQUEST_TEMPLATE.md` with Verification
    evidence. Never push to `main`, never `--force-push` (rebase +
-   re-run the gate instead), never merge locally.
+   re-run the gate instead), never merge anything — merging is the
+   human's job.
 4. **After PR open.** Watch checks with `gh pr checks <number> --watch`
    until they finish; fix failures with new commits on the same branch
    (commit, push, re-watch). When everything is green, the agent is
-   done — the human merges. Never merge on red.
+   done — the human merges. The agent never merges: no `gh pr merge`,
+   no GitHub UI merges, no local merges, never on red.
 
 ## Essential commands
 
