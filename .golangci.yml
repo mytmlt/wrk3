@@ -1,0 +1,26 @@
+version: "2"
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - gosec
+  disable:
+    - errcheck
+exclusions:
+  presets:
+    - comments
+    - std-error-handling
+  rules:
+    # Test fixtures with hardcoded secrets (topsecret/xyz) are intentional.
+    - linters: [gosec]
+      path: _test\.go
+      text: "G101|G102|G103|G106"
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 20
+formatters:
+  enable:
+    - gofmt
+    - goimports

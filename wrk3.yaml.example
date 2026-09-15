@@ -1,0 +1,34 @@
+project:
+  worktreeBase: .worktrees
+source:
+  type: git
+  git:
+    remote: origin
+    fetchPrune: true
+    # Optional: repo-relative files/dirs (globs allowed, ** supported)
+    # copied from the repo root into each new worktree on `add`.
+    # Missing sources skip with a warning; existing files are never
+    # overwritten. Example:
+    # copy: [".env.local", "certs/", "storage/*.sqlite"]
+runner:
+  type: docker
+  docker:
+    composeFiles: [docker-compose.yml]
+    projectPrefix: demo
+entry:
+  setup: ["docker compose up --wait --build"]
+  run: "docker compose logs -f"
+  stop: "docker compose down"
+  logs: "docker compose logs -f"
+ports:
+  base: {app: 8000}
+  step: 100
+# Local gateway: http://<slug>.localhost:8080 -> app port (stdlib reverse
+# proxy, no extra dependencies). Opt-in: `up` ensures the gateway when
+# enabled, each worktree gains an append-only APP_URL in its .env, and
+# `status` grows a URL column. Chrome/Firefox/Edge resolve .localhost with
+# no setup; Safari/curl need `wrk3 proxy hosts-sync` (sudo for /etc/hosts).
+proxy:
+  enabled: false
+  domain: localhost
+  addr: 127.0.0.1:8080

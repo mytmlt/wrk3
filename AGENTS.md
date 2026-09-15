@@ -1,0 +1,82 @@
+# AGENTS.md — wrk3
+
+`wrk3` runs multiple branches of the same repo in parallel as git worktrees,
+each isolated with its own ports and container project. Single static Go
+binary (`Go ≥ 1.26`); runtime deps are `git` and `docker` (docker only for
+the `docker` runner).
+
+## Essential commands
+
+```bash
+go build ./... && go vet ./... && go test ./... -count=1   # full gate
+make test        # same via Makefile
+make build       # version-stamped ./bin/wrk3
+./bin/wrk3 --help && ./bin/wrk3 version
+```
+
+Run the full gate before finishing any code change. `internal/runner` tests
+take ~10s (they exercise real `docker`); everything else is fast and
+hermetic (temp git repos, temp dirs — no network).
+
+## Layout and architecture (binding)
+
+- `main.go` → `cmd/` (thin cobra commands) → `internal/*` **interfaces only**
+  (see `docs/PLUGINS.md` for the one `docker` options exception in `cmd/common.go`).
+- `internal/config/` — `wrk3.yaml`/`wrk3.yml` load + validation + upward
+  discovery (`discover.go`; `docs/CONFIGURATION.md` is the field reference).
+- `internal/source/` — `Source` iface + `registry.go` + `git.go`.
+- `internal/runner/` — `Runner` iface + `registry.go` + `docker.go`
+  (`portainer`/`nomad` are intentional `not implemented` stubs).
+- `internal/ports/` — `allocated = base + index*step` allocator, `.env`
+  writer, `<worktreeBase>/.wrk3-state.json` state file.
+- `internal/forge/` — `gh`-based PR filtering (`--myprs`).
+- `internal/proxy/` — stdlib local gateway (`<slug>.<domain>` → app port).
+- `internal/project/` — `~/.config/wrk3/projects.yaml` registry.
+- `cmd/dashboard*.go` — bubbletea TUI; `cmd/skill.md` — bundled `wrk3 skill` guide.
+
+## Rules
+
+- New `Source`/`Runner` backends **must** register in their `registry.go`;
+  unknown `source.type`/`runner.type` values error listing available options.
+- State file paths stay absolute (cwd-independence). `status` shows
+  `?`/`stale` when a worktree dir is missing — never fail hard there.
+- Branch slugs: `feature/foo` → `feature-foo`, max 50 chars
+  (`internal/source/slug.go`).
+- Entry strings (`setup`/`run`/`stop`/`logs`) execute verbatim via `sh -c`
+  with `cwd=worktree`, `env=allocated ports` — never hardcode repo-specific
+  commands (e.g. `make test`) in Go code.
+- Keep functions small, wrap errors with context
+  (`fmt.Errorf("...: %w", err)`), no secrets in logs or commits.
+
+## Config and resolution
+
+- Example: `wrk3.yaml.example`. Resolution order for every command:
+  `-f/--file <path>` > upward scan from cwd for `wrk3.yaml`, then `wrk3.yml`
+  (nearest directory wins). No registry, no env var — like `docker compose`.
+- For config-authoring questions (new stack, broken config, port mapping),
+  run `wrk3 skill` first (bundled guide in `cmd/skill.md`). Extended skills
+  live in the standalone `wrk3-skills` repo
+  (`https://github.com/mytmlt/wrk3-skills` — `skills/wrk3-compat/SKILL.md`
+  for the read-only compose/local-setup compatibility triage, then
+  `skills/wrk3-setup/SKILL.md` to author the config).
+  See `skills/README.md`.
+
+## Verifying behavior changes
+
+Unit tests live next to the code (`*_test.go`). For CLI-level verification,
+use a temp git repo — never touch the user's real checkouts:
+
+```bash
+go run . -f ./wrk3.yaml.example status
+```
+
+`add`/`up` create real worktrees/containers — only run them against throwaway
+repos, and `down` + `remove` afterwards to clean up.
+
+## Don'ts
+
+- Don't commit personal configs (`wrk3.*.local.yaml`), `.wrk3-state.json`, `.worktrees/`, `.env` files,
+  binaries, or anything with absolute personal paths / secrets.
+- User-facing change? Update `README.md` / `docs/USAGE.md` /
+  `docs/CONFIGURATION.md` plus a `CHANGELOG.md` `[Unreleased]` entry.
+- Security issues: see `SECURITY.md` — never file public issues for them.

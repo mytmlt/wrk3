@@ -1,0 +1,9 @@
+# .gitattributes — normalize line endings, mark generated/linguist paths.
+* text=auto eol=lf
+
+# GoReleaser archives keep LF scripts executable.
+/scripts/install.sh text eol=lf
+
+# Vendored or generated content (none today; placeholders for the future).
+/dist/** linguist-vendored
+/completions/** linguist-generated
