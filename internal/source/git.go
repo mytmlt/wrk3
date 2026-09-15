@@ -190,6 +190,22 @@ func (g *GitSource) Add(repoPath, branch, worktreePath, remote string) error {
 	return err
 }
 
+// AddNew creates a worktree at worktreePath with a NEW local branch
+// starting at base: git worktree add -b <branch> <path> <base>.
+func (g *GitSource) AddNew(repoPath, branch, worktreePath, base string) error {
+	if branch == "" {
+		return fmt.Errorf("git worktree add: empty branch")
+	}
+	if worktreePath == "" {
+		return fmt.Errorf("git worktree add: empty worktree path")
+	}
+	if strings.TrimSpace(base) == "" {
+		return fmt.Errorf("git worktree add: empty base")
+	}
+	_, err := g.run(repoPath, "worktree", "add", "-b", branch, worktreePath, strings.TrimSpace(base))
+	return err
+}
+
 // refExists reports whether ref resolves in repoPath (quiet, no output).
 func (g *GitSource) refExists(repoPath, ref string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), g.timeout())

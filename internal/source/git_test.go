@@ -107,6 +107,54 @@ func normWorktreePath(p string) string {
 	return p
 }
 
+func TestAddNew_CreatesBranchFromBase(t *testing.T) {
+	repo := initRepo(t)
+	src := &GitSource{}
+	wt := filepath.Join(t.TempDir(), "wt-new")
+	if err := src.AddNew(repo, "feat/new", wt, "main"); err != nil {
+		t.Fatalf("AddNew: %v", err)
+	}
+	// Local branch now exists at main's tip.
+	cmd := exec.Command("git", "-C", repo, "show-ref", "--verify", "--quiet", "refs/heads/feat/new")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("expected local branch refs/heads/feat/new: %v", err)
+	}
+	infos, err := src.List(repo)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	found := false
+	for _, in := range infos {
+		if in.Branch == "feat/new" {
+			found = true
+			if in.Commit == "" {
+				t.Error("Commit empty")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("worktree for feat/new not listed: %+v", infos)
+	}
+}
+
+func TestAddNew_InvalidArgsError(t *testing.T) {
+	repo := initRepo(t)
+	src := &GitSource{}
+	wt := filepath.Join(t.TempDir(), "wt-bad")
+	if err := src.AddNew(repo, "", wt, "main"); err == nil {
+		t.Error("expected error for empty branch")
+	}
+	if err := src.AddNew(repo, "feat/x", "", "main"); err == nil {
+		t.Error("expected error for empty worktree path")
+	}
+	if err := src.AddNew(repo, "feat/x", wt, "   "); err == nil {
+		t.Error("expected error for empty base")
+	}
+	if err := src.AddNew(repo, "feat/x", wt, "no-such-ref-xyz"); err == nil {
+		t.Error("expected error for unknown base")
+	}
+}
+
 func TestAdd_InvalidBranchErrors(t *testing.T) {
 	repo := initRepo(t)
 	src := &GitSource{}

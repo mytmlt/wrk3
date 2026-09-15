@@ -41,7 +41,7 @@ ports:
 | ---- | -------- | ----- |
 | `project.worktreeBase` | yes | Directory holding worktrees + `.wrk3-state.json`. The repo root is the directory containing `wrk3.yaml` (the config always lives in the project root). Relative values resolve against the repo root; absolute values pass through. Worktrees are created with `git -C <repoRoot>`. |
 | `source.type` | yes | `git` (only backend that ships). Unknown values error listing `[git]`. |
-| `source.git.remote` | no | Default `origin`. Used by `fetch` (`fetch --prune`) and ref listing. `--remote <name>` on `fetch`/`add` overrides it per-invocation; `--mine` on `add` requires remote mode (uses the flag or this value). Remote-only branches are created as tracking branches (`--track -b`). |
+| `source.git.remote` | no | Default `origin`. Used by `fetch` (`fetch --prune`) and ref listing. `--remote <name>` on `fetch`/`add` overrides it per-invocation; `--mine` on `add` requires remote mode (uses the flag or this value). Remote-only branches are created as tracking branches (`--track -b`). New branches (`add <name>` for an unknown name, after confirm or `--create`) start from `<remote>/<default>` (`refs/remotes/<remote>/HEAD`, else `main`/`master` probe, else `HEAD` with a warning). |
 | `source.git.fetchPrune` | no | Default `true`. |
 | `source.git.copy` | no | Repo-relative files/dirs (globs allowed, `**` supported) copied from the repo root into each new worktree on `add` (e.g. `[".env.local", "certs/", "storage/*.sqlite"]`). Rules: non-empty, not absolute, no `..` escape. Missing sources skip with a warning; existing destinations are never overwritten (dirs merge). Applies to `add` only, not adopt. `.git` metadata is never copied. Copied files stay gitignored — never commit worktree secrets. |
 
