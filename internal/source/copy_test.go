@@ -116,7 +116,10 @@ func TestCopyIncluded_NoClobber(t *testing.T) {
 func TestCopyIncluded_RejectsUnsafe(t *testing.T) {
 	root := t.TempDir()
 	wt := t.TempDir()
-	for _, p := range []string{"/abs", "../escape"} {
+	// abs is absolute on any OS (TempDir is always absolute); "/abs"
+	// is not absolute on Windows and would only warn, not error.
+	abs := filepath.Join(t.TempDir(), "abs")
+	for _, p := range []string{abs, "../escape"} {
 		if _, err := CopyIncluded(root, wt, []string{p}); err == nil {
 			t.Fatalf("pattern %q must error", p)
 		}

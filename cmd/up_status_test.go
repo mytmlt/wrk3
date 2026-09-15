@@ -83,9 +83,10 @@ func TestProbeDashboardRows_TransitionalStaysWithoutLiveContainers(t *testing.T)
 func TestMarkStatus_SettingUpFailedRoundtrip(t *testing.T) {
 	stateP := filepath.Join(t.TempDir(), "state.json")
 	r := &resolved{stateP: stateP}
+	base := t.TempDir()
 	recs := []ports.WorktreeRecord{
-		{Branch: "a", Slug: "a", AbsPath: "/tmp/a", Index: 0, Status: ports.StatusStopped},
-		{Branch: "b", Slug: "b", AbsPath: "/tmp/b", Index: 1, Status: ports.StatusStopped},
+		{Branch: "a", Slug: "a", AbsPath: filepath.Join(base, "a"), Index: 0, Status: ports.StatusStopped},
+		{Branch: "b", Slug: "b", AbsPath: filepath.Join(base, "b"), Index: 1, Status: ports.StatusStopped},
 	}
 	if err := saveState(r, recs); err != nil {
 		t.Fatal(err)

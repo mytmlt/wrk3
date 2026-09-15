@@ -6,7 +6,7 @@ title = "wrk3 gitleaks config"
 [extend]
 useDefault = true
 
-[[allowlist]]
+[allowlist]
 description = "Fake fixture secrets in Go test files"
 paths = ['''.*_test\.go$''']
 regexes = ['''(?i)(topsecret|SECRET=x\b|SECRET=xyz\b|SEED_SECRET=from-main|OWN_SECRET=mine)''']

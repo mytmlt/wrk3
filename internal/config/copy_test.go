@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestValidateGitCopy(t *testing.T) {
 	for _, p := range []string{".env.local", "certs/", "storage/*.sqlite", "data/**/*.txt"} {
@@ -8,13 +11,15 @@ func TestValidateGitCopy(t *testing.T) {
 			t.Errorf("pattern %q must validate: %v", p, err)
 		}
 	}
+	// abs is an absolute path on any OS (t.TempDir is always absolute).
+	abs := filepath.Join(t.TempDir(), "abs")
 	for _, tc := range []struct {
 		name string
 		in   []string
 	}{
 		{"empty", []string{""}},
 		{"blank", []string{"  "}},
-		{"absolute", []string{"/abs"}},
+		{"absolute", []string{abs}},
 		{"escape", []string{"../x"}},
 		{"escapeNested", []string{"a/../../x"}},
 	} {
