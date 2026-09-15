@@ -70,20 +70,20 @@ func removeOne(cmd *cobra.Command, r *resolved, recs []ports.WorktreeRecord, bra
 	}
 	env := envForWorktree(r.cfg, *rec)
 	if err := rn.Down(cmd.Context(), rec.AbsPath, env); err != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: compose down for %q: %v\n", rec.Branch, err)
+		warnf(cmd, "compose down for %q: %v", rec.Branch, err)
 	}
 	// The worktree's .env may hold user secrets alongside wrk3-managed
 	// port keys, so strip only the managed keys instead of deleting the
 	// file. StripManaged deletes it when nothing but managed keys remain,
 	// keeping plain remove working on otherwise clean worktrees.
 	if _, err := ports.StripManaged(filepath.Join(rec.AbsPath, ports.EnvFileName), rec.Ports); err != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: strip managed .env keys for %q: %v\n", rec.Branch, err)
+		warnf(cmd, "strip managed .env keys for %q: %v", rec.Branch, err)
 	}
 	if err := r.src.Remove(r.cfg.RepoPath(), rec.AbsPath, removeForce); err != nil {
 		if !removeForce {
 			return fmt.Errorf("remove worktree %q: %w", rec.Branch, err)
 		}
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: worktree remove for %q: %v\n", rec.Branch, err)
+		warnf(cmd, "worktree remove for %q: %v", rec.Branch, err)
 		_ = os.RemoveAll(rec.AbsPath)
 	}
 	removedBranch := rec.Branch

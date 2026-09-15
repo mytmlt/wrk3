@@ -129,13 +129,9 @@ func stopProxy(cfg *config.Config) error {
 	return nil
 }
 
-// proxyTargets loads slug->appPort from state for the gateway handler.
+// proxyTargetsWithMain loads slug->appPort from state for the gateway handler.
 // mainEntry (possibly nil) is merged in so the implicit main checkout URL
 // routes too; state wins on slug collision.
-func proxyTargets(cfg *config.Config) map[string]int {
-	return proxyTargetsWithMain(cfg, nil)
-}
-
 func proxyTargetsWithMain(cfg *config.Config, mainEntry *ports.WorktreeRecord) map[string]int {
 	recs, err := ports.Load(cfg.StatePath())
 	if err != nil {
@@ -354,9 +350,14 @@ var proxyRunCmd = &cobra.Command{
 		if recs, err := ports.Load(r.cfg.StatePath()); err == nil {
 			mainEntry, _ = mainRecord(r, recs)
 		}
-		srv := &http.Server{Handler: proxy.NewHandler(r.cfg.ProxyDomain(), func() map[string]int {
-			return proxyTargetsWithMain(r.cfg, mainEntry)
-		})}
+		// ReadHeaderTimeout bounds slowloris-style slow headers on the
+		// local-only gateway (gosec G112).
+		srv := &http.Server{
+			ReadHeaderTimeout: 5 * time.Second,
+			Handler: proxy.NewHandler(r.cfg.ProxyDomain(), func() map[string]int {
+				return proxyTargetsWithMain(r.cfg, mainEntry)
+			}),
+		}
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "proxy listening on %s (<slug>.%s)\n", addr, r.cfg.ProxyDomain())
 		go func() {
 			<-cmd.Context().Done()

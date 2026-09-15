@@ -21,15 +21,21 @@ linters:
       # strings via sh -c — subprocess-with-variable is the product.
       - linters: [gosec]
         text: G204
-      # By design: state/.env/config paths come from wrk3.yaml + state
-      # file — file-inclusion-via-variable is the product.
+      # By design: state/.env/config/copy paths come from wrk3.yaml +
+      # state file — file-inclusion-via-variable is the product. copy.go
+      # additionally guards with IsAbs/escape/withinDir checks that taint
+      # analysis (G703) cannot see.
       - linters: [gosec]
-        text: G304
-      # By design: managed .env files and worktree dirs are 0644/0755
-      # (ports must be readable by composed services; secrets are
-      # inherited, never overwritten). See docs/CONFIGURATION.md.
+        text: G304|G703
+      # By design: managed .env files, pid files, installed binaries and
+      # worktree dirs use 0644/0755 (see CONFIGURATION.md). Covers G301
+      # (dirs), G302 (chmod) and G306 (WriteFile).
       - linters: [gosec]
-        text: G301|G306
+        text: G301|G302|G306
+      # Test-only XSS-taint finding in proxy handler tests.
+      - linters: [gosec]
+        path: _test\.go
+        text: G705
 issues:
   max-issues-per-linter: 50
   max-same-issues: 20

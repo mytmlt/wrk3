@@ -1320,7 +1320,7 @@ func stateRecsOf(rows []dashboardRow) []ports.WorktreeRecord {
 
 func (m dashboardModel) worktreePane(width, height int) string {
 	focused := m.pane == 0
-	title := "WORKTREES (1)"
+	var title string
 	if focused {
 		title = dashPaneTitleFocused.Render("WORKTREES (1) ●")
 	} else {
@@ -1335,7 +1335,7 @@ func (m dashboardModel) worktreePane(width, height int) string {
 
 func (m dashboardModel) branchPane(width, height int) string {
 	focused := m.pane == 1
-	title := "REMOTE BRANCHES (2)"
+	var title string
 	if focused {
 		title = dashPaneTitleFocused.Render("REMOTE BRANCHES (2) ●")
 	} else {
