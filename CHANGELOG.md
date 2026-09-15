@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Dogfood config: committed `wrk3.yaml` for the wrk3 repo itself so
+  agents (and humans) run `wrk3 fetch` / `wrk3 add` here per the
+  `AGENTS.md` isolate step. No docker stack exists, so `up`/`down` are
+  not meaningful (Go gate instead) and `status` shows `unknown`.
+- `AGENTS.md` gains the binding agent development workflow (isolate on
+  branch + worktree, test with the full gate, autonomous
+  commit/push/PR/checks-watching with `gh pr checks --watch`; human
+  merges when green).
+
 - `wrk3 add <new-branch>` now offers to create the branch when the name
   matches no local or remote branch: it refreshes the remote once (stale
   cache guard, offline-safe), then prompts `Create new branch from
