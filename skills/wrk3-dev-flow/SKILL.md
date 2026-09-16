@@ -17,12 +17,12 @@ and report the PR URL plus check results. Running builds, vets, tests,
 and linters never needs approval either.
 
 Standing bash permissions for this flow live in project `opencode.json`
-(`permission.bash`: `wrk3 *`, `./bin/wrk3 *`, `make *`,
-`golangci-lint *`, `git rebase *`, `gh pr create|edit *`,
-`git push *origin*` on topic branches). Denied there on purpose:
-pushes to `main`/`master`, tag pushes, `git merge *`, `gh pr merge *`.
-If a command is held for approval anyway (stale config), say so and
-continue with what is allowed.
+(`permission.bash`: `wrk3 *`, `./bin/wrk3 *`, `make *`, `go build|vet|test *`,
+`go run . *`, `head *`, `golangci-lint *`, `git rebase *`,
+`gh pr create|edit|view|checks *`, `git push *origin*` on topic branches).
+Denied there on purpose: pushes to `main`/`master`, tag pushes,
+`git merge *`, `gh pr merge *`. If a command is held for approval anyway
+(stale config), say so and continue with what is allowed.
 
 ## Phase 1 — isolate
 
@@ -66,9 +66,10 @@ continue with what is allowed.
 
 ## Phase 4 — watch checks (autonomous)
 
-- Watch with `gh pr checks <number> --watch` until everything finishes;
-  fix failures with new commits on the same branch (commit, push,
-  re-watch).
+- Always watch with `gh pr checks <number> --watch` until everything
+  finishes — never poll `gh pr checks` in a loop, the `--watch` flag
+  blocks until checks complete. Fix failures with new commits on the
+  same branch (commit, push, re-watch).
 - When everything is green, the agent is done — report the PR URL plus
   check results and stop. The agent never merges: no `gh pr merge`, no
   GitHub UI merges, no local merges, never on red.

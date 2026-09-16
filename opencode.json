@@ -17,6 +17,8 @@
       "git rebase *": "allow",
       "gh pr create *": "allow",
       "gh pr edit *": "allow",
+      "gh pr view *": "allow",
+      "gh pr checks *": "allow",
       "git push *origin*": "allow",
       "rm -rf *": "deny",
       "git push": "deny",
@@ -56,7 +58,7 @@
     },
     "wrk3-checks": {
       "description": "Watch a PR's CI checks until they complete, then report pass/fail.",
-      "template": "Poll `gh pr checks $ARGUMENTS` (empty $ARGUMENTS means the current branch's PR) roughly every 30 seconds until no check is pending, queued, or in progress. Then report each check as pass/fail with its run URL. If any check fails, also run `gh pr view $ARGUMENTS --json state,mergeable,mergeStateStatus` and summarize whether the PR is mergeable."
+      "template": "Run `gh pr checks $ARGUMENTS --watch` (empty $ARGUMENTS means the current branch's PR) and wait until it exits — never poll in a loop. Then report each check as pass/fail with its run URL. If any check fails, also run `gh pr view $ARGUMENTS --json state,mergeable,mergeStateStatus` and summarize whether the PR is mergeable."
     }
   }
 }
