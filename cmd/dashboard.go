@@ -1206,11 +1206,11 @@ const (
 // bindings are display-only; handleKey still owns dispatch so selection
 // and op semantics stay in one place (and stay unit-testable).
 type dashboardKeys struct {
-	Move, Select, Pane, Project                                            key.Binding
+	Move, Select, Pane, Project                                               key.Binding
 	OpUp, OpDown, OpReload, OpAdd, OpOpen, OpCopyURL, OpRemove, OpForceRemove key.Binding
-	Refresh, Fetch, Mine, MyPRS                                    key.Binding
-	LogScroll                                                      key.Binding
-	Help, Quit                                                     key.Binding
+	Refresh, Fetch, Mine, MyPRS                                               key.Binding
+	LogScroll                                                                 key.Binding
+	Help, Quit                                                                key.Binding
 }
 
 func newDashboardKeys() dashboardKeys {
