@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-16
+
 ### Added
 
 - `wrk3 pull [branch...]` (bare = all worktrees including main, in
@@ -155,4 +157,5 @@ Initial public release.
 - `ls`/`status` never hang on a slow docker daemon (own process group,
   whole group killed on timeout).
 
+[0.9.0]: https://github.com/mytmlt/wrk3/releases/tag/v0.9.0
 [0.8.0]: https://github.com/mytmlt/wrk3/releases/tag/v0.8.0
