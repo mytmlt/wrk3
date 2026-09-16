@@ -106,6 +106,43 @@ func TestValidateTable(t *testing.T) {
 	}
 }
 
+func TestLoadReload(t *testing.T) {
+	full := `project:
+  worktreeBase: .worktrees
+source:
+  type: git
+runner:
+  type: docker
+  docker:
+    composeFiles: [docker-compose.yml]
+    projectPrefix: demo
+entry:
+  run: "echo run"
+  stop: "echo stop"
+  reload: ["echo one", "echo two"]
+ports:
+  base: {app: 8000}
+  step: 100
+`
+	p := writeConfig(t, full)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load = %v", err)
+	}
+	if len(cfg.Entry.Reload) != 2 || cfg.Entry.Reload[0] != "echo one" {
+		t.Errorf("Reload = %v, want [echo one echo two]", cfg.Entry.Reload)
+	}
+	// Missing reload stays empty (reload command errors at runtime).
+	p2 := writeConfig(t, validBase)
+	cfg2, err := Load(p2)
+	if err != nil {
+		t.Fatalf("Load = %v", err)
+	}
+	if len(cfg2.Entry.Reload) != 0 {
+		t.Errorf("Reload = %v, want empty", cfg2.Entry.Reload)
+	}
+}
+
 func TestLoadBadFile(t *testing.T) {
 	if _, err := Load(filepath.Join(t.TempDir(), "missing.yaml")); err == nil {
 		t.Error("Load(missing) = nil, want error")

@@ -76,10 +76,11 @@ type RunnerConfig struct {
 
 // EntryConfig holds host entry commands run inside each worktree.
 type EntryConfig struct {
-	Setup []string `yaml:"setup"`
-	Run   string   `yaml:"run"`
-	Stop  string   `yaml:"stop"`
-	Logs  string   `yaml:"logs"`
+	Setup  []string `yaml:"setup"`
+	Run    string   `yaml:"run"`
+	Stop   string   `yaml:"stop"`
+	Logs   string   `yaml:"logs"`
+	Reload []string `yaml:"reload"`
 }
 
 // PortsConfig holds the port allocation table.

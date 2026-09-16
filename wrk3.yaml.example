@@ -20,6 +20,7 @@ entry:
   run: "docker compose logs -f"
   stop: "docker compose down"
   logs: "docker compose logs -f"
+  reload: ["docker compose restart app"]
 ports:
   base: {app: 8000}
   step: 100

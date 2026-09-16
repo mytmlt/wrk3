@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `wrk3 reload [branch...]` (bare = all worktrees including main, in
+  parallel like `up`/`down`): runs the new `entry.reload` ordered list via
+  `sh -c` with `cwd=worktree` and `env=allocated ports`, marking targets
+  `setting up` → `running`/`failed`. Errors when `entry.reload` is empty.
+  The dashboard runs the same op with `l` on the selected/cursor
+  worktrees (optimistic `setting up` flip, `reload` in the shortcut bar).
 - Dashboard worktree links + `db` shorthand: the worktree table grows a
   `URL` column (gateway `<slug>.<domain>` URL when `proxy.enabled`, else
   `localhost:<appPort>`; compacted on narrow terminals), `o` opens the

@@ -146,7 +146,8 @@ wrk3 add feature-a feature-b
 wrk3 up
 
 # 4. Inspect, tail, run commands (dashboard first, CLI alongside)
-wrk3 dashboard                  # start here — worktrees + branches + up/down/add/remove
+wrk3 dashboard                  # start here — worktrees + branches + up/down/reload/add/remove
+wrk3 reload                     # entry.reload commands (bare = all including main)
 wrk3 status
 wrk3 ls --project myapp   # same worktrees from any dir (after add registers it)
 wrk3 project ls           # all registered projects
@@ -177,6 +178,7 @@ entry:
   run: "docker compose logs -f"
   stop: "docker compose down"
   logs: "docker compose logs -f"
+  reload: ["docker compose restart app"]
 ports:
   base: {app: 8000}
   step: 100
