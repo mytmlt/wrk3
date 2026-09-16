@@ -47,16 +47,18 @@ func TestUnregisteredBranchEntries_SkipsRegisteredAndCheckedOut(t *testing.T) {
 	}
 	checked := map[string]bool{"main": true}
 	keep := map[string]bool{"pr-1": true, "feature-a": true, "main": true}
+	// Input order is the display order (displayBranches sorts: priority
+	// first, then newest-first) — entries preserve it verbatim.
 	entries := unregisteredBranchEntries(
-		[]string{"pr-2", "pr-1", "feature-a", "feature/a", "main"},
+		[]string{"pr-1", "pr-2", "feature-a", "feature/a", "main"},
 		recs, checked, keep,
 	)
 	if len(entries) != 5 {
 		t.Fatalf("got %d entries, want 5", len(entries))
 	}
-	// Sorted.
-	if entries[0].Name != "feature-a" || entries[1].Name != "feature/a" {
-		t.Errorf("not sorted: %v", entries)
+	// Order preserved.
+	if entries[0].Name != "pr-1" || entries[1].Name != "pr-2" || entries[4].Name != "main" {
+		t.Errorf("order not preserved: %v", entries)
 	}
 	byName := map[string]branchEntry{}
 	for _, e := range entries {
