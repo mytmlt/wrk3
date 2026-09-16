@@ -101,10 +101,10 @@ broader than `--mine`, which matches git commit authorship).
 - Every `add`/`up`/`down`/`exec` re-ensures the target worktree's `.env`,
   so manually created or repaired checkouts gain the managed section on
   next use. (`status`/`ls` stay read-only and never touch `.env`.)
-- Managed keys: one `<NAME>_PORT` per `ports.base` entry plus `BASE_URL`,
-  `WEBHOOKS_BASE_URL`, `ALLOWED_WS_ORIGINS` (derived from the `app` port),
-  and `APP_URL` (only when `proxy.enabled`:
-  `http://<slug>.<domain>[:port]`; append-only, stripped on `remove`).
+- Managed keys: one `<NAME>_PORT` per `ports.base` entry, plus `APP_URL`
+  (only when `proxy.enabled`: `http://<slug>.<domain>[:port]`; append-only,
+  stripped on `remove`). App URLs such as `BASE_URL` are never managed:
+  they copy verbatim from the repo-root `.env` seed into fresh worktrees.
 - The repo-root main checkout is implicit (no state entry) with reserved
   index `-1` (e.g. `7900` with `base: {app: 8000}, step: 100`). Its
   managed `.env` section is ensured on `up`/`down`/`exec` like any other
@@ -116,9 +116,7 @@ broader than `--mine`, which matches git commit authorship).
   name becomes `<NAME>_PORT` (uppercased, non-alphanumerics → `_`), sorted
   for stable output. Examples: `app` → `APP_PORT`, `web` → `WEB_PORT`.
 
-Derived: `BASE_URL`, `WEBHOOKS_BASE_URL`, `ALLOWED_WS_ORIGINS` =
-`http://localhost:<app>`. `COMPOSE_PROJECT_NAME` is forced by the docker
-runner (not set in `.env`).
+`COMPOSE_PROJECT_NAME` is forced by the docker runner (not set in `.env`).
 
 Only use the port names your compose files read — extra names are
 harmless. To adapt: change `ports.base` keys/values and make sure your

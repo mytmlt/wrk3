@@ -144,9 +144,9 @@ Rules:
   did not find in onboarding or confirm with the developer.
 - `ports.base` defaults to `{app: 8000}`, `ports.step` defaults to `100`.
   Each port name becomes `<NAME>_PORT` in `.env` (uppercased,
-  non-alphanumerics to `_`: `app` -> `APP_PORT`). `BASE_URL`,
-  `WEBHOOKS_BASE_URL`, `ALLOWED_WS_ORIGINS` derive from the `app` port
-  (`http://localhost:<app>`); `APP_URL` (`http://<slug>.<domain>[:port]`)
+  non-alphanumerics to `_`: `app` -> `APP_PORT`); nothing else is managed.
+  App URLs such as `BASE_URL` copy verbatim from the repo-root `.env` seed.
+  `APP_URL` (`http://<slug>.<domain>[:port]`)
   is added only when `proxy.enabled` (stdlib gateway, default
   `localhost`/`127.0.0.1:8080`, `up`/`add`/dashboard auto-start it). Compose/`entry` commands must consume the
   matching `.env` vars (e.g. `"${APP_PORT:-8000}:8000"`). Only declare

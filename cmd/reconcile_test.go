@@ -88,7 +88,7 @@ func TestReconcileState_RecoversPortsFromEnv(t *testing.T) {
 	r, repo := reconcileFixture(t)
 	wt := filepath.Join(repo, ".worktrees", "feature-y")
 	gitWorktreeAdd(t, repo, wt, "feature-y")
-	env := "APP_PORT=8100\nBASE_URL=http://localhost:8100\nWEBHOOKS_BASE_URL=http://localhost:8100\nALLOWED_WS_ORIGINS=http://localhost:8100\n"
+	env := "APP_PORT=8100\n"
 	if err := os.WriteFile(filepath.Join(wt, ".env"), []byte(env), 0o644); err != nil {
 		t.Fatal(err)
 	}

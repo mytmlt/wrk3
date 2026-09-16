@@ -59,4 +59,7 @@ func TestStripManagedRemovesAppURL(t *testing.T) {
 	if !strings.Contains(string(raw), "SECRET=x") {
 		t.Errorf("secret lost:\n%s", raw)
 	}
+	if !strings.Contains(string(raw), "BASE_URL=http://localhost:8000") {
+		t.Errorf("user-owned BASE_URL must survive:\n%s", raw)
+	}
 }
