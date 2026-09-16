@@ -196,8 +196,10 @@ state, `R` fetches the remote
 (`--remote`/`--mine`/`--author`/`--myprs` filter the branch list, `m`
 toggles mine, `P` toggles myprs), `1`/`2`/`3` or `←`/`→` switch panes
 (worktrees/branches/log; the DETAILS preview follows the worktree
-cursor/selection and is never focused), `?`
-shows all keys, `q` quits. The unfiltered branch pane unions remote refs
+cursor/selection and is never focused), `?` opens the lazydocker-style
+`Menu` popup listing every action (`j/k`/`↑`/`↓` move, `enter` runs the
+highlighted row, `esc` closes; `x`/`X` rows land in the usual `y/n`
+confirm), `q` quits. The unfiltered branch pane unions remote refs
 with local-only branches (filtered views stay remote-only); like
 `add <branch>`, `a` creates the checkout from either ref, or adopts the
 on-disk worktree when one already exists. Layout is WORKTREES on top

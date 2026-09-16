@@ -197,3 +197,38 @@ func selectedKeys(set map[string]bool) []string {
 	sort.Strings(out)
 	return out
 }
+
+// dashboardMenuItem is one row of the lazydocker-style Menu popup: the
+// key hint shown left, a short description, and the key dispatched when
+// the row is executed with enter (Run matches a handleKey binding).
+type dashboardMenuItem struct {
+	Key  string
+	Desc string
+	Run  string
+}
+
+// dashboardMenuItems is the single global Menu list (all dashboard keys).
+// It stays in sync with newDashboardKeys by construction: every Run value
+// below must match a binding there.
+func dashboardMenuItems() []dashboardMenuItem {
+	return []dashboardMenuItem{
+		{Key: "u", Desc: "up selected worktrees", Run: "u"},
+		{Key: "d", Desc: "down selected worktrees", Run: "d"},
+		{Key: "l", Desc: "reload selected worktrees", Run: "l"},
+		{Key: "p", Desc: "pull selected worktrees", Run: "p"},
+		{Key: "a", Desc: "add queued branches", Run: "a"},
+		{Key: "o", Desc: "open worktree URL in browser", Run: "o"},
+		{Key: "O", Desc: "copy worktree URL", Run: "O"},
+		{Key: "x", Desc: "remove (asks y/n)", Run: "x"},
+		{Key: "X", Desc: "force remove (asks y/n)", Run: "X"},
+		{Key: "r", Desc: "refresh state", Run: "r"},
+		{Key: "R", Desc: "fetch remote", Run: "R"},
+		{Key: "m", Desc: "toggle mine filter", Run: "m"},
+		{Key: "P", Desc: "toggle myprs filter", Run: "P"},
+		{Key: "1", Desc: "focus worktrees pane", Run: "1"},
+		{Key: "2", Desc: "focus branches pane", Run: "2"},
+		{Key: "3", Desc: "focus log pane", Run: "3"},
+		{Key: "tab", Desc: "switch project", Run: "tab"},
+		{Key: "q", Desc: "quit", Run: "q"},
+	}
+}

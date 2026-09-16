@@ -167,7 +167,8 @@ type dashboardModel struct {
 	width        int
 	height       int
 	spinner      spinner.Model
-	showHelp     bool
+	showMenu     bool
+	menuCursor   int
 	keys         dashboardKeys
 	help         help.Model
 	logView      viewport.Model
@@ -181,7 +182,7 @@ func newDashboardModel(descs []dashboardProjectDesc, poll time.Duration, remote 
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 	lv := viewport.New(78, dashboardLogHeight)
-	seed := []string{"dashboard started — r refresh, R fetch, ? help"}
+	seed := []string{"dashboard started — r refresh, R fetch, ? menu"}
 	lv.SetContent(strings.Join(wrapLogLines(seed, 78), "\n"))
 	lv.GotoBottom()
 	hp := help.New()
@@ -198,7 +199,7 @@ func newDashboardModel(descs []dashboardProjectDesc, poll time.Duration, remote 
 		keys:     newDashboardKeys(),
 		help:     hp,
 		logView:  lv,
-		log:      []string{"dashboard started — r refresh, R fetch, ? help"},
+		log:      []string{"dashboard started — r refresh, R fetch, ? menu"},
 	}
 }
 
@@ -916,22 +917,8 @@ func (m dashboardModel) markRowsStatus(targets []ports.WorktreeRecord, status st
 }
 
 func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Log pane scrolling always works, even with a pending confirm.
-	switch msg.String() {
-	case "pgup":
-		m.logView.ScrollUp(max(m.logView.Height, 1))
-		return m, nil
-	case "pgdown":
-		m.logView.ScrollDown(max(m.logView.Height, 1))
-		return m, nil
-	case "home":
-		m.logView.GotoTop()
-		return m, nil
-	case "end":
-		m.logView.GotoBottom()
-		return m, nil
-	}
-	// Pending remove confirm (normal or --force).
+	// Pending remove confirm (normal or --force) wins over everything:
+	// the Menu cannot open while a confirm is pending.
 	if m.confirm != "" {
 		switch msg.String() {
 		case "y", "Y":
@@ -954,12 +941,97 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	// Lazydocker-style Menu popup captures all keys while open.
+	if m.showMenu {
+		return m.handleMenuKey(msg)
+	}
+	return m.handleNormalKey(msg)
+}
+
+// handleMenuKey navigates the Menu popup: j/k/up/down move, enter runs
+// the selected row, esc/? closes without acting. Raw op keys are
+// swallowed so an open menu never triggers an accidental up/remove.
+func (m dashboardModel) handleMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	items := dashboardMenuItems()
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "up", "k":
+		if len(items) > 0 {
+			m.menuCursor = (m.menuCursor + len(items) - 1) % len(items)
+		}
+		return m, nil
+	case "down", "j":
+		if len(items) > 0 {
+			m.menuCursor = (m.menuCursor + 1) % len(items)
+		}
+		return m, nil
+	case "enter":
+		if m.menuCursor < 0 || m.menuCursor >= len(items) {
+			return m, nil
+		}
+		run := items[m.menuCursor].Run
+		m.showMenu = false
+		m.menuCursor = 0
+		m.statusMsg = ""
+		return m.handleNormalKey(dashboardKeyMsg(run))
+	case "esc", "?", "q":
+		m.showMenu = false
+		m.menuCursor = 0
+		m.statusMsg = ""
+		return m, nil
+	}
+	return m, nil
+}
+
+// dashboardKeyMsg synthesizes a KeyMsg for a Menu Run value so enter
+// reuses the exact handleNormalKey dispatch (no duplicated op logic).
+func dashboardKeyMsg(s string) tea.KeyMsg {
+	switch s {
+	case " ", "space":
+		return tea.KeyMsg{Type: tea.KeySpace}
+	case "tab":
+		return tea.KeyMsg{Type: tea.KeyTab}
+	case "enter":
+		return tea.KeyMsg{Type: tea.KeyEnter}
+	case "esc":
+		return tea.KeyMsg{Type: tea.KeyEsc}
+	case "up":
+		return tea.KeyMsg{Type: tea.KeyUp}
+	case "down":
+		return tea.KeyMsg{Type: tea.KeyDown}
+	case "left":
+		return tea.KeyMsg{Type: tea.KeyLeft}
+	case "right":
+		return tea.KeyMsg{Type: tea.KeyRight}
+	default:
+		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+	}
+}
+
+func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Log pane scrolling always works (menu closed, no pending confirm).
+	switch msg.String() {
+	case "pgup":
+		m.logView.ScrollUp(max(m.logView.Height, 1))
+		return m, nil
+	case "pgdown":
+		m.logView.ScrollDown(max(m.logView.Height, 1))
+		return m, nil
+	case "home":
+		m.logView.GotoTop()
+		return m, nil
+	case "end":
+		m.logView.GotoBottom()
+		return m, nil
+	}
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "?":
-		m.showHelp = !m.showHelp
-		m.help.ShowAll = m.showHelp
+		m.showMenu = true
+		m.menuCursor = 0
+		m.statusMsg = ""
 		return m, nil
 	case "tab":
 		if len(m.projects) > 1 {
@@ -1275,7 +1347,7 @@ func newDashboardKeys() dashboardKeys {
 			key.WithKeys("pgup", "pgdown", "home", "end"),
 			key.WithHelp("pgup/pgdn", "scroll log"),
 		),
-		Help: key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "keys")),
+		Help: key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "menu")),
 		Quit: key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 	}
 }
@@ -1296,7 +1368,9 @@ func (k dashboardKeys) ActHelp() []key.Binding {
 	}
 }
 
-// FullHelp implements help.KeyMap: the `?` overlay groups.
+// FullHelp implements help.KeyMap: the grouped key reference. The live
+// `?` Menu popup (dashboardMenuItems) is the interactive surface; this
+// stays as the static grouping for the KeyMap contract.
 func (k dashboardKeys) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Move, k.Select, k.Pane, k.Project},
@@ -1359,6 +1433,13 @@ var (
 	dashPaneTitleFocused = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
 	dashPaneTitleBlurred = lipgloss.NewStyle().Bold(true).Faint(true)
 	dashLogTitleStyle    = lipgloss.NewStyle().Bold(true).Faint(true)
+
+	dashMenuTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
+	dashMenuSelectedStyle = lipgloss.NewStyle().Bold(true).
+				Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).
+				Padding(0, 1)
+	dashMenuKeyStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
+	dashMenuHintStyle = lipgloss.NewStyle().Faint(true)
 )
 
 // dashboardPaneStyle borders a pane; the focused one gets the accent
@@ -1517,12 +1598,9 @@ func (m dashboardModel) helpBar(width int) string {
 	if hp.ShortSeparator == "" {
 		hp = help.New()
 	}
-	hp.ShowAll = m.showHelp
+	hp.ShowAll = false
 	hp.Width = width
 	keys := m.helpKeys()
-	if m.showHelp {
-		return hp.FullHelpView(keys.FullHelp())
-	}
 	return hp.ShortHelpView(keys.ShortHelp()) + "\n" + hp.ShortHelpView(keys.ActHelp())
 }
 
@@ -1622,6 +1700,51 @@ func (m dashboardModel) detailPane(width, height int) string {
 		title + "\n" + strings.Join(lines, "\n"))
 }
 
+// menuPane renders the lazydocker-style Menu popup: a bordered box with
+// one "key  description" row per dashboard action, the cursor row
+// highlighted. Plain-text rows keep column alignment (no embedded ANSI
+// in the measured widths except the selected-row style, which pads
+// identically).
+func (m dashboardModel) menuPane(width int) string {
+	items := dashboardMenuItems()
+	if m.menuCursor < 0 || m.menuCursor >= len(items) {
+		m.menuCursor = 0
+	}
+	keyW := 5
+	for _, it := range items {
+		if len([]rune(it.Key)) > keyW {
+			keyW = len([]rune(it.Key))
+		}
+	}
+	innerW := max(width-2, 20)
+	lines := make([]string, 0, len(items))
+	for i, it := range items {
+		keyCell := dashMenuKeyStyle.Render(fmt.Sprintf("%-*s", keyW, it.Key))
+		row := fmt.Sprintf("%s  %s", keyCell, it.Desc)
+		if i == m.menuCursor {
+			// Pad to the inner width so the highlight spans the row.
+			pad := innerW - len([]rune(it.Key)) - 2 - len([]rune(it.Desc))
+			if pad < 1 {
+				pad = 1
+			}
+			row += strings.Repeat(" ", pad)
+			row = dashMenuSelectedStyle.Render(row)
+		} else {
+			row = " " + row
+		}
+		lines = append(lines, row)
+	}
+	title := dashMenuTitleStyle.Render("Menu")
+	hint := dashMenuHintStyle.Render("j/k move · enter run · esc close")
+	body := title + "\n" + strings.Join(lines, "\n") + "\n" + hint
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("42")).
+		Padding(0, 1).
+		Width(width).
+		Render(body)
+}
+
 func (m dashboardModel) logPane(width int) string {
 	focused := m.pane == 2
 	w := max(width-2, 10)
@@ -1682,6 +1805,18 @@ func (m dashboardModel) View() string {
 		return b.String()
 	}
 	b.WriteString(dashMetaStyle.Render(m.dashboardMeta()) + "\n\n")
+
+	// Lazydocker-style Menu popup: replaces the panes while open.
+	if m.showMenu {
+		menuW := min(max(w-4, 40), 64)
+		m.menuCursor = max(0, min(m.menuCursor, len(dashboardMenuItems())-1))
+		b.WriteString(lipgloss.Place(w-2, len(dashboardMenuItems())+6, lipgloss.Center, lipgloss.Top, m.menuPane(menuW)) + "\n")
+		if m.statusMsg != "" {
+			b.WriteString(dashErrStyle.Render(m.statusMsg) + "\n")
+		}
+		b.WriteString(m.helpBar(w) + "\n")
+		return b.String()
+	}
 
 	// Vertical budget: header (2) + gap (1) + footer (help 1-2 + status
 	// 0-1 + confirm 0-1, reserve 4) + log box + body split.

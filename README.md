@@ -58,7 +58,8 @@ stacked otherwise), **LOG** at the bottom:
 | `x` / `X` | `remove` / `remove --force` selected worktrees (asks `y/n`, never touches main) |
 | `r` / `R` | refresh state / fetch remote |
 | `m` / `P` | toggle `mine` / `myprs` branch filters |
-| `?` / `q` | all keys / quit |
+| `?` | `Menu` popup with every action (`j/k` move, `enter` runs, `esc` closes) |
+| `q` | quit |
 
 Filters and targets: `--remote`/`--mine`/`--author`/`--myprs` seed the
 branch list (`m`/`P` toggle live), `--project <name>` starts from a
