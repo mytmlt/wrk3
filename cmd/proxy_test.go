@@ -42,3 +42,14 @@ func TestEnsureProxyForUpDisabledNoop(t *testing.T) {
 		t.Errorf("disabled ensure = (%q,%q), want empty", msg, warn)
 	}
 }
+
+func TestEnsureProxyForCfgDisabledNoop(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfig(t, repo)
+	if warn := ensureProxyForCfg(cfg); warn != "" {
+		t.Errorf("disabled ensure = %q, want empty", warn)
+	}
+	if warn := ensureProxyForCfg(nil); warn != "" {
+		t.Errorf("nil ensure = %q, want empty", warn)
+	}
+}

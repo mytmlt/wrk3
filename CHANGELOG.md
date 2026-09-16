@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Dashboard worktree links + `db` shorthand: the worktree table grows a
+  `URL` column (gateway `<slug>.<domain>` URL when `proxy.enabled`, else
+  `localhost:<appPort>`; compacted on narrow terminals), `o` opens the
+  cursor worktree URL in a browser (full URL is logged too), the meta line
+  shows gateway state, and `wrk3 db` aliases `wrk3 dashboard`.
+- Always-on proxy: `add` (all modes) and the dashboard (refresh plus TUI
+  `up`/`add`) now ensure the gateway when `proxy.enabled`, best-effort
+  like `up` (spawn errors warn, commands never fail).
+
 - Dogfood config: committed `wrk3.yaml` for the wrk3 repo itself so
   agents (and humans) run `wrk3 fetch` / `wrk3 add` here per the
   `AGENTS.md` isolate step. No docker stack exists, so `up`/`down` are

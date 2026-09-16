@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -34,8 +35,9 @@ var (
 )
 
 var dashboardCmd = &cobra.Command{
-	Use:   "dashboard",
-	Short: "Interactive TUI: worktrees, branches, ports, up/down/add/remove",
+	Use:     "dashboard",
+	Aliases: []string{"db"},
+	Short:   "Interactive TUI: worktrees, branches, ports, up/down/add/remove",
 	Long: `Open an interactive dashboard for this repo (plus registered projects).
 
 Polls worktree state and remote branches, shows the worktree table with
@@ -151,6 +153,7 @@ type dashboardModel struct {
 	brSel        map[string]bool
 	log          []string
 	statusMsg    string
+	proxyInfo    string // gateway status for the meta line (set on refresh)
 	fetchedAt    time.Time
 	busy         bool
 	busyLabel    string
@@ -227,10 +230,12 @@ func (m dashboardModel) logReconciled(adopted, warns []string) dashboardModel {
 // Messages.
 type dashboardTickMsg time.Time
 type dashboardRowsMsg struct {
-	rows    []dashboardRow
-	adopted []string
-	warns   []string
-	err     error
+	rows      []dashboardRow
+	adopted   []string
+	warns     []string
+	proxyInfo string // gateway status for the meta line ("", "proxy off" never set here)
+	proxyNote string // log line when the gateway was started or failed to start
+	err       error
 }
 type dashboardBranchesMsg struct {
 	entries []branchEntry
@@ -275,6 +280,7 @@ func dashboardRefreshRowsCmd(p *dashboardProject) tea.Cmd {
 			return dashboardRowsMsg{err: err}
 		}
 		r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
+		proxyInfo, proxyNote := dashboardProxyEnsure(r)
 		recs, changed, err := syncRuntimeAndSave(r, recs)
 		if err != nil {
 			return dashboardRowsMsg{err: err}
@@ -292,8 +298,28 @@ func dashboardRefreshRowsCmd(p *dashboardProject) tea.Cmd {
 			mainBranch = main.Branch
 		}
 		rows := probeDashboardRows(p.cfg, all, mainBranch)
-		return dashboardRowsMsg{rows: rows, adopted: adopted, warns: warns}
+		return dashboardRowsMsg{rows: rows, adopted: adopted, warns: warns, proxyInfo: proxyInfo, proxyNote: proxyNote}
 	}
+}
+
+// dashboardProxyEnsure keeps the gateway running while the dashboard is open
+// (best-effort via ensureProxyForUp, never errors). It returns a short
+// status for the meta line plus a log note when the gateway was started or
+// failed to start. Disabled projects yield ("", "") and the meta line falls
+// back to "proxy off".
+func dashboardProxyEnsure(r *resolved) (info, note string) {
+	if r == nil || r.cfg == nil || !r.cfg.Proxy.Enabled {
+		return "", ""
+	}
+	if msg, warn := ensureProxyForUp(r); msg != "" {
+		note = msg
+	} else if warn != "" {
+		note = "warning: " + warn
+	}
+	if proxyRunning(r.cfg) {
+		return "proxy " + r.cfg.ProxyAddr(), note
+	}
+	return "proxy stopped", note
 }
 
 // probeDashboardRows maps records to rows, probing live runner status in
@@ -504,6 +530,11 @@ func dashboardUpCmd(p *dashboardProject, targets []ports.WorktreeRecord) tea.Cmd
 			return fmt.Errorf("project not loaded")
 		}
 		r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
+		if msg, warn := ensureProxyForUp(r); msg != "" {
+			logf("%s", msg)
+		} else if warn != "" {
+			logf("warning: %s", warn)
+		}
 		return runUpTargets(context.Background(), r, targets, logf)
 	})
 }
@@ -524,6 +555,11 @@ func dashboardAddCmd(p *dashboardProject, branches []string) tea.Cmd {
 			return fmt.Errorf("project not loaded")
 		}
 		r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
+		if msg, warn := ensureProxyForUp(r); msg != "" {
+			logf("%s", msg)
+		} else if warn != "" {
+			logf("warning: %s", warn)
+		}
 		if err := ensureBase(r.base); err != nil {
 			return err
 		}
@@ -629,6 +665,29 @@ func dashboardRemoveCmd(p *dashboardProject, branches []string, force bool) tea.
 	})
 }
 
+// dashboardOpenCmd logs the worktree URL and opens it in a browser.
+// Browser failures still leave the clickable URL in the log pane.
+func dashboardOpenCmd(p *dashboardProject, rec ports.WorktreeRecord) tea.Cmd {
+	return dashboardOpCmd(p, "open", func(logf func(string, ...any)) error {
+		if p == nil || p.cfg == nil {
+			return fmt.Errorf("project not loaded")
+		}
+		target := dashboardURLFor(p.cfg, rec)
+		logf("%s", target)
+		opener, err := browserOpener()
+		if err != nil {
+			return fmt.Errorf("open browser: %w", err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		c := exec.CommandContext(ctx, opener[0], append(opener[1:], target)...)
+		if err := c.Run(); err != nil {
+			return fmt.Errorf("open browser: %w", err)
+		}
+		return nil
+	})
+}
+
 // Update.
 func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -662,6 +721,10 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.appendLog("refresh: " + msg.err.Error())
 		} else {
 			m.rows = msg.rows
+			m.proxyInfo = msg.proxyInfo
+			if msg.proxyNote != "" {
+				m = m.appendLog(msg.proxyNote)
+			}
 			m = m.logReconciled(msg.adopted, msg.warns)
 			// Drop selections for vanished worktrees.
 			alive := map[string]bool{}
@@ -858,6 +921,7 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cur = (m.cur + 1) % len(m.projects)
 			m.rows = nil
 			m.branches = nil
+			m.proxyInfo = ""
 			m.workSel = map[string]bool{}
 			m.brSel = map[string]bool{}
 			m.workCursor = 0
@@ -980,6 +1044,24 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.busyLabel = "add"
 		m = m.appendLog("add " + strings.Join(branches, ", "))
 		return m, dashboardAddCmd(m.curProject(), branches)
+	case "o":
+		if m.busy {
+			return m, nil
+		}
+		targets := m.selectedWorktrees()
+		if len(targets) == 0 {
+			m.statusMsg = "nothing selected (space to select, or cursor worktree)"
+			return m, nil
+		}
+		rec := targets[0]
+		if len(targets) > 1 {
+			m = m.appendLog(fmt.Sprintf("open %s (first of %d selected)", rec.Branch, len(targets)))
+		} else {
+			m = m.appendLog("open " + rec.Branch)
+		}
+		m.busy = true
+		m.busyLabel = "open"
+		return m, dashboardOpenCmd(m.curProject(), rec)
 	case "x", "X":
 		if m.busy {
 			return m, nil
@@ -1052,11 +1134,11 @@ const (
 // bindings are display-only; handleKey still owns dispatch so selection
 // and op semantics stay in one place (and stay unit-testable).
 type dashboardKeys struct {
-	Move, Select, Pane, Project                  key.Binding
-	OpUp, OpDown, OpAdd, OpRemove, OpForceRemove key.Binding
-	Refresh, Fetch, Mine, MyPRS                  key.Binding
-	LogScroll                                    key.Binding
-	Help, Quit                                   key.Binding
+	Move, Select, Pane, Project                          key.Binding
+	OpUp, OpDown, OpAdd, OpOpen, OpRemove, OpForceRemove key.Binding
+	Refresh, Fetch, Mine, MyPRS                          key.Binding
+	LogScroll                                            key.Binding
+	Help, Quit                                           key.Binding
 }
 
 func newDashboardKeys() dashboardKeys {
@@ -1068,6 +1150,7 @@ func newDashboardKeys() dashboardKeys {
 		OpUp:          key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "up")),
 		OpDown:        key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "down")),
 		OpAdd:         key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
+		OpOpen:        key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open URL")),
 		OpRemove:      key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "remove")),
 		OpForceRemove: key.NewBinding(key.WithKeys("X"), key.WithHelp("X", "force remove")),
 		Refresh:       key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
@@ -1094,7 +1177,7 @@ func (k dashboardKeys) ShortHelp() []key.Binding {
 // ActHelp is the second sticky-bar line (worktree/branch operations).
 func (k dashboardKeys) ActHelp() []key.Binding {
 	return []key.Binding{
-		k.OpUp, k.OpDown, k.OpAdd, k.OpRemove, k.OpForceRemove,
+		k.OpUp, k.OpDown, k.OpAdd, k.OpOpen, k.OpRemove, k.OpForceRemove,
 		k.Refresh, k.Fetch, k.Mine, k.MyPRS,
 	}
 }
@@ -1103,7 +1186,7 @@ func (k dashboardKeys) ActHelp() []key.Binding {
 func (k dashboardKeys) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Move, k.Select, k.Pane, k.Project},
-		{k.OpUp, k.OpDown, k.OpAdd, k.OpRemove, k.OpForceRemove},
+		{k.OpUp, k.OpDown, k.OpAdd, k.OpOpen, k.OpRemove, k.OpForceRemove},
 		{k.Refresh, k.Fetch, k.Mine, k.MyPRS},
 		{k.LogScroll, k.Help, k.Quit},
 	}
@@ -1111,11 +1194,16 @@ func (k dashboardKeys) FullHelp() [][]key.Binding {
 
 // dashboardWorkColumns scales the text columns to the available width so
 // the table never exceeds its pane: ✓/STATUS have fixed widths (STATUS fits
-// "setting up"), PORTS gets a wider fixed width for multi-port lists
-// (bubbles/table truncates excess), the rest split 25/40/35 across
-// WORKTREE/BRANCH/PROJECT.
+// "setting up"). Wide tables get full PORTS + URL widths for multi-port
+// lists and clickable gateway/localhost links; narrow tables compact both
+// (bubbles/table truncates excess — the `o` key still opens and logs the
+// full URL). The rest splits 25/40/35 across WORKTREE/BRANCH/PROJECT.
 func dashboardWorkColumns(width int) []table.Column {
-	rest := max(width-3-11-28-12, 30)
+	portsW, urlW := 28, dashboardURLWidth
+	if width < 110 {
+		portsW, urlW = 16, 18
+	}
+	rest := max(width-3-11-portsW-urlW-12, 20)
 	wt := max(rest*25/100, 8)
 	br := max(rest*40/100, 12)
 	pr := max(rest-wt-br, 8)
@@ -1124,10 +1212,15 @@ func dashboardWorkColumns(width int) []table.Column {
 		{Title: "WORKTREE", Width: wt},
 		{Title: "BRANCH", Width: br},
 		{Title: "STATUS", Width: 11},
-		{Title: "PORTS", Width: 28},
+		{Title: "PORTS", Width: portsW},
+		{Title: "URL", Width: urlW},
 		{Title: "PROJECT", Width: pr},
 	}
 }
+
+// dashboardURLWidth fits http://<slug>.localhost:<port> for typical slugs;
+// longer URLs truncate (the `o` key still opens the full URL).
+const dashboardURLWidth = 32
 
 // dashboardBranchColumns gives everything left after ✓/STATE/padding to
 // the BRANCH column.
@@ -1198,6 +1291,10 @@ func (m dashboardModel) buildWorkTable(width, height int, focused bool) table.Mo
 		table.WithStyles(dashboardTableStyles(focused)),
 	)
 	rows := make([]table.Row, 0, len(m.rows))
+	var urlCfg *config.Config
+	if len(m.projects) > 0 && m.projects[m.cur] != nil {
+		urlCfg = m.projects[m.cur].cfg
+	}
 	for _, row := range m.rows {
 		box := "[ ]"
 		if m.workSel[row.Rec.Branch] {
@@ -1207,7 +1304,7 @@ func (m dashboardModel) buildWorkTable(width, height int, focused bool) table.Mo
 		if row.IsMain {
 			branch += " (main)"
 		}
-		rows = append(rows, table.Row{box, row.Rec.Slug, branch, row.Status, row.Ports, row.Rec.ComposeProject})
+		rows = append(rows, table.Row{box, row.Rec.Slug, branch, row.Status, row.Ports, dashboardURLFor(urlCfg, row.Rec), row.Rec.ComposeProject})
 	}
 	t.SetRows(rows)
 	t.SetWidth(max(width, 10))
@@ -1280,8 +1377,16 @@ func (m dashboardModel) dashboardMeta() string {
 	if len(m.authors) > 0 {
 		filterInfo += " authors=" + strings.Join(m.authors, ",")
 	}
-	return fmt.Sprintf("remote %s · fetch %s · poll %s · next app port %d · %s (m toggles mine, P toggles myprs)",
-		p.remote, fetchInfo, pollInfo, next, filterInfo)
+	proxySeg := m.proxyInfo
+	if proxySeg == "" {
+		if p.cfg != nil && p.cfg.Proxy.Enabled {
+			proxySeg = "proxy " + p.cfg.ProxyAddr()
+		} else {
+			proxySeg = "proxy off"
+		}
+	}
+	return fmt.Sprintf("remote %s · fetch %s · poll %s · next app port %d · %s · %s (m toggles mine, P toggles myprs, o opens URL)",
+		p.remote, fetchInfo, pollInfo, next, filterInfo, proxySeg)
 }
 
 // helpKeys guards zero-value models (tests build dashboardModel

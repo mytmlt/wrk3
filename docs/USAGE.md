@@ -56,12 +56,12 @@ wrk3 exec feature-a -- <cmd...>     # run inside worktree env (cwd=worktree)
 wrk3 down feature-a | wrk3 down     # bare = all including main
 wrk3 remove feature-a feature-b | wrk3 remove --all   # compose down -v + worktree remove + state cleanup (never touches main)
 wrk3 remove --force feature-a | wrk3 remove --all --force  # same with git worktree remove --force (falls back to rm -rf); for dirty worktrees with modified/untracked files
-wrk3 dashboard                       # interactive TUI: worktrees + branches + ports, up/down/add/remove
+wrk3 dashboard                       # interactive TUI: worktrees + branches + ports, up/down/add/remove (shorthand: wrk3 db)
 wrk3 dashboard --project myapp       # same, starting from a registered project
 wrk3 update --check                 # show latest release without installing
 wrk3 update                         # install latest over the current binary (sha256 verified)
 wrk3 proxy status                   # gateway state + per-worktree http://<slug>.localhost URLs
-wrk3 proxy up | wrk3 proxy down     # start/stop the gateway (auto-started by up when proxy.enabled)
+wrk3 proxy up | wrk3 proxy down     # start/stop the gateway (auto-started by up/add/dashboard when proxy.enabled)
 wrk3 proxy open feature-a           # open the worktree URL in a browser
 sudo wrk3 proxy hosts-sync          # 127.0.0.1 entries for Safari/curl (Chrome/FF/Edge need nothing)
 wrk3 skill                          # print the bundled agent setup guide (local-setup discovery + compat triage + wrk3.yaml template) to stdout; needs no config
@@ -156,12 +156,15 @@ fallbacks covering stacks started out-of-band via plain
 
 ## Dashboard (TUI)
 
-`wrk3 dashboard` opens an interactive view over the current repo plus every
+`wrk3 dashboard` (shorthand `wrk3 db`) opens an interactive view over the current repo plus every
 registered project (`tab` switches projects). It polls worktree state and
 remote branches (default every 15s, `--poll 0` disables), shows the worktree
-table with ports and the next free `app` port, and runs the same operations
+table with ports, clickable `URL` links (gateway URL when `proxy.enabled`,
+else `localhost:<appPort>`), gateway state in the meta line, and the next free `app` port,
+and runs the same operations
 as the CLI: `space` selects, `u`/`d` up/down (cursor worktree when nothing
-is selected), `a` adds queued branches, `x` removes (asks `y/n`, refuses
+is selected), `a` adds queued branches, `o` opens the cursor worktree URL
+in a browser (the full URL is logged too), `x` removes (asks `y/n`, refuses
 main like `remove`), `X` force-removes like `remove --force` (asks
 `y/n`, for dirty worktrees with modified/untracked files), `r` refreshes
 state, `R` fetches the remote

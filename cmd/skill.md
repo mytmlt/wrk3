@@ -147,7 +147,7 @@ Rules:
   `WEBHOOKS_BASE_URL`, `ALLOWED_WS_ORIGINS` derive from the `app` port
   (`http://localhost:<app>`); `APP_URL` (`http://<slug>.<domain>[:port]`)
   is added only when `proxy.enabled` (stdlib gateway, default
-  `localhost`/`127.0.0.1:8080`, `up` auto-starts it). Compose/`entry` commands must consume the
+  `localhost`/`127.0.0.1:8080`, `up`/`add`/dashboard auto-start it). Compose/`entry` commands must consume the
   matching `.env` vars (e.g. `"${APP_PORT:-8000}:8000"`). Only declare
   port names the stack actually binds.
 - Branch slugs: `feature/foo` -> `feature-foo` (max 50 chars).
