@@ -185,8 +185,8 @@ remote branches (default every 15s, `--poll 0` disables), shows the worktree
 table with ports, clickable `URL` links (gateway URL when `proxy.enabled`,
 else `localhost:<appPort>`), gateway state in the meta line, and the next free `app` port,
 and runs the same operations
-as the CLI: `space` selects, `u`/`d`/`l` up/down/reload (cursor worktree when nothing
-is selected), `a` adds queued branches, `o` opens the cursor worktree URL
+as the CLI: `space` selects, `u`/`d`/`l`/`p` up/down/reload/pull (cursor worktree when nothing
+is selected; `p` runs plain `git pull` like `wrk3 pull` with no flags), `a` adds queued branches, `o` opens the cursor worktree URL
 in a browser (the full URL is logged too), `O` copies that URL to the OS
 clipboard (`pbcopy` on macOS, `wl-copy`/`xclip`/`xsel` on Linux, `clip` on
 Windows), `x` removes (asks `y/n`, refuses

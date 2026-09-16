@@ -147,7 +147,7 @@ wrk3 add feature-a feature-b
 wrk3 up
 
 # 4. Inspect, tail, run commands (dashboard first, CLI alongside)
-wrk3 dashboard                  # start here — worktrees + branches + up/down/reload/add/remove
+wrk3 dashboard                  # start here — worktrees + branches + up/down/reload/pull/add/remove
 wrk3 reload                     # entry.reload commands (bare = all including main)
 wrk3 pull feature-a             # git pull in one worktree (bare = all including main; --rebase/--ff-only)
 wrk3 status
