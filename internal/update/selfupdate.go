@@ -57,14 +57,17 @@ func AssetName(version, goos, goarch string) (string, error) {
 }
 
 // AssetURL returns the release download URL for an asset file.
+// NOTE: browser download URLs are https://github.com/<owner>/<repo>/...;
+// the "/repos/<owner>/<repo>" prefix belongs to the api.github.com shape
+// (see FetchLatest) and 404s here.
 func AssetURL(version, asset string) string {
-	return strings.TrimSuffix(DownloadBase, "/") + "/repos/" + Repo + "/releases/download/" +
+	return strings.TrimSuffix(DownloadBase, "/") + "/" + Repo + "/releases/download/" +
 		NormalizeVersion(version) + "/" + asset
 }
 
 // ChecksumURL returns the checksums.txt download URL for a release.
 func ChecksumURL(version string) string {
-	return strings.TrimSuffix(DownloadBase, "/") + "/repos/" + Repo + "/releases/download/" +
+	return strings.TrimSuffix(DownloadBase, "/") + "/" + Repo + "/releases/download/" +
 		NormalizeVersion(version) + "/checksums.txt"
 }
 
