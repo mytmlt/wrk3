@@ -13,10 +13,13 @@ autonomously without asking (standing pre-authorization); the human
 merges when green. See the full
 checklist in `skills/wrk3-dev-flow/SKILL.md`.
 
-1. **Isolate.** `git fetch origin`; create `type/short-slug` from updated
-   `main` (`feat/`, `fix/`, `docs:`, `chore:`, `test:` per
-   `CONTRIBUTING.md`); then `wrk3 fetch` → `wrk3 add <branch>` (`git
-   worktree add` fallback only when no `wrk3.yaml` resolves — log why).
+1. **Isolate.** Always start new work from the latest `origin/main`:
+   `git fetch origin`, then `wrk3 fetch` → `wrk3 add <branch> --create`
+   (creates `type/short-slug` + worktree from `origin/<default>`;
+   `feat/`, `fix/`, `docs:`, `chore:`, `test:` per `CONTRIBUTING.md`).
+   `git worktree add` fallback only when no `wrk3.yaml` resolves — log
+   why — and it must also start from latest main:
+   `git worktree add -b <branch> <path> origin/main`.
    Never implement in the user's checkout or on `main`. Run `wrk3 up`
    only when the repo has a runnable `docker` stack; otherwise work
    directly in the worktree (Go gate below).

@@ -26,10 +26,15 @@ continue with what is allowed.
 
 ## Phase 1 — isolate
 
-1. `git fetch origin`; create `type/short-slug` from updated `main`
-   (`feat/`, `fix/`, `docs:`, `chore:`, `test:` per `CONTRIBUTING.md`).
-2. `wrk3 fetch` → `wrk3 add <branch>` (`git worktree add` fallback only
-   when no `wrk3.yaml` resolves — log why).
+1. Always start new work from the latest `origin/main`: `git fetch
+   origin`, then `wrk3 fetch` → `wrk3 add <branch> --create` (creates
+   `type/short-slug` + worktree from `origin/<default>`, i.e. latest
+   main; `feat/`, `fix/`, `docs:`, `chore:`, `test:` per
+   `CONTRIBUTING.md`). `--create` skips the prompt so scripts never
+   hang; never `git checkout -b` in the main checkout.
+2. `git worktree add` fallback only when no `wrk3.yaml` resolves — log
+   why — and it must also start from latest main:
+   `git worktree add -b <branch> <path> origin/main`.
 3. Never implement in the user's checkout or on `main`. Run `wrk3 up`
    only when the repo has a runnable `docker` stack; otherwise work
    directly in the worktree.
