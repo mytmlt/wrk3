@@ -15,6 +15,7 @@
       "echo *": "allow",
       "head *": "allow",
       "golangci-lint *": "allow",
+      "ocr *": "allow",
       "ocr review *": "allow",
       "git rebase *": "allow",
       "gh pr create *": "allow",
