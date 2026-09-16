@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `wrk3 pull [branch...]` (bare = all worktrees including main, in
+  parallel like `up`/`down`): runs `git pull` inside each target worktree
+  (`--rebase` / `--ff-only` map to the git flags, mutually exclusive).
+  Branch names and slugs resolve interchangeably including main, stale
+  entries error out, and dirty worktrees surface the git error. Backed by
+  a new `Source.Pull(worktreePath, PullOptions)` method (`git -C
+  <worktree> pull`).
 - `wrk3 reload [branch...]` (bare = all worktrees including main, in
   parallel like `up`/`down`): runs the new `entry.reload` ordered list via
   `sh -c` with `cwd=worktree` and `env=allocated ports`, marking targets

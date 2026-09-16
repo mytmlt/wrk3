@@ -19,7 +19,7 @@ wrk3 completion powershell | Out-String | Invoke-Expression
 ```
 
 `add` completes remote branches (for the effective remote — `--remote`
-flag > `source.git.remote` > `origin`); `up`/`down`/`reload`/`logs`/`exec`/`remove`/`checkout`
+flag > `source.git.remote` > `origin`); `up`/`down`/`reload`/`pull`/`logs`/`exec`/`remove`/`checkout`
 complete existing worktrees (branch names and slugs); `ls --project`
 completes registry project names. Completion never
 fetches from the network — it uses the last `fetch` results.
@@ -68,6 +68,7 @@ wrk3 add feat/new-feature --no-create # fail fast on unknown names instead of pr
 wrk3 up feature-a                   # setup entries + compose up + run entry
 wrk3 up                             # bare = all worktrees including main, in parallel (errgroup)
 wrk3 reload feature-a | wrk3 reload # entry.reload commands (bare = all including main, in parallel)
+wrk3 pull feature-a | wrk3 pull     # git pull in one worktree (bare = all including main, in parallel; --rebase/--ff-only)
 wrk3 status                         # this config (full table, includes main)
 wrk3 ls                             # this config (minimal WORKTREE/BRANCH/STATUS/PORTS, includes main)
 wrk3 ls --project myapp             # worktrees in a registered project, from anywhere
