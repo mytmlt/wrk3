@@ -721,3 +721,105 @@ func TestDashboardWorkColumns_FitsTableWidth(t *testing.T) {
 		}
 	}
 }
+
+func seedLogModel(t *testing.T, m dashboardModel) dashboardModel {
+	t.Helper()
+	lines := make([]string, 0, 30)
+	for i := 0; i < 30; i++ {
+		lines = append(lines, strings.Repeat("log line ", 20)+strings.Repeat("x", i))
+	}
+	m.log = lines
+	m.logView.SetContent(strings.Join(wrapLogLines(lines, 60), "\n"))
+	m.logView.GotoBottom()
+	return m
+}
+
+func TestDashboardModel_LogPaneFocusAndScroll(t *testing.T) {
+	m := seedLogModel(t, testDashboardModel())
+	m = applyKey(t, m, "3")
+	if m.pane != 2 {
+		t.Fatalf("3: pane = %d, want 2 (logs)", m.pane)
+	}
+	top := m.logView.YOffset
+	m = applyKey(t, m, "k")
+	if m.logView.YOffset >= top {
+		t.Errorf("k in log pane should scroll up: %d -> %d", top, m.logView.YOffset)
+	}
+	if m.workCursor != 0 || m.brCursor != 0 {
+		t.Errorf("j/k in log pane must not move cursors: work=%d br=%d", m.workCursor, m.brCursor)
+	}
+	m = applyKey(t, m, "j")
+	if m.logView.YOffset != top {
+		t.Errorf("j in log pane should scroll back down to %d, got %d", top, m.logView.YOffset)
+	}
+	// Space is a no-op in the log pane.
+	m = applyKey(t, m, " ")
+	if len(m.workSel) != 0 || len(m.brSel) != 0 {
+		t.Errorf("space in log pane must not select: %v %v", m.workSel, m.brSel)
+	}
+	// left/right cycles worktrees -> branches -> logs.
+	m.pane = 0
+	m = applyKey(t, m, "right")
+	if m.pane != 1 {
+		t.Errorf("right from 0: pane = %d, want 1", m.pane)
+	}
+	m = applyKey(t, m, "right")
+	if m.pane != 2 {
+		t.Errorf("right from 1: pane = %d, want 2", m.pane)
+	}
+	m = applyKey(t, m, "right")
+	if m.pane != 0 {
+		t.Errorf("right from 2: pane = %d, want 0 (wrap)", m.pane)
+	}
+	m = applyKey(t, m, "left")
+	if m.pane != 2 {
+		t.Errorf("left from 0: pane = %d, want 2 (wrap)", m.pane)
+	}
+}
+
+func TestDashboardModel_DetailPane(t *testing.T) {
+	m := testDashboardModel()
+	out := m.detailPane(60, 10)
+	for _, want := range []string{"DETAILS", "feature-a", "slug:", "status:", "ports:", "url:", "path:", "project:"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("detail pane missing %q:\n%s", want, out)
+		}
+	}
+	// Selection wins over cursor.
+	m.workCursor = 1
+	m.workSel["feature-a"] = true
+	if got := m.detailRecord(); got == nil || got.Rec.Branch != "feature-a" {
+		t.Errorf("detail should follow selection, got %+v", got)
+	}
+	// Empty state placeholder.
+	m.rows = nil
+	if got := m.detailRecord(); got != nil {
+		t.Errorf("empty rows: detailRecord = %+v, want nil", got)
+	}
+	if out := m.detailPane(60, 10); !strings.Contains(out, "no worktree") {
+		t.Errorf("empty detail pane should placeholder:\n%s", out)
+	}
+}
+
+func TestDashboardView_RedesignedLayout(t *testing.T) {
+	for _, w := range []int{80, 140, 200} {
+		m := dashboardViewModel(t)
+		m.width, m.height = w, 40
+		out := m.View()
+		for _, want := range []string{
+			"WORKTREES", "REMOTE BRANCHES", "DETAILS", "LOG",
+			"feature-a", "pr-1", "1/2/3",
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("width %d: view missing %q:\n%s", w, want, out)
+			}
+		}
+	}
+	// Focused log pane is visibly marked.
+	m := dashboardViewModel(t)
+	m.width, m.height = 140, 40
+	m.pane = 2
+	if out := m.View(); !strings.Contains(out, "LOG (3") || !strings.Contains(out, "●") {
+		t.Errorf("focused log pane should mark LOG (3) ●:\n%s", out)
+	}
+}
