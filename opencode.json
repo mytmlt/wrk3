@@ -13,13 +13,23 @@
       "gh pr create *": "allow",
       "gh pr edit *": "allow",
       "git push *origin*": "allow",
+      "rm -rf *": "deny",
+      "git push": "deny",
       "git push origin main": "deny",
       "git push origin master": "deny",
       "git push *origin main": "deny",
       "git push *origin master": "deny",
       "git push origin v*": "deny",
+      "git push --force*": "deny",
+      "git push -f*": "deny",
+      "git push * --force*": "deny",
+      "git push * -f*": "deny",
       "git merge *": "deny",
       "gh pr merge *": "deny"
+    },
+    "external_directory": {
+      "/tmp/**": "allow",
+      "~/.config/wrk3/**": "allow"
     }
   },
   "command": {

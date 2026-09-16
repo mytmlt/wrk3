@@ -19,10 +19,30 @@ wrk3 completion powershell | Out-String | Invoke-Expression
 ```
 
 `add` completes remote branches (for the effective remote — `--remote`
-flag > `source.git.remote` > `origin`); `up`/`down`/`logs`/`exec`/`remove`
+flag > `source.git.remote` > `origin`); `up`/`down`/`logs`/`exec`/`remove`/`checkout`
 complete existing worktrees (branch names and slugs); `ls --project`
 completes registry project names. Completion never
 fetches from the network — it uses the last `fetch` results.
+
+## Switching branches/worktrees
+
+Worktrees can live in nested or otherwise awkward paths, so `checkout`
+jumps straight to the folder — branch names and slugs work
+interchangeably, including the implicit main checkout:
+
+```bash
+eval "$(wrk3 shell-init bash)"            # once, in ~/.bashrc (zsh/fish/powershell too)
+wrk3 checkout feature-a                  # cd to the worktree (co/switch aliases work too)
+wrk3 checkout feat/new-feature           # same by branch name
+wrk3 checkout --print feature-a          # script-safe: print path, never cd
+cd "$(wrk3 checkout feature-a)"          # same, without shell integration
+```
+
+A binary cannot `cd` its parent shell, so `checkout` needs the wrapper
+above to change directories (worktrunk-style directive file: wrk3 writes
+the raw path to `$WRK3_DIRECTIVE_CD_FILE`, the wrapper `cd`s after wrk3
+exits). Without it, `checkout` prints the path instead. Stale entries
+(missing directory) and unknown names are errors, not silent no-ops.
 
 ## Daily loop
 
@@ -53,6 +73,7 @@ wrk3 ls --project myapp             # worktrees in a registered project, from an
 wrk3 project ls                     # all auto-registered projects (NAME/CONFIG/WORKTREES)
 wrk3 logs feature-a [-f]            # entry.logs command
 wrk3 exec feature-a -- <cmd...>     # run inside worktree env (cwd=worktree)
+wrk3 checkout feature-a             # cd to the worktree (needs shell-init wrapper; else prints path)
 wrk3 down feature-a | wrk3 down     # bare = all including main
 wrk3 remove feature-a feature-b | wrk3 remove --all   # compose down -v + worktree remove + state cleanup (never touches main)
 wrk3 remove --force feature-a | wrk3 remove --all --force  # same with git worktree remove --force (falls back to rm -rf); for dirty worktrees with modified/untracked files

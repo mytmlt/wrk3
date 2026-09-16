@@ -25,7 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pushes allowed; `main`/tag pushes and any merge denied). Also adds the
   `wrk3-test` slash command (`go vet ./cmd/ && go test ./cmd/ -run
   '<pattern>' -count=1`, empty args = full gate).
-
+- `wrk3 checkout <branch|slug>` (`co`/`switch` aliases) jumps to a
+  worktree folder: with shell integration (`eval "$(wrk3 shell-init
+  bash)"` once in `~/.bashrc` — `zsh`/`fish`/`powershell` also covered
+  via `wrk3 shell-init <shell>`) it cds the calling shell through a
+  worktrunk-style directive file (`$WRK3_DIRECTIVE_CD_FILE`, raw path,
+  never parsed as shell); without it, it prints the absolute path so
+  `cd "$(wrk3 checkout x)"` always works. Branch names and slugs resolve
+  interchangeably including the implicit main checkout, stale/missing
+  directories error out, and `--print` forces the script-safe
+  print-never-cd form. `shell-init` is excluded from the update nag
+  (it is eval'd at every shell start).
 - Dogfood config: committed `wrk3.yaml` for the wrk3 repo itself so
   agents (and humans) run `wrk3 fetch` / `wrk3 add` here per the
   `AGENTS.md` isolate step. No docker stack exists, so `up`/`down` are
