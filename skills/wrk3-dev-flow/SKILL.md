@@ -18,7 +18,7 @@ and linters never needs approval either.
 
 Standing bash permissions for this flow live in project `opencode.json`
 (`permission.bash`: `wrk3 *`, `./bin/wrk3 *`, `make *`, `go build|vet|test *`,
-`go run . *`, `head *`, `golangci-lint *`, `git rebase *`,
+`go run . *`, `head *`, `golangci-lint *`, `ocr review *`, `git rebase *`,
 `gh pr create|edit|view|checks *`, `git push *origin*` on topic branches).
 Denied there on purpose: pushes to `main`/`master`, tag pushes,
 `git merge *`, `gh pr merge *`. If a command is held for approval anyway
@@ -51,6 +51,13 @@ Denied there on purpose: pushes to `main`/`master`, tag pushes,
   `go build ./... && go vet ./... && go test ./... -count=1`
   (`make test` is the same; `internal/runner` tests take ~10s on real
   `docker`, everything else is hermetic).
+- Always run an `ocr` review of the branch diff before committing (takes
+  ~1-2 min, pre-authorized like builds/tests — never skip it):
+  `ocr review --from origin/main --to $(git branch --show-current)`
+  (`--preview` first to check file selection; `--audience agent` for a
+  terse summary in non-interactive runs). Address every finding: fix the
+  code, re-run the full gate, then re-run the review on the updated diff
+  until it is clean. Only then commit.
 
 ## Phase 3 — commit + push + PR (autonomous)
 

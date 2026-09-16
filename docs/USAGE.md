@@ -194,13 +194,18 @@ main like `remove`), `X` force-removes like `remove --force` (asks
 `y/n`, for dirty worktrees with modified/untracked files), `r` refreshes
 state, `R` fetches the remote
 (`--remote`/`--mine`/`--author`/`--myprs` filter the branch list, `m`
-toggles mine, `P` toggles myprs), `1`/`2` or `←`/`→` switch panes, `?`
+toggles mine, `P` toggles myprs), `1`/`2`/`3` or `←`/`→` switch panes
+(worktrees/branches/log; the DETAILS preview follows the worktree
+cursor/selection and is never focused), `?`
 shows all keys, `q` quits. The unfiltered branch pane unions remote refs
 with local-only branches (filtered views stay remote-only); like
 `add <branch>`, `a` creates the checkout from either ref, or adopts the
-on-disk worktree when one already exists. Worktrees and branches render as tables in
-bordered panes (side-by-side on terminals ≥132 cols, stacked otherwise),
-the shortcut bar is always visible at the bottom, and the log scrolls.
+on-disk worktree when one already exists. Layout is WORKTREES on top
+(full width), REMOTE BRANCHES + DETAILS preview in the middle
+(side-by-side on terminals ≥132 cols, stacked otherwise), and a focusable
+LOG at the bottom (`j/k`/`↑`/`↓` scroll it when focused;
+`pgup`/`pgdn`/`home`/`end` scroll from any pane),
+the shortcut bar is always visible at the bottom.
 Pressing `u` flips the selected rows to `setting up` immediately; the
 rows keep that status (not `running`) until setup/run entries finish,
 even when the setup itself already started containers. Pressing `l`
