@@ -115,11 +115,31 @@ func TestMainRecord_RealGit(t *testing.T) {
 	if rec.Index != mainWorktreeIndex {
 		t.Errorf("Index = %d, want %d", rec.Index, mainWorktreeIndex)
 	}
-	if rec.Ports["app"] != 7900 {
-		t.Errorf("app port = %d, want 7900", rec.Ports["app"])
+	if rec.Ports["app"] != 8000 {
+		t.Errorf("app port = %d, want 8000", rec.Ports["app"])
 	}
 	if rec.ComposeProject != "demo-main" {
 		t.Errorf("ComposeProject = %q, want demo-main", rec.ComposeProject)
+	}
+}
+
+func TestMainRecord_CustomBaseEqualsBase(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfig(t, repo)
+	cfg.Ports.Base = map[string]int{"app": 9000, "web": 3000}
+	r := &resolved{cfg: cfg, src: &source.GitSource{}}
+	rec, err := mainRecord(r, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec == nil {
+		t.Fatal("expected main record, got nil")
+	}
+	if rec.Index != mainWorktreeIndex {
+		t.Errorf("Index = %d, want %d", rec.Index, mainWorktreeIndex)
+	}
+	if rec.Ports["app"] != 9000 || rec.Ports["web"] != 3000 {
+		t.Errorf("Ports = %v, want exactly the configured base {app:9000 web:3000}", rec.Ports)
 	}
 }
 
@@ -155,9 +175,11 @@ func TestMainRecord_PortCollision(t *testing.T) {
 	cfg := writeTestConfig(t, repo)
 	r := &resolved{cfg: cfg, src: &source.GitSource{}}
 	// Reserved index collision: state must never hold mainWorktreeIndex.
+	// (Pre-fix state files may still carry a managed index 0 allocation;
+	// those now collide with main, which owns the base ports.)
 	recs := []ports.WorktreeRecord{{
 		Branch: "feature", Slug: "feature", AbsPath: "/other",
-		Index: mainWorktreeIndex, Ports: map[string]int{"app": 7900},
+		Index: mainWorktreeIndex, Ports: map[string]int{"app": 8000},
 	}}
 	if _, err := mainRecord(r, recs); err == nil {
 		t.Fatal("expected port collision error")
@@ -167,12 +189,15 @@ func TestMainRecord_PortCollision(t *testing.T) {
 func TestMainRecord_PortValueCollision(t *testing.T) {
 	repo := initMainTestRepo(t)
 	cfg := writeTestConfig(t, repo)
-	// Multi-port base where main's app port overlaps an existing web port.
+	// Multi-port base where a managed allocation shares a port value
+	// with main's allocation under a different name: main holds
+	// {app:8000, web:7900} and index 1 holds {app:8100, web:8000},
+	// so managed web == main app == 8000.
 	cfg.Ports.Base = map[string]int{"app": 8000, "web": 7900}
 	r := &resolved{cfg: cfg, src: &source.GitSource{}}
 	recs := []ports.WorktreeRecord{{
 		Branch: "feature", Slug: "feature", AbsPath: "/other",
-		Index: 0, Ports: map[string]int{"app": 8000, "web": 7900},
+		Index: 1, Ports: map[string]int{"app": 8100, "web": 8000},
 	}}
 	if _, err := mainRecord(r, recs); err == nil {
 		t.Fatal("expected port value collision error")
@@ -185,7 +210,7 @@ func TestResolveTargetsWithMain_BareIncludesMain(t *testing.T) {
 	r := &resolved{cfg: cfg, src: &source.GitSource{}}
 	recs := []ports.WorktreeRecord{{
 		Branch: "feature", Slug: "feature", AbsPath: filepath.Join(repo, ".worktrees", "feature"),
-		Index: 0, Ports: map[string]int{"app": 8000},
+		Index: 1, Ports: map[string]int{"app": 8100},
 	}}
 	targets, err := resolveTargetsWithMain(r, recs, nil)
 	if err != nil {
@@ -273,7 +298,7 @@ func TestEnsureWorktreeEnv_PreservesSecrets(t *testing.T) {
 	if !strings.Contains(s, secret) {
 		t.Errorf("secret lost from main .env.\n%s", s)
 	}
-	if !strings.Contains(s, "APP_PORT=7900\n") {
+	if !strings.Contains(s, "APP_PORT=8000\n") {
 		t.Errorf("managed APP_PORT missing from main .env.\n%s", s)
 	}
 }

@@ -87,8 +87,8 @@ func TestAddOrAdoptOne_AdoptsOrphan(t *testing.T) {
 	if len(recs) != 1 || recs[0].Branch != "feature-foo" || recs[0].AbsPath != filepath.Clean(wt) {
 		t.Errorf("recs = %+v, want adopted feature-foo at %s", recs, wt)
 	}
-	if recs[0].Index != 0 || recs[0].Ports["app"] != 8000 {
-		t.Errorf("recs[0] = %+v, want index 0 app 8000", recs[0])
+	if recs[0].Index != 1 || recs[0].Ports["app"] != 8100 {
+		t.Errorf("recs[0] = %+v, want index 1 app 8100 (index 0 is the main checkout)", recs[0])
 	}
 }
 

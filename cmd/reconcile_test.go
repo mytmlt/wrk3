@@ -57,8 +57,8 @@ func TestReconcileAndSave_AdoptsOrphanEmptyState(t *testing.T) {
 	if rec.Branch != "feature-x" || rec.Slug != "feature-x" || rec.AbsPath != filepath.Clean(wantPath) {
 		t.Errorf("rec = %+v, want feature-x at %s", rec, wantPath)
 	}
-	if rec.Index != 0 || rec.Ports["app"] != 8000 {
-		t.Errorf("rec = %+v, want index 0 app 8000", rec)
+	if rec.Index != 1 || rec.Ports["app"] != 8100 {
+		t.Errorf("rec = %+v, want index 1 app 8100 (index 0 is the main checkout)", rec)
 	}
 	if rec.ComposeProject != "demo-feature-x" {
 		t.Errorf("ComposeProject = %q, want demo-feature-x", rec.ComposeProject)
@@ -119,11 +119,44 @@ func TestReconcileState_DivergedEnvAllocatesFresh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !dirty || updated[0].Ports["app"] != 8000 {
-		t.Errorf("updated = %+v, want fresh app 8000", updated)
+	if !dirty || updated[0].Ports["app"] != 8100 || updated[0].Index != 1 {
+		t.Errorf("updated = %+v, want fresh app 8100 index 1", updated)
 	}
 	if len(warns) == 0 {
 		t.Error("diverged .env must warn")
+	}
+}
+
+// A .env holding the base ports must not be adopted at the reserved
+// main index: the orphan gets a fresh managed index with warnings, and
+// its existing values stay intact.
+func TestReconcileState_BaseEnvDoesNotAdoptMainSlot(t *testing.T) {
+	r, repo := reconcileFixture(t)
+	wt := filepath.Join(repo, ".worktrees", "feature-base")
+	gitWorktreeAdd(t, repo, wt, "feature-base")
+	if err := os.WriteFile(filepath.Join(wt, ".env"), []byte("APP_PORT=8000\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	updated, warns, dirty, err := reconcileState(r, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dirty || len(updated) != 1 {
+		t.Fatalf("updated = %+v, dirty=%v, want 1 adopted", updated, dirty)
+	}
+	if updated[0].Index != 1 || updated[0].Ports["app"] != 8100 {
+		t.Errorf("rec = %+v, want fresh index 1 app 8100, never the main slot", updated[0])
+	}
+	if len(warns) == 0 {
+		t.Error("adopting over base-port .env values must warn")
+	}
+	// Existing values are never overwritten.
+	raw, err := os.ReadFile(filepath.Join(wt, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != "APP_PORT=8000\n" {
+		t.Errorf(".env was rewritten, want existing values intact:\n%s", raw)
 	}
 }
 
