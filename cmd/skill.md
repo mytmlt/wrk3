@@ -116,6 +116,7 @@ entry:
   run: "docker compose logs -f"                # required; long-running, after compose up
   stop: "docker compose down"                  # required; used by `wrk3 down`
   logs: "docker compose logs -f"               # optional; used by `wrk3 logs`
+  reload: ["docker compose restart app"]       # optional; used by `wrk3 reload` (dashboard `l`)
 ports:
   base: {app: 8000}               # `app` is required; add names per extra host port
   step: 100                       # allocation: allocated[name] = base[name] + index*step

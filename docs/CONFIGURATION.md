@@ -29,6 +29,7 @@ entry:
   run: "docker compose logs -f"                # required; run after compose up
   stop: "docker compose down"                  # required; used by down
   logs: "docker compose logs -f"               # optional; used by logs
+  reload: ["docker compose restart app"]       # optional; used by reload (errors when empty)
 ports:
   base: {app: 8000}
   step: 100
@@ -74,6 +75,7 @@ broader than `--mine`, which matches git commit authorship).
 | `entry.run` | yes | Long-running command started after compose up (e.g. dev server). Run via `sh -c` with `cwd=worktree`, `env=allocated ports`. |
 | `entry.stop` | yes | Run via `sh -c` before `compose down` by `down` (failures warn, never block teardown). |
 | `entry.logs` | no | When set, `logs` runs it via `sh -c` instead of `compose logs`; when empty, `compose logs` is used. |
+| `entry.reload` | no | Ordered list run by `reload` (CLI + dashboard `l`), each via `sh -c` with `cwd=worktree`, `env=allocated ports`. Empty strings skipped. `reload` errors when nothing is set. |
 | `ports.base` | no | Defaults to `{app: 8000}`. `app` is required; add more names when the stack binds extra host ports. |
 | `ports.step` | no | Default `100`. Allocation: `allocated[name] = base[name] + index*step`. |
 | `proxy.enabled` | no | Default `false`. When `true`, `up`/`add`/dashboard ensure the local gateway (best-effort, never fails the command) and each worktree gains an append-only `APP_URL` in its `.env`. |

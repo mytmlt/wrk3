@@ -29,8 +29,11 @@ Project layout:
 
 ## Workflow
 
-1. Fork the repo, create a topic branch from `main`:
-   `git checkout -b feat/short-description`.
+1. Start from the latest `origin/main`, then create a topic branch +
+   worktree for it: `git fetch origin`, then
+   `wrk3 fetch` → `wrk3 add feat/short-description --create`
+   (equivalent fallback: `git worktree add -b feat/short-description
+   <path> origin/main`).
 2. Make focused changes. Keep functions small, wrap errors with context
    (`fmt.Errorf("...: %w", err)`), never log secrets.
 3. New `Source`/`Runner` backends **must** register in their `registry.go`;

@@ -19,7 +19,7 @@ wrk3 completion powershell | Out-String | Invoke-Expression
 ```
 
 `add` completes remote branches (for the effective remote — `--remote`
-flag > `source.git.remote` > `origin`); `up`/`down`/`logs`/`exec`/`remove`/`checkout`
+flag > `source.git.remote` > `origin`); `up`/`down`/`reload`/`logs`/`exec`/`remove`/`checkout`
 complete existing worktrees (branch names and slugs); `ls --project`
 completes registry project names. Completion never
 fetches from the network — it uses the last `fetch` results.
@@ -67,6 +67,7 @@ wrk3 add feat/new-feature --create  # same, without prompting (for scripts: no p
 wrk3 add feat/new-feature --no-create # fail fast on unknown names instead of prompting
 wrk3 up feature-a                   # setup entries + compose up + run entry
 wrk3 up                             # bare = all worktrees including main, in parallel (errgroup)
+wrk3 reload feature-a | wrk3 reload # entry.reload commands (bare = all including main, in parallel)
 wrk3 status                         # this config (full table, includes main)
 wrk3 ls                             # this config (minimal WORKTREE/BRANCH/STATUS/PORTS, includes main)
 wrk3 ls --project myapp             # worktrees in a registered project, from anywhere
@@ -183,7 +184,7 @@ remote branches (default every 15s, `--poll 0` disables), shows the worktree
 table with ports, clickable `URL` links (gateway URL when `proxy.enabled`,
 else `localhost:<appPort>`), gateway state in the meta line, and the next free `app` port,
 and runs the same operations
-as the CLI: `space` selects, `u`/`d` up/down (cursor worktree when nothing
+as the CLI: `space` selects, `u`/`d`/`l` up/down/reload (cursor worktree when nothing
 is selected), `a` adds queued branches, `o` opens the cursor worktree URL
 in a browser (the full URL is logged too), `x` removes (asks `y/n`, refuses
 main like `remove`), `X` force-removes like `remove --force` (asks
@@ -199,9 +200,11 @@ bordered panes (side-by-side on terminals ≥132 cols, stacked otherwise),
 the shortcut bar is always visible at the bottom, and the log scrolls.
 Pressing `u` flips the selected rows to `setting up` immediately; the
 rows keep that status (not `running`) until setup/run entries finish,
-even when the setup itself already started containers. Pressing `d`
-flips the selected rows to `stopping` immediately until compose down
-finishes. Branches with an on-disk worktree missing from state show as
+even when the setup itself already started containers. Pressing `l`
+flips the selected rows to `setting up` the same way until the
+`entry.reload` commands finish (and errors when `entry.reload` is empty).
+Pressing `d` flips the selected rows to `stopping` immediately until
+compose down finishes. Branches with an on-disk worktree missing from state show as
 `orphan` and are queueable: `a` adopts them (ports + `.env` + state)
 instead of re-creating the checkout.
 
