@@ -137,10 +137,12 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 	return all, warns, true, nil
 }
 
-// reconcileAndSave adopts orphan worktrees into recs and persists when
-// anything was adopted. It returns the updated records, the adopted branch
-// names, and .env divergence warnings. A missing stateP skips the save and
-// returns display-only records.
+// reconcileAndSave adopts orphan worktrees into recs, migrates legacy
+// managed index 0 allocations colliding with main (reserved index 0, the
+// ports.base allocation), and persists when anything changed. It returns
+// the updated records, the adopted branch names, and .env divergence
+// warnings. A missing stateP skips the save and returns display-only
+// records.
 func reconcileAndSave(r *resolved, recs []ports.WorktreeRecord) (updated []ports.WorktreeRecord, adopted []string, warns []string, err error) {
 	had := make(map[string]struct{}, len(recs))
 	for _, rec := range recs {
@@ -149,6 +151,16 @@ func reconcileAndSave(r *resolved, recs []ports.WorktreeRecord) (updated []ports
 	updated, warns, dirty, err := reconcileState(r, recs)
 	if err != nil {
 		return nil, nil, nil, err
+	}
+	migratedRecs, moved, migrateWarns, err := migrateLegacyMainCollisions(r, updated)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	warns = append(warns, migrateWarns...)
+	if len(moved) > 0 {
+		updated = migratedRecs
+		dirty = true
+		warns = append(warns, "migrated legacy index 0 collides with main (ports.base): "+strings.Join(moved, ", "))
 	}
 	if !dirty {
 		return updated, nil, warns, nil

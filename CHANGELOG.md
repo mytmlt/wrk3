@@ -14,10 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of `base` minus one step (e.g. `app=7900`). Managed worktrees allocate
   from `max(index)+1` floored at `1`, so the first `add` takes index `1`
   (e.g. `app=8100`) and existing managed indexes are never renumbered.
-  State files predating this fix that still hold a managed index `0`
-  allocation now surface a `main worktree ports collide ...` error
-  instead of a silent port conflict — `remove` + re-`add` that worktree
-  to reallocate it at a fresh index.
+- Pre-main-at-base state files holding a managed index `0` allocation
+  overlapping main's `ports.base` ports no longer hard-error with
+  `main worktree ports collide ...` and block `status`/`pull`/dashboard.
+  The next `status`/`ls`/`up`/`down`/`pull`/`remove`/dashboard run
+  auto-migrates the colliding record to the next collision-free index
+  (`base+step` onwards, chain-shifting when taken) and persists it;
+  `add`/`adopt` and the dashboard `next app port` preview use the same
+  collision-free scan. Main stays exactly at `ports.base`.
 
 ## [0.9.0] - 2026-09-16
 

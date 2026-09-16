@@ -546,7 +546,10 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 			}
 		}
 	}
-	idx := nextIndex(*recs)
+	idx, ok := nextFreeIndex(*alloc, *recs)
+	if !ok {
+		return nil, fmt.Errorf("add worktree %q: no collision-free port index available", branch)
+	}
 	allocation := alloc.Allocate(idx)
 	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
 	if err := create(path); err != nil {
@@ -594,7 +597,10 @@ func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator,
 	if st, err := os.Stat(path); err != nil || !st.IsDir() {
 		return nil, fmt.Errorf("adopt worktree %q: path %s missing or not a directory", branch, path)
 	}
-	idx := nextIndex(*recs)
+	idx, ok := nextFreeIndex(*alloc, *recs)
+	if !ok {
+		return nil, fmt.Errorf("adopt worktree %q: no collision-free port index available", branch)
+	}
 	allocation := alloc.Allocate(idx)
 	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
 	warns, err := ensureWorktreeEnv(r, ports.WorktreeRecord{

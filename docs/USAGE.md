@@ -245,7 +245,7 @@ wrk3 down pr-102 && wrk3 remove pr-102
 | `stale` / `?` in status | Worktree directory deleted out-of-band; `remove --force` to clean state, or re-`add`. |
 | deleted `.wrk3-state.json` | Self-heals: next `status`/`ls`/`up`/`down`/dashboard run re-adopts on-disk worktrees (ports from `.env` when intact). |
 | `already checked out at ... (use add --local ...)` | On-disk worktree missing from state (e.g. state file deleted); `add <branch>` adopts it automatically, or use `add --local`. |
-| `main worktree ports collide with worktree "x" ...` | State predates the main-at-base fix and still holds a managed index `0` allocation overlapping main's `ports.base` ports — `remove x` then re-`add` it to reallocate at a fresh index. |
+| `main worktree ports collide with worktree "x" ...` | Legacy guard only: current builds auto-migrate a managed index `0` allocation overlapping main's `ports.base` ports to the next free index (`base+step` onwards) on the next `status`/`pull`/`up`/`down`/dashboard run — no manual `remove`+re-`add` needed. |
 | `pass either branch names or --all, not both` | `remove` takes explicit names **or** `--all`. |
 | `--myprs supports GitHub remotes only ...` | The remote URL (`git remote get-url`) is not GitHub — `--myprs` is GitHub-only for now. |
 | `github forge needs the gh CLI ...` / `gh is not authenticated ...` | Install `gh` from https://cli.github.com, then run `gh auth login` (wrk3 reuses your session, stores no tokens). |

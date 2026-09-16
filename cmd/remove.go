@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -26,6 +27,20 @@ var removeCmd = &cobra.Command{
 		recs, err := loadState(r)
 		if err != nil {
 			return err
+		}
+		// Reconcile (adopt orphans) + migrate legacy zeros colliding with
+		// main at ports.base, persisting when anything changed, so the
+		// main guard below never sees a stale colliding allocation.
+		if updated, adopted, warns, err := reconcileAndSave(r, recs); err != nil {
+			return err
+		} else {
+			recs = updated
+			for _, w := range warns {
+				warnf(cmd, "%s", w)
+			}
+			if len(adopted) > 0 {
+				warnf(cmd, "reconciled state: adopted %s", strings.Join(adopted, ", "))
+			}
 		}
 		// The main checkout is implicit and never in state: refuse to
 		// remove it by branch/slug instead of reporting "unknown".

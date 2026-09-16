@@ -105,13 +105,19 @@ func checkedOutSet(infos []source.WorktreeInfo) map[string]bool {
 }
 
 // nextAppPort previews the app port the next added worktree would get
-// (max(index)+1 allocation). Returns -1 when the app port is unknown.
+// (first collision-free managed index >= max(index)+1, i.e. base+step
+// onwards since index 0 is the main checkout). Returns -1 when unknown
+// or the port space is exhausted.
 func nextAppPort(cfg *config.Config, recs []ports.WorktreeRecord) int {
 	if cfg == nil {
 		return -1
 	}
 	alloc := cfg.Allocator()
-	allocation := alloc.Allocate(nextIndex(recs))
+	idx, ok := nextFreeIndex(alloc, recs)
+	if !ok {
+		return -1
+	}
+	allocation := alloc.Allocate(idx)
 	if allocation.Ports == nil {
 		return -1
 	}
