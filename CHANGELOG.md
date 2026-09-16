@@ -97,6 +97,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repo-root `.env` seed into fresh worktrees and are preserved on
   `remove` instead of being stripped.
 
+### Fixed
+
+- `wrk3 update` no longer 404s: the release download URLs dropped the
+  stray `/repos/` segment (an `api.github.com` path shape that does not
+  exist on the `github.com` download host).
+
 ## [0.8.0] - 2026-09-15
 
 Initial public release.
