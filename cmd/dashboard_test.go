@@ -500,6 +500,103 @@ func TestDashboardModel_MineToggle(t *testing.T) {
 	}
 }
 
+func TestDashboardModel_PullKeyStartsOp(t *testing.T) {
+	// Empty worktrees: p must not start an op.
+	empty := testDashboardModel()
+	empty.rows = nil
+	empty = applyKey(t, empty, "p")
+	if empty.busy {
+		t.Error("p with no worktrees must not start an op")
+	}
+	if empty.statusMsg == "" {
+		t.Error("p with no worktrees should set a status message")
+	}
+	// Cursor worktree (no explicit selection): p starts a busy pull.
+	m := testDashboardModel()
+	next, cmd := m.handleKey(keyMsg("p"))
+	dm := next.(dashboardModel)
+	if !dm.busy || dm.busyLabel != "pull" {
+		t.Fatalf("p should start busy pull: %+v", dm)
+	}
+	if cmd == nil {
+		t.Fatal("p should return the pull command")
+	}
+	if dm.myprs {
+		t.Error("p must not toggle the myprs filter (that is P)")
+	}
+	found := false
+	for _, l := range dm.log {
+		if strings.Contains(l, "pull feature-a") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("pull target missing from log: %v", dm.log)
+	}
+	// Complete the op: feed opDone directly (no git here).
+	done, _ := dm.Update(dashboardOpDoneMsg{label: "pull", lines: []string{"[feature-a] pulled"}})
+	dm = done.(dashboardModel)
+	if dm.busy {
+		t.Error("pull opDone must clear busy")
+	}
+}
+
+func TestDashboardModel_PullKeyWhileBusy(t *testing.T) {
+	m := testDashboardModel()
+	m.busy = true
+	m.busyLabel = "up"
+	m = applyKey(t, m, "p")
+	if m.busyLabel != "up" {
+		t.Errorf("p while busy must not hijack the running op: %+v", m.busyLabel)
+	}
+}
+
+func TestDashboardModel_MyPRSToggleUnaffectedByPull(t *testing.T) {
+	m := testDashboardModel()
+	m = applyKey(t, m, "P")
+	if !m.myprs {
+		t.Error("P should enable myprs filter")
+	}
+	m = applyKey(t, m, "P")
+	if m.myprs {
+		t.Error("P should toggle myprs filter back off")
+	}
+}
+
+func TestDashboardPullCmd_RunsPullTargets(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfig(t, repo)
+	src := &pullTestSource{}
+	p := &dashboardProject{
+		desc:   dashboardProjectDesc{Name: "myapp", ConfigPath: "/r/wrk3.yaml", Current: true},
+		cfg:    cfg,
+		src:    src,
+		base:   cfg.AbsWorktreeBase(),
+		stateP: cfg.StatePath(),
+	}
+	dir := t.TempDir()
+	targets := []ports.WorktreeRecord{{Branch: "feature-a", Slug: "feature-a", AbsPath: dir}}
+	msg := dashboardPullCmd(p, targets)()
+	done, ok := msg.(dashboardOpDoneMsg)
+	if !ok {
+		t.Fatalf("pull cmd returned %T, want dashboardOpDoneMsg", msg)
+	}
+	if done.label != "pull" {
+		t.Errorf("label = %q, want pull", done.label)
+	}
+	if done.err != nil {
+		t.Fatalf("pull cmd err = %v", done.err)
+	}
+	if got := src.calls(); len(got) != 1 || got[0] != dir {
+		t.Errorf("pulled = %v, want [%s]", got, dir)
+	}
+	src.mu.Lock()
+	defer src.mu.Unlock()
+	if len(src.pullOpts) != 1 || src.pullOpts[0] != (source.PullOptions{}) {
+		t.Errorf("opts = %+v, want plain pull (no --rebase/--ff-only)", src.pullOpts)
+	}
+}
+
 func TestDashboardCmd_DbAlias(t *testing.T) {
 	found := false
 	for _, a := range dashboardCmd.Aliases {

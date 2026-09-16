@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Dashboard `p` pulls the selected worktrees (cursor worktree when
+  nothing is selected): plain `git pull` per target in parallel via the
+  existing `Source.Pull`, reusing the `wrk3 pull` runner. `P` still
+  toggles the myprs branch filter.
 - Dashboard redesign: WORKTREES table on top (full width), REMOTE
   BRANCHES + read-only DETAILS preview (selected/cursor worktree:
   branch/slug/status/ports/url/path/project) in the middle, and a

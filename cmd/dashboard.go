@@ -37,11 +37,11 @@ var (
 var dashboardCmd = &cobra.Command{
 	Use:     "dashboard",
 	Aliases: []string{"db"},
-	Short:   "Interactive TUI: worktrees, branches, ports, up/down/reload/add/remove",
+	Short:   "Interactive TUI: worktrees, branches, ports, up/down/reload/pull/add/remove",
 	Long: `Open an interactive dashboard for this repo (plus registered projects).
 
 Polls worktree state and remote branches, shows the worktree table with
-ports, and runs up/down/reload/add/remove without leaving the TUI. The CLI keeps
+ports, and runs up/down/reload/pull/add/remove without leaving the TUI. The CLI keeps
 working alongside it: ` + "`wrk3 add`" + ` in another terminal shows up on
 the next poll or manual refresh (r).`,
 	ValidArgsFunction: cobra.NoFileCompletions,
@@ -556,6 +556,16 @@ func dashboardReloadCmd(p *dashboardProject, targets []ports.WorktreeRecord) tea
 		}
 		r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
 		return runReloadTargets(context.Background(), r, targets, logf)
+	})
+}
+
+func dashboardPullCmd(p *dashboardProject, targets []ports.WorktreeRecord) tea.Cmd {
+	return dashboardOpCmd(p, "pull", func(logf func(string, ...any)) error {
+		if p == nil || p.cfg == nil {
+			return fmt.Errorf("project not loaded")
+		}
+		r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
+		return runPullTargets(r, targets, source.PullOptions{}, logf)
 	})
 }
 
@@ -1096,6 +1106,19 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m = m.appendLog("reload " + branchesOf(targets))
 		m = m.markRowsSettingUp(targets)
 		return m, dashboardReloadCmd(m.curProject(), targets)
+	case "p":
+		if m.busy {
+			return m, nil
+		}
+		targets := m.selectedWorktrees()
+		if len(targets) == 0 {
+			m.statusMsg = "nothing selected (space to select, or cursor worktree)"
+			return m, nil
+		}
+		m.busy = true
+		m.busyLabel = "pull"
+		m = m.appendLog("pull " + branchesOf(targets))
+		return m, dashboardPullCmd(m.curProject(), targets)
 	case "a":
 		if m.busy {
 			return m, nil
@@ -1222,11 +1245,11 @@ const (
 // bindings are display-only; handleKey still owns dispatch so selection
 // and op semantics stay in one place (and stay unit-testable).
 type dashboardKeys struct {
-	Move, Select, Pane, Project                                               key.Binding
-	OpUp, OpDown, OpReload, OpAdd, OpOpen, OpCopyURL, OpRemove, OpForceRemove key.Binding
-	Refresh, Fetch, Mine, MyPRS                                               key.Binding
-	LogScroll                                                                 key.Binding
-	Help, Quit                                                                key.Binding
+	Move, Select, Pane, Project                                                       key.Binding
+	OpUp, OpDown, OpReload, OpPull, OpAdd, OpOpen, OpCopyURL, OpRemove, OpForceRemove key.Binding
+	Refresh, Fetch, Mine, MyPRS                                                       key.Binding
+	LogScroll                                                                         key.Binding
+	Help, Quit                                                                        key.Binding
 }
 
 func newDashboardKeys() dashboardKeys {
@@ -1238,6 +1261,7 @@ func newDashboardKeys() dashboardKeys {
 		OpUp:          key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "up")),
 		OpDown:        key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "down")),
 		OpReload:      key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "reload")),
+		OpPull:        key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "pull")),
 		OpAdd:         key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
 		OpOpen:        key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open URL")),
 		OpCopyURL:     key.NewBinding(key.WithKeys("O"), key.WithHelp("O", "copy URL")),
@@ -1267,7 +1291,7 @@ func (k dashboardKeys) ShortHelp() []key.Binding {
 // ActHelp is the second sticky-bar line (worktree/branch operations).
 func (k dashboardKeys) ActHelp() []key.Binding {
 	return []key.Binding{
-		k.OpUp, k.OpDown, k.OpReload, k.OpAdd, k.OpOpen, k.OpCopyURL, k.OpRemove, k.OpForceRemove,
+		k.OpUp, k.OpDown, k.OpReload, k.OpPull, k.OpAdd, k.OpOpen, k.OpCopyURL, k.OpRemove, k.OpForceRemove,
 		k.Refresh, k.Fetch, k.Mine, k.MyPRS,
 	}
 }
@@ -1276,7 +1300,7 @@ func (k dashboardKeys) ActHelp() []key.Binding {
 func (k dashboardKeys) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Move, k.Select, k.Pane, k.Project},
-		{k.OpUp, k.OpDown, k.OpReload, k.OpAdd, k.OpOpen, k.OpCopyURL, k.OpRemove, k.OpForceRemove},
+		{k.OpUp, k.OpDown, k.OpReload, k.OpPull, k.OpAdd, k.OpOpen, k.OpCopyURL, k.OpRemove, k.OpForceRemove},
 		{k.Refresh, k.Fetch, k.Mine, k.MyPRS},
 		{k.LogScroll, k.Help, k.Quit},
 	}
