@@ -62,7 +62,9 @@ func mapDashboardRows(recs []ports.WorktreeRecord, mainBranch string, statusFn f
 	return rows
 }
 
-// unregisteredBranchEntries builds the branch pane: every ref sorted, with
+// unregisteredBranchEntries builds the branch pane: every ref in the
+// caller-provided order (displayBranches already sorts: prioritized my-PR /
+// --mine branches first, then newest-first by tip committer date), with
 // already-registered (branch or slug match via findRecord) flagged so the
 // TUI dims them instead of offering add. Checked-out-but-unregistered
 // branches (orphan worktrees missing from state) are flagged Adoptable so
@@ -71,7 +73,6 @@ func mapDashboardRows(recs []ports.WorktreeRecord, mainBranch string, statusFn f
 // slug-collision error.
 func unregisteredBranchEntries(refs []string, recs []ports.WorktreeRecord, checkedOut map[string]bool, keepSelected map[string]bool) []branchEntry {
 	sorted := append([]string(nil), refs...)
-	sort.Strings(sorted)
 	slugs := map[string]bool{}
 	for _, rec := range recs {
 		slugs[rec.Slug] = true

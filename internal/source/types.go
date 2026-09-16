@@ -5,6 +5,8 @@
 // unknown types error listing available options.
 package source
 
+import "time"
+
 // WorktreeInfo describes one entry from `git worktree list --porcelain`.
 type WorktreeInfo struct {
 	// Path is the absolute worktree path.
@@ -30,6 +32,11 @@ type BranchRef struct {
 	CommitterName string
 	// CommitterEmail is the tip commit's committer email (brackets stripped).
 	CommitterEmail string
+	// CommitterDate is the tip commit's committer date (branch recency
+	// proxy; zero when unknown, e.g. legacy test fixtures). True remote
+	// branch creation dates are not exposed by git, so callers sort by
+	// this newest-first as the closest available signal.
+	CommitterDate time.Time
 }
 
 // MineHistoryLimit caps how many branch-exclusive commits --mine/--author
@@ -57,8 +64,9 @@ type Source interface {
 	// Used to offer worktree creation from branches that exist only
 	// locally; unlike Refs it needs no network fetch.
 	LocalBranches(repoPath string) ([]string, error)
-	// RefsDetailed lists remote branches with tip-commit authors and
-	// committers (for-each-ref over refs/remotes/<remote>).
+	// RefsDetailed lists remote branches with tip-commit authors,
+	// committers, and tip committer dates (for-each-ref over
+	// refs/remotes/<remote>).
 	RefsDetailed(repoPath, remote string) ([]BranchRef, error)
 	// DefaultBranch returns the short name of the remote's default branch
 	// (e.g. "main"). Empty means unknown — callers must fall back to

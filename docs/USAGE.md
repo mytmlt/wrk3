@@ -202,7 +202,14 @@ highlighted row, `esc` closes; `x`/`X` rows land in the usual `y/n`
 confirm), `q` quits. The unfiltered branch pane unions remote refs
 with local-only branches (filtered views stay remote-only); like
 `add <branch>`, `a` creates the checkout from either ref, or adopts the
-on-disk worktree when one already exists. Layout is WORKTREES on top
+on-disk worktree when one already exists. The branch pane sorts your
+branches first — open involving-me PR branches when the forge answers
+(GitHub + `gh`, else tip-matching `--mine` branches) — then everything
+else newest-first by tip committer date (git exposes no true branch
+creation date, so tip recency is the proxy; local-only branches without
+a remote ref sort last alphabetically). Filtered views (`--mine`/
+`--author`/`--myprs`, `m`/`P` toggles) already are the priority set, so
+they just sort newest-first. Layout is WORKTREES on top
 (full width), REMOTE BRANCHES + DETAILS preview in the middle
 (side-by-side on terminals ≥132 cols, stacked otherwise), and a focusable
 LOG at the bottom (`j/k`/`↑`/`↓` scroll it when focused;

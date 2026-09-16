@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -69,12 +70,13 @@ func (g *GitSource) LocalBranches(repoPath string) ([]string, error) {
 	return parseLocalBranches(out), nil
 }
 
-// RefsDetailed lists remote branches with tip-commit authors and committers
-// via git for-each-ref (refs/remotes/<remote>, HEAD symref skipped).
+// RefsDetailed lists remote branches with tip-commit authors, committers,
+// and tip committer dates via git for-each-ref (refs/remotes/<remote>,
+// HEAD symref skipped).
 func (g *GitSource) RefsDetailed(repoPath, remote string) ([]BranchRef, error) {
 	remote = normalizeRemote(remote)
 	out, err := g.run(repoPath, "for-each-ref",
-		"--format=%(refname:short)%00%(authorname)%00%(authoremail)%00%(committername)%00%(committeremail)",
+		"--format=%(refname:short)%00%(authorname)%00%(authoremail)%00%(committername)%00%(committeremail)%00%(committerdate:unix)",
 		"refs/remotes/"+remote)
 	if err != nil {
 		return nil, err
@@ -324,11 +326,12 @@ func parseRefsDetailed(out, remote string) []BranchRef {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		// Format is ref%00author%00<email>%00committer%00<email>;
+		// Format is ref%00author%00<email>%00committer%00<email>%00unixtime;
 		// branch names never contain NUL so SplitN is exact.
-		// Older output with only 3 fields is still accepted.
-		parts := strings.SplitN(line, "\x00", 5)
-		if len(parts) != 3 && len(parts) != 5 {
+		// Older output with only 3 fields (no committer) or 5 fields
+		// (no date) is still accepted, with missing fields left zero.
+		parts := strings.SplitN(line, "\x00", 6)
+		if len(parts) != 3 && len(parts) != 5 && len(parts) != 6 {
 			continue
 		}
 		short := strings.TrimSpace(parts[0])
@@ -363,6 +366,14 @@ func parseRefsDetailed(out, remote string) []BranchRef {
 					return strings.Trim(strings.TrimSpace(parts[4]), "<>")
 				}
 				return ""
+			}(),
+			CommitterDate: func() time.Time {
+				if len(parts) > 5 {
+					if unix, err := strconv.ParseInt(strings.TrimSpace(parts[5]), 10, 64); err == nil && unix > 0 {
+						return time.Unix(unix, 0)
+					}
+				}
+				return time.Time{}
 			}(),
 		})
 	}

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +10,10 @@ import (
 	"github.com/mytmlt/wrk3/internal/ports"
 	"github.com/mytmlt/wrk3/internal/source"
 )
+
+// errNoPRsForTest stubs the `gh` PR lookup in tests that exercise the
+// unfiltered displayBranches path without PR data.
+var errNoPRsForTest = errors.New("no PRs in test")
 
 func gitWorktreeAdd(t *testing.T, repo, path, branch string) {
 	t.Helper()
@@ -192,6 +197,7 @@ func TestUnionBranches(t *testing.T) {
 }
 
 func TestDisplayBranches_UnfilteredUnionsLocal(t *testing.T) {
+	stubPRs(t, nil, errNoPRsForTest)
 	s := &stubSource{refs: []string{"remote-only"}, local: []string{"local-only", "remote-only"}}
 	got, err := displayBranches(s, ".", "origin", false, nil, false)
 	if err != nil {

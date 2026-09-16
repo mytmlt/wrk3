@@ -38,7 +38,10 @@ stacked otherwise), **LOG** at the bottom:
   `localhost:<appPort>` (`o` opens it in a browser, `O` copies it to the clipboard).
 - **REMOTE BRANCHES (middle-left)** — queueable refs with `STATE`
   (`new` queueable, `orphan` = on-disk worktree missing from state and
-  adoptable, `registered`/`checked out` not queueable).
+  adoptable, `registered`/`checked out` not queueable). Your branches
+  sort first (open involving-me PRs when the forge answers, else
+  tip-matching `--mine` branches), then the rest newest-first by tip
+  committer date.
 - **DETAILS (middle-right, preview)** — selected/cursor worktree
   (`branch/slug/status/ports/url/path/project`), follows the worktree
   cursor and multi-select.

@@ -70,9 +70,10 @@ Semantics (match `internal/source/git.go`):
   (dashboard branch pane and `add` picker union).
 - `RefsDetailed(repoPath, remote)` — same branches as `[]BranchRef`
   (`Name` short branch, `AuthorName`/`AuthorEmail`/`CommitterName`/
-  `CommitterEmail` from the tip commit;
+  `CommitterEmail`/`CommitterDate` from the tip commit;
   git: `for-each-ref` over `refs/remotes/<remote>`). Powers
-  `fetch --mine` / `--author` and `add --remote --mine` (tip fast path).
+  `fetch --mine` / `--author` and `add --remote --mine` (tip fast path),
+  plus the dashboard branch-pane ordering (priority + recency).
 - `DefaultBranch(repoPath, remote)` — short default-branch name (git:
   `symbolic-ref refs/remotes/<remote>/HEAD`, else `main`/`master` probe;
   empty when unknown). Powers the `--mine`/`--author` history fallback.
