@@ -83,7 +83,10 @@ alongside — `wrk3 add` in another terminal shows up on the next poll or
   subdirectory. `add` auto-registers the repo for `project ls` /
   `ls --project`.
 - **Shell completion** — `wrk3 completion <bash|zsh|fish|powershell>` plus
-  dynamic branch/worktree/project completion for `add`/`up`/`down`/`logs`/`exec`/`remove`/`ls --project`.
+  dynamic branch/worktree/project completion for `add`/`up`/`down`/`logs`/`exec`/`remove`/`checkout`/`ls --project`.
+- **Worktree switching** — `wrk3 checkout <branch|slug>` cds to the
+  worktree (via a `wrk3 shell-init` wrapper eval'd once in your rc file;
+  prints the path without it, so `cd "$(wrk3 checkout x)"` always works).
 - **Single static binary** — Go, no runtime deps besides `git` and `docker`.
  - **Interactive dashboard** — `wrk3 dashboard` polls worktrees, remote
   branches, and ports across the current repo and registered projects
@@ -149,6 +152,7 @@ wrk3 ls --project myapp   # same worktrees from any dir (after add registers it)
 wrk3 project ls           # all registered projects
 wrk3 logs feature-a -f
 wrk3 exec feature-a -- make test
+wrk3 checkout feature-a   # cd to the worktree (after eval "$(wrk3 shell-init bash)" in your rc file)
 
 # 5. Tear down
 wrk3 down
