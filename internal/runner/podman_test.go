@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -89,6 +90,24 @@ func TestPodmanRunnerTimeoutDefault(t *testing.T) {
 	}
 }
 
+func TestIsBackendUnavailable(t *testing.T) {
+	if isBackendUnavailable(nil) {
+		t.Error("nil error should not count as unavailable")
+	}
+	for _, msg := range []string{
+		`podman up: Cannot connect to the Docker daemon at unix:///run/user/1001/podman/podman.sock. Is the docker daemon running?`,
+		"dial unix /run/podman.sock: connection refused",
+		"podman ps: no such file or directory",
+	} {
+		if !isBackendUnavailable(errors.New(msg)) {
+			t.Errorf("error %q should count as unavailable", msg)
+		}
+	}
+	if isBackendUnavailable(errors.New("podman up: container_name conflict")) {
+		t.Error("real runner failure should not count as unavailable")
+	}
+}
+
 func TestPodmanRunnerErrorPrefixes(t *testing.T) {
 	ctx := context.Background()
 	r := NewPodman(Options{ProjectPrefix: "demo", Slug: "x"})
@@ -104,6 +123,32 @@ func TestPodmanRunnerErrorPrefixes(t *testing.T) {
 	if _, err := r.Status(ctx, ""); err == nil || !strings.Contains(err.Error(), "podman status") {
 		t.Errorf("Status error = %v, want podman status prefix", err)
 	}
+}
+
+// isBackendUnavailable reports whether err looks like a missing or
+// unreachable container backend (rather than a real runner failure).
+// Some environments ship a `podman` binary whose `compose` provider
+// cannot reach a daemon (e.g. CI runners where `podman info` succeeds
+// but `podman compose up` answers "Cannot connect to the Docker
+// daemon"); those cases skip the integration test instead of failing
+// it, mirroring the "unavailable backend" guards elsewhere.
+func isBackendUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, frag := range []string{
+		"cannot connect",
+		"connection refused",
+		"is the docker daemon running",
+		"no such file or directory",
+		"daemon not running",
+	} {
+		if strings.Contains(msg, frag) {
+			return true
+		}
+	}
+	return false
 }
 
 // TestPodmanRunnerIntegration brings up a stub compose repo
@@ -146,6 +191,9 @@ func TestPodmanRunnerIntegration(t *testing.T) {
 	opCtx, cancelOp := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancelOp()
 	if err := r.Up(opCtx, dir, env); err != nil {
+		if isBackendUnavailable(err) {
+			t.Skipf("podman compose backend unreachable: %v", err)
+		}
 		t.Fatalf("Up: %v", err)
 	}
 	t.Cleanup(func() {
