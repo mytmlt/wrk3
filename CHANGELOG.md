@@ -86,6 +86,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   warning and continuing. Use `--no-verify` / `WRK3_VERIFY=0` to explicitly
   opt into an unverified install.
 
+### Changed
+
+- `.env` management no longer sets hardcoded `BASE_URL`,
+  `WEBHOOKS_BASE_URL`, or `ALLOWED_WS_ORIGINS`: managed keys are exactly
+  one `<NAME>_PORT` per `ports.base` entry (plus append-only `APP_URL`
+  when `proxy.enabled`). Existing URL values copy verbatim from the
+  repo-root `.env` seed into fresh worktrees and are preserved on
+  `remove` instead of being stripped.
+
 ## [0.8.0] - 2026-09-15
 
 Initial public release.

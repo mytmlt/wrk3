@@ -10,13 +10,11 @@ import (
 )
 
 // Generic .env variable names. Per-port vars derive from the port name via
-// EnvVarForPort (e.g. `app` -> `APP_PORT`); the BASE_URL family derives
-// from the `app` port.
+// EnvVarForPort (e.g. `app` -> `APP_PORT`); every other key (including
+// BASE_URL-style app URLs) is user-owned and inherited verbatim from the
+// seed .env.
 const (
-	EnvApp              = "APP_PORT"
-	EnvBaseURL          = "BASE_URL"
-	EnvWebhooksBaseURL  = "WEBHOOKS_BASE_URL"
-	EnvAllowedWSOrigins = "ALLOWED_WS_ORIGINS"
+	EnvApp = "APP_PORT"
 	// EnvAppURL is the gateway URL for a worktree
 	// (http://<slug>.<domain>[:port]); ensured only when proxy.enabled.
 	EnvAppURL = "APP_URL"
@@ -45,15 +43,6 @@ func EnvVarForPort(name string) string {
 		return "PORT"
 	}
 	return s + "_PORT"
-}
-
-// appPort extracts the app port for derived URLs.
-func appPort(ports map[string]int) (int, error) {
-	v, ok := ports[PortApp]
-	if !ok {
-		return 0, fmt.Errorf("render .env: missing port %q", PortApp)
-	}
-	return v, nil
 }
 
 // AppURL builds http://<slug>.<domain>[:port] for a worktree gateway.
@@ -97,21 +86,17 @@ func EnsureKeys(worktreePath string, extra map[string]string) (added []string, e
 }
 
 // ManagedValues maps every wrk3-managed .env variable to its value for
-// the given allocation: one <NAME>_PORT per port plus the BASE_URL family
-// derived from the app port.
+// the given allocation: one <NAME>_PORT per ports.base entry. Nothing else
+// is managed: app-level URLs such as BASE_URL stay user-owned and are
+// inherited verbatim from the seed .env.
 func ManagedValues(ports map[string]int) (map[string]string, error) {
-	app, err := appPort(ports)
-	if err != nil {
-		return nil, err
+	if len(ports) == 0 {
+		return nil, fmt.Errorf("render .env: no ports allocated")
 	}
-	out := make(map[string]string, len(ports)+3)
+	out := make(map[string]string, len(ports))
 	for name, v := range ports {
 		out[EnvVarForPort(name)] = fmt.Sprintf("%d", v)
 	}
-	origin := fmt.Sprintf("http://localhost:%d", app)
-	out[EnvBaseURL] = origin
-	out[EnvWebhooksBaseURL] = origin
-	out[EnvAllowedWSOrigins] = origin
 	return out, nil
 }
 
@@ -205,16 +190,10 @@ func assignmentValue(line, key string) (value string, ok bool) {
 }
 
 // Render builds the .env file content for ports. Every entry in ports
-// becomes <NAME>_PORT (sorted by port name for stable output); BASE_URL,
-// WEBHOOKS_BASE_URL, and ALLOWED_WS_ORIGINS derive from the app port
-// as http://localhost:<appPort>.
+// becomes <NAME>_PORT (sorted by port name for stable output).
 func Render(ports map[string]int) (string, error) {
 	if len(ports) == 0 {
 		return "", fmt.Errorf("render .env: no ports allocated")
-	}
-	app, err := appPort(ports)
-	if err != nil {
-		return "", err
 	}
 	names := make([]string, 0, len(ports))
 	for name := range ports {
@@ -226,10 +205,6 @@ func Render(ports map[string]int) (string, error) {
 	for _, name := range names {
 		fmt.Fprintf(&b, "%s=%d\n", EnvVarForPort(name), ports[name])
 	}
-	origin := fmt.Sprintf("http://localhost:%d", app)
-	fmt.Fprintf(&b, "%s=%s\n", EnvBaseURL, origin)
-	fmt.Fprintf(&b, "%s=%s\n", EnvWebhooksBaseURL, origin)
-	fmt.Fprintf(&b, "%s=%s\n", EnvAllowedWSOrigins, origin)
 	return b.String(), nil
 }
 
@@ -308,9 +283,6 @@ func fillMissing(content string, desired map[string]string) (out string, added [
 func checkPorts(ports map[string]int) error {
 	if len(ports) == 0 {
 		return fmt.Errorf("render .env: no ports allocated")
-	}
-	if _, err := appPort(ports); err != nil {
-		return err
 	}
 	return nil
 }
@@ -398,10 +370,11 @@ func trimBlankEnds(lines []string) []string {
 // EnsureInherited ensures <worktreePath>/.env like Ensure, except that when
 // the worktree has no .env yet, non-managed lines are seeded from the .env at
 // seedPath (typically the repo-root checkout) before missing managed keys are
-// appended. Managed keys are never inherited — the worktree always gets its
-// own allocation. A missing seed file behaves like Ensure, and an existing
-// worktree .env is only gap-filled, never reseeded. A seedPath equal to the
-// worktree .env is ignored (self-seed).
+// appended. Managed <NAME>_PORT keys are never inherited — the worktree
+// always gets its own allocation — while every other key (including BASE_URL
+// style URLs) is copied verbatim. A missing seed file behaves like Ensure,
+// and an existing worktree .env is only gap-filled, never reseeded. A
+// seedPath equal to the worktree .env is ignored (self-seed).
 func EnsureInherited(worktreePath, seedPath string, ports map[string]int) (added []string, diverged map[string]string, err error) {
 	if worktreePath == "" {
 		return nil, nil, fmt.Errorf("write .env: empty worktree path")

@@ -7,9 +7,9 @@
 package ports
 
 // PortApp is the canonical port name. It is required in every allocation:
-// derived URLs (BASE_URL family) build from it and `status` lists it first
-// in the PORTS column. Any additional names in Allocator.Base are allowed and
-// map to generic <NAME>_PORT .env vars.
+// the proxy gateway targets it and `status` lists it first in the PORTS
+// column. Any additional names in Allocator.Base are allowed and map to
+// generic <NAME>_PORT .env vars.
 const PortApp = "app"
 
 // DefaultStep is the default index stride (see docs/CONFIGURATION.md).
