@@ -49,21 +49,19 @@ func TestEnsure_FreshMatchesGolden(t *testing.T) {
 	}
 }
 
-func TestRender_DerivedURLs(t *testing.T) {
+func TestRender_OnlyPortVars(t *testing.T) {
 	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
 	got, err := Render(a.Allocate(2).Ports)
 	if err != nil {
 		t.Fatalf("Render() = %v", err)
 	}
-	// index 2: app = 8000 + 200 = 8200.
-	for _, want := range []string{
-		"APP_PORT=8200",
-		"BASE_URL=http://localhost:8200",
-		"WEBHOOKS_BASE_URL=http://localhost:8200",
-		"ALLOWED_WS_ORIGINS=http://localhost:8200",
-	} {
-		if !strings.Contains(got, want+"\n") {
-			t.Errorf("Render() missing %q.\n%s", want, got)
+	// index 2: app = 8000 + 200 = 8200. No hardcoded URL vars.
+	if !strings.Contains(got, "APP_PORT=8200\n") {
+		t.Errorf("Render() missing APP_PORT=8200.\n%s", got)
+	}
+	for _, want := range []string{"BASE_URL=", "WEBHOOKS_BASE_URL=", "ALLOWED_WS_ORIGINS="} {
+		if strings.Contains(got, want) {
+			t.Errorf("Render() must not set %q.\n%s", want, got)
 		}
 	}
 }
@@ -95,11 +93,20 @@ func TestEnvVarForPort(t *testing.T) {
 	}
 }
 
-func TestRender_MissingPort(t *testing.T) {
-	ports := DefaultBase()
-	delete(ports, PortApp)
-	if _, err := Render(ports); err == nil {
-		t.Errorf("Render() with missing port = nil, want error")
+func TestRender_EmptyPorts(t *testing.T) {
+	if _, err := Render(nil); err == nil {
+		t.Errorf("Render(nil) = nil, want error")
+	}
+}
+
+func TestRender_WithoutAppPort(t *testing.T) {
+	// .env rendering follows ports.base verbatim; no app port required.
+	got, err := Render(map[string]int{"web": 3000})
+	if err != nil {
+		t.Fatalf("Render() = %v", err)
+	}
+	if !strings.Contains(got, "WEB_PORT=3000\n") {
+		t.Errorf("Render() missing WEB_PORT=3000.\n%s", got)
 	}
 }
 
@@ -138,8 +145,7 @@ func TestEnsure_NeverOverridesExisting(t *testing.T) {
 		"# my project\n",
 		"SECRET=topsecret\n",
 		"DATABASE_URL=postgres://u:p@db/x\n",
-		"APP_PORT=9999\n",                  // left intact, never overwritten
-		"BASE_URL=http://localhost:8000\n", // missing: appended
+		"APP_PORT=9999\n", // left intact, never overwritten
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("merged .env missing %q.\n%s", want, s)
@@ -148,7 +154,12 @@ func TestEnsure_NeverOverridesExisting(t *testing.T) {
 	if strings.Contains(s, "APP_PORT=8000") {
 		t.Errorf("existing APP_PORT was overwritten.\n%s", s)
 	}
-	_ = added
+	if strings.Contains(s, "\nBASE_URL=") || strings.HasPrefix(s, "BASE_URL=") {
+		t.Errorf("wrk3 must not manage BASE_URL.\n%s", s)
+	}
+	if len(added) != 0 {
+		t.Errorf("Ensure() added = %v, want none (only diverged APP_PORT)", added)
+	}
 }
 
 func TestEnsure_AppendsMissingUnderMarker(t *testing.T) {
@@ -229,8 +240,8 @@ func TestEnsure_MatchingFormsAreNotDiverged(t *testing.T) {
 	if err := os.MkdirAll(wt, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Same values in export/quoted/spaced forms: present, not diverged,
-	// left byte-for-byte intact.
+	// Same values in export form: present, not diverged, left intact.
+	// BASE_URL is user-owned: never managed, never diverged.
 	existing := "export APP_PORT=8000\nBASE_URL = \"http://localhost:8000\" # ours\n"
 	if err := os.WriteFile(filepath.Join(wt, EnvFileName), []byte(existing), 0o644); err != nil {
 		t.Fatal(err)
@@ -244,7 +255,10 @@ func TestEnsure_MatchingFormsAreNotDiverged(t *testing.T) {
 		t.Errorf("export form falsely diverged: %v", diverged)
 	}
 	if _, ok := diverged["BASE_URL"]; ok {
-		t.Errorf("quoted/spaced form falsely diverged: %v", diverged)
+		t.Errorf("BASE_URL must not be managed: %v", diverged)
+	}
+	if len(added) != 0 {
+		t.Errorf("Ensure() added = %v, want none", added)
 	}
 	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
 	if err != nil {
@@ -253,7 +267,6 @@ func TestEnsure_MatchingFormsAreNotDiverged(t *testing.T) {
 	if !strings.Contains(string(got), existing) {
 		t.Errorf("existing lines were modified.\n%s", got)
 	}
-	_ = added
 }
 
 func TestEnsureInherited_SeedsSecretsNotPorts(t *testing.T) {
@@ -263,7 +276,8 @@ func TestEnsureInherited_SeedsSecretsNotPorts(t *testing.T) {
 	if err := os.MkdirAll(seedDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Seed (main .env) holds secrets plus main's own managed values.
+	// Seed (main .env) holds secrets, user URLs, plus main's own port values.
+	// Only <NAME>_PORT is managed: URLs copy verbatim, ports do not leak.
 	seedContent := "SECRET=topsecret\nAPP_PORT=7900\nBASE_URL=http://localhost:7900\n"
 	seedPath := filepath.Join(seedDir, EnvFileName)
 	if err := os.WriteFile(seedPath, []byte(seedContent), 0o644); err != nil {
@@ -288,11 +302,47 @@ func TestEnsureInherited_SeedsSecretsNotPorts(t *testing.T) {
 	if !strings.Contains(s, "SECRET=topsecret\n") {
 		t.Errorf("secret not inherited.\n%s", s)
 	}
+	if !strings.Contains(s, "BASE_URL=http://localhost:7900\n") {
+		t.Errorf("user URL not inherited verbatim.\n%s", s)
+	}
 	if !strings.Contains(s, "APP_PORT=8000\n") {
 		t.Errorf("own allocation missing.\n%s", s)
 	}
-	if strings.Contains(s, "7900") {
-		t.Errorf("seed's managed values leaked into worktree.\n%s", s)
+	if strings.Contains(s, "APP_PORT=7900") {
+		t.Errorf("seed's managed port leaked into worktree.\n%s", s)
+	}
+}
+
+func TestEnsureInherited_CopiesUserURLs(t *testing.T) {
+	dir := t.TempDir()
+	seedDir := filepath.Join(dir, "main")
+	wt := filepath.Join(dir, "feature-foo")
+	if err := os.MkdirAll(seedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seedPath := filepath.Join(seedDir, EnvFileName)
+	seedContent := "BASE_URL=http://localhost:8000\nWEBHOOKS_BASE_URL=http://host.docker.internal:8000\nALLOWED_WS_ORIGINS=http://localhost:8000\n"
+	if err := os.WriteFile(seedPath, []byte(seedContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
+	if _, _, err := EnsureInherited(wt, seedPath, a.Allocate(1).Ports); err != nil {
+		t.Fatalf("EnsureInherited() = %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(got)
+	for _, want := range []string{
+		"BASE_URL=http://localhost:8000\n",
+		"WEBHOOKS_BASE_URL=http://host.docker.internal:8000\n",
+		"ALLOWED_WS_ORIGINS=http://localhost:8000\n",
+		"APP_PORT=8100\n",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %q.\n%s", want, s)
+		}
 	}
 }
 
@@ -365,7 +415,7 @@ func TestStripManaged_PreservesUserKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != "SECRET=xyz\n" {
+	if string(got) != "SECRET=xyz\nBASE_URL=http://localhost:8000\n" {
 		t.Errorf("got %q, want user keys only", got)
 	}
 }

@@ -169,19 +169,13 @@ func envForWorktree(cfg *config.Config, rec ports.WorktreeRecord) map[string]str
 	return out
 }
 
-// envFromPorts maps an allocation to runner env vars (generic
-// <NAME>_PORT names + derived BASE_URL family). COMPOSE_PROJECT_NAME is forced by
+// envFromPorts maps an allocation to runner env vars (generic <NAME>_PORT
+// names, one per ports.base entry). COMPOSE_PROJECT_NAME is forced by
 // the docker runner and is not set here.
 func envFromPorts(p map[string]int) map[string]string {
-	out := make(map[string]string, len(p)+3)
+	out := make(map[string]string, len(p))
 	for name, v := range p {
 		out[ports.EnvVarForPort(name)] = strconv.Itoa(v)
-	}
-	if app, ok := p[ports.PortApp]; ok {
-		origin := "http://localhost:" + strconv.Itoa(app)
-		out[ports.EnvBaseURL] = origin
-		out[ports.EnvWebhooksBaseURL] = origin
-		out[ports.EnvAllowedWSOrigins] = origin
 	}
 	return out
 }
