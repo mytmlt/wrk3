@@ -25,7 +25,9 @@ checklist in `skills/wrk3-dev-flow/SKILL.md`.
    directly in the worktree (Go gate below).
 2. **Test.** New functionality → new co-located `*_test.go` covering it.
    Behavior change → update the existing tests for those paths.
-   Finish with the full gate green (Essential commands above).
+   Finish with the full gate green (Essential commands above), then always
+   run `ocr review --from origin/main --to $(git branch --show-current)`
+   and clear every finding (fix → gate → re-review) before committing.
 3. **Autonomy (standing pre-authorization — never ask).** Committing,
    pushing the feature branch, opening the PR, and watching checks are
    pre-authorized once and for all: never ask the human whether to
