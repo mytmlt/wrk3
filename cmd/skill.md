@@ -1,8 +1,9 @@
 # wrk3 agent skill: set up wrk3.yaml for this app
 
 Goal: turn **any codebase** into a working `wrk3.yaml` that runs the app
-the way its developers run it locally — today via the `docker` runner,
-tomorrow via `portainer` / `nomad` / bare-machine runners (see
+the way its developers run it locally — today via the `docker` or
+`podman` runners, tomorrow via `portainer` / `nomad` / bare-machine
+runners (see
 `github.com/mytmlt/wrk3/blob/main/ROADMAP.md`). You are setting up `wrk3` (parallel git worktrees, each
 with isolated ports and its own runner project) for the app in the
 current repo. Work from the repo root (the config always lives in the
@@ -42,6 +43,8 @@ Reconstruct the onboarding flow before touching `wrk3.yaml`:
    `source.git.copy` candidates — small, slow-to-recreate, or secret
    bearing. Large rebuildable dirs (`node_modules`, `.venv`, build
    output) stay out; the setup/install step recreates them.
+   Also note which container engine the developers use (`docker` vs
+   `podman`) — that decides `runner.type`.
 
 Ask the developer when any of these is true — do not guess:
 
@@ -65,8 +68,9 @@ Map the Phase 0 findings onto wrk3 isolation:
 
 1. Find compose files: `docker-compose.yml`, `compose.yaml`, `compose.*.yml`.
 2. Check each service for:
-   - `container_name:` — INCOMPATIBLE as-is. It is global on the daemon
-     and bypasses `docker compose -p <prefix>-<slug>` isolation. It must
+   - `container_name:` — INCOMPATIBLE as-is. It is global on the engine
+     and bypasses `compose -p <prefix>-<slug>` isolation (docker and
+     podman alike). It must
      be deleted (compose generates `<project>-<service>-1` automatically).
      `wrk3 up` fails fast on this; cite `file:line` evidence.
    - Hardcoded host ports (`"8000:8000"`, `ports: [5432:5432]`) —
@@ -78,11 +82,12 @@ Map the Phase 0 findings onto wrk3 isolation:
      volumes are fine (isolated per compose project).
    - `network_mode: host` — INCOMPATIBLE with port isolation; flag it.
 3. No compose stack? The app is a bare-machine candidate: record the
-   exact host commands from Phase 0 and note that only the `docker`
-   runner ships today (`portainer` / `nomad` / bare-machine runners are
+   exact host commands from Phase 0 and note that only the `docker` and
+   `podman` runners ship today (`portainer` / `nomad` / bare-machine runners are
    roadmap stubs returning `not implemented`). Still author `wrk3.yaml`
    with accurate `entry.*` so the local flow is captured and `exec`
-   works; pick `runner.type: docker` only when a compose stack exists.
+   works; pick `runner.type: docker` (or `podman` when the developers use
+   podman) only when a compose stack exists.
 4. Check local setup: `Makefile`, `README.md`, `package.json` scripts.
    Confirm the dev server / tests boot commands you will wire into
    `entry.run` / `entry.setup` / `entry.stop`.
@@ -107,10 +112,13 @@ source:
     fetchPrune: true
     # copy: [".env.local", "certs/"]  # optional gitignored files/dirs into each new worktree on add
 runner:
-  type: docker
+  type: docker              # or `podman` when the developers use podman (entry.* must then call `podman compose ...`)
   docker:
     composeFiles: [docker-compose.yml]  # at least one; resolved inside each worktree
     projectPrefix: demo                 # compose project becomes <prefix>-<slug>
+  # podman:                     # alternative backend for runner.type: podman
+  #   composeFiles: [docker-compose.yml]
+  #   projectPrefix: demo
 entry:
   setup: ["docker compose up --wait --build"]  # ordered list, run before compose up
   run: "docker compose logs -f"                # required; long-running, after compose up
@@ -131,11 +139,13 @@ Rules:
   (globs, `**` supported) copied into each new worktree on `add`
   (missing skips with a warning, existing files never overwritten).
   Derive it from Phase 0 local-state findings, not guesses.
-- `runner.type` must be `docker` today (`portainer` / `nomad` are
+- `runner.type` must be `docker` or `podman` today (`portainer` / `nomad` are
   intentional `not implemented` stubs; bare-machine is roadmap — see
-  `github.com/mytmlt/wrk3/blob/main/ROADMAP.md`). `runner.docker.composeFiles` needs at least one file;
-  `runner.docker.projectPrefix` is required. Never set
-  `container_name:` in compose files.
+  `github.com/mytmlt/wrk3/blob/main/ROADMAP.md`). `runner.docker.composeFiles` (or
+  `runner.podman.composeFiles` for the podman backend) needs at least one file;
+  `runner.docker.projectPrefix` (or `runner.podman.projectPrefix`) is required. Never set
+  `container_name:` in compose files. `entry.*` commands must call the matching
+  engine (`docker compose ...` vs `podman compose ...`).
 - `entry.*` strings execute verbatim via `sh -c` with `cwd=worktree`
   and `env=allocated ports`. `entry.run` and `entry.stop` are required.
   `entry.setup` is an ordered list; empty strings are skipped. Each

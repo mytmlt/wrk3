@@ -3,7 +3,7 @@
 Project goal: **turn any codebase into a `wrk3.yaml` that runs the app
 the way its developers run it locally** — as parallel git worktrees with
 isolated ports and per-worktree runners — whether that means
-`docker`, `portainer`, `nomad`, or a bare machine.
+`docker`, `podman`, `portainer`, `nomad`, or a bare machine.
 
 The agent path is: learn the manual onboarding first (docs, scripts,
 env files, install → migrate/seed → run), ask the developer when unsure,
@@ -15,6 +15,7 @@ developer answer — never invented.
 
 - [x] `git` source: `fetch` / `add` / `worktree list` over parallel worktrees.
 - [x] `docker` runner: `compose -p <prefix>-<slug>` per worktree, isolated ports + `.env`.
+- [x] `podman` runner: same shape via native `podman compose`.
 - [x] `source.git.copy`: seed gitignored local-state files into new worktrees.
 - [x] Bundled agent skill (`wrk3 skill`): onboarding-first setup guide.
 

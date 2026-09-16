@@ -1,7 +1,7 @@
 // Package cmd implements the thin wrk3 cobra CLI.
 //
 // cmd depends on internal/* interfaces only, never on concrete
-// git/docker implementations.
+// source/runner implementations.
 package cmd
 
 import (

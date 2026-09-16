@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `podman` runner (`runner.type: podman` with `runner.podman.composeFiles` /
+  `runner.podman.projectPrefix`): full parity with the `docker` runner via
+  native `podman compose -p <prefix>-<slug>` (`up -d --build`, `down`,
+  `logs`, host `exec`, `ps -q` status with out-of-band label fallbacks over
+  both `com.docker.compose.project` and `io.podman.compose.project` label
+  keys, plus the same `container_name:` preflight on `up`). `entry.*`
+  strings stay verbatim — podman configs call `podman compose ...` there.
+
 ## [0.10.0] - 2026-09-16
 
 ### Added

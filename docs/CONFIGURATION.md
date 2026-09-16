@@ -24,8 +24,11 @@ runner:
   docker:
     composeFiles: [docker-compose.yml]  # at least one
     projectPrefix: demo                 # used as compose -p <prefix>-<slug>
+  # podman:                             # alternative backend (runner.type: podman)
+  #   composeFiles: [docker-compose.yml]
+  #   projectPrefix: demo
 entry:
-  setup: ["docker compose up --wait --build"]  # run in order before compose up
+  setup: ["docker compose up --wait --build"]  # run in order before compose up (use `podman compose ...` with runner.type: podman)
   run: "docker compose logs -f"                # required; run after compose up
   stop: "docker compose down"                  # required; used by down
   logs: "docker compose logs -f"               # optional; used by logs
@@ -68,9 +71,11 @@ broader than `--mine`, which matches git commit authorship).
 
 | Path | Required | Notes |
 | ---- | -------- | ----- |
-| `runner.type` | yes | `docker` (ships). `portainer`/`nomad` exist as stubs → `not implemented`. Unknown values error listing available runners. |
+| `runner.type` | yes | `docker` or `podman` (both ship). `portainer`/`nomad` exist as stubs → `not implemented`. Unknown values error listing available runners. |
 | `runner.docker.composeFiles` | yes (docker) | At least one compose file, resolved inside each worktree. Compose files must not set `container_name:` — it is global on the daemon and bypasses `-p <prefix>-<slug>` isolation, so `up` fails fast naming the offending file/services. Compose generates `<project>-<service>-1` automatically. |
 | `runner.docker.projectPrefix` | yes (docker) | Compose project becomes `<prefix>-<slug>` → free volume/network isolation. |
+| `runner.podman.composeFiles` | yes (podman) | Same as `runner.docker.composeFiles`, for `podman compose`. `up` runs the same `container_name:` preflight. |
+| `runner.podman.projectPrefix` | yes (podman) | Same as `runner.docker.projectPrefix`, for `podman compose`. |
 | `entry.setup` | no | Ordered list, each run via `sh -c` with `cwd=worktree`, `env=allocated ports`. Empty strings skipped. |
 | `entry.run` | yes | Long-running command started after compose up (e.g. dev server). Run via `sh -c` with `cwd=worktree`, `env=allocated ports`. |
 | `entry.stop` | yes | Run via `sh -c` before `compose down` by `down` (failures warn, never block teardown). |
@@ -120,7 +125,7 @@ broader than `--mine`, which matches git commit authorship).
   name becomes `<NAME>_PORT` (uppercased, non-alphanumerics → `_`), sorted
   for stable output. Examples: `app` → `APP_PORT`, `web` → `WEB_PORT`.
 
-`COMPOSE_PROJECT_NAME` is forced by the docker runner (not set in `.env`).
+`COMPOSE_PROJECT_NAME` is forced by the docker and podman runners (not set in `.env`).
 
 Only use the port names your compose files read — extra names are
 harmless. To adapt: change `ports.base` keys/values and make sure your

@@ -151,7 +151,7 @@ branch order for deterministic indexes:
 
 ### Runtime sync + display
 
-Every read probes the configured runner backend (docker compose today,
+Every read probes the configured runner backend (docker or podman compose,
 other orchestrators via the same Runner interface tomorrow) in parallel
 (30s timeout per worktree). Missing directories short-circuit to
 `stale`/`?` with no runner call; probe errors surface as `unknown`. The
@@ -176,6 +176,11 @@ fallbacks covering stacks started out-of-band via plain
 `docker compose up` — slug, worktree folder basename, and stored project
 (label check is independent of compose files and cwd). Any candidate with
 >0 containers counts as `running`, else `stopped`.
+
+Podman probe order: primary `podman compose -p <prefix>-<slug> ps -q`,
+then label-based `podman ps` fallbacks over the same project candidates.
+Both `com.docker.compose.project` (docker-compat) and
+`io.podman.compose.project` (native) label keys are probed.
 
 ## Dashboard (TUI)
 
@@ -252,7 +257,7 @@ wrk3 down pr-102 && wrk3 remove pr-102
 | Symptom | Likely cause / fix |
 | ------- | ------------------ |
 | `unknown source type "x" (available sources: [git])` | Typo in `source.type`; only `git` ships in v1. |
-| `unknown runner type "x" (available runners: [docker portainer nomad])` | Only `docker` is implemented; stubs return `not implemented`. |
+| `unknown runner type "x" (available runners: [docker podman ...])` | Only `docker` and `podman` are implemented; stubs return `not implemented`. |
 | `project.worktreeBase must not be empty` | `project.worktreeBase` is required. |
 | `no wrk3.yaml found ...` | Not inside a repo checkout, or config named differently — `cd` in or pass `-f <path>`. |
 | `unknown worktree "foo"` | Name/slug not in state — check `wrk3 status`. |

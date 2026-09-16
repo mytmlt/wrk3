@@ -5,7 +5,8 @@
 - `Source` (`internal/source/types.go`) — where worktrees come from
   (`git` ships).
 - `Runner` (`internal/runner/types.go`) — where worktrees execute
-  (`docker` ships; `portainer`/`nomad` are intentional `not implemented`
+  (`docker` and `podman` ship; `portainer`/`nomad` are intentional
+  `not implemented`
   stubs — good starting points to copy).
 - `Forge` (`internal/forge/forge.go`) — where PR state comes from
   (`github` ships via the `gh` CLI; powers `fetch`/`add`/`dashboard`
@@ -117,9 +118,9 @@ type Runner interface {
 }
 ```
 
-Semantics (match `internal/runner/docker.go`):
+Semantics (match `internal/runner/docker.go` / `internal/runner/podman.go`):
 
-- `Up` — start the worktree (docker: `compose up -d --build`).
+- `Up` — start the worktree (compose: `up -d --build`).
   `Down` removes containers/networks but preserves volumes; volume
   reclamation belongs to the `remove` path (`down -v` there).
 - `Exec` — run `cmd` as a host process with `cwd=worktreePath` and
@@ -132,13 +133,14 @@ Semantics (match `internal/runner/docker.go`):
   `StateUnknown` + error when the backend is unreachable.
 - `env` is the allocated-ports map (`allocated = base + index*step`,
   see `docs/CONFIGURATION.md`). If your backend needs a forced variable
-  (docker forces `COMPOSE_PROJECT_NAME`), set it in the backend, not in
+  (docker/podman force `COMPOSE_PROJECT_NAME`), set it in the backend, not in
   `cmd` or `.env`.
 - Bound every external invocation with a timeout (`context.WithTimeout`;
-  docker uses 5 min, git 60 s) and wrap errors with context:
+  compose backends use 5 min, git 60 s) and wrap errors with context:
   `fmt.Errorf("myrunner up (dir=%s): %w", worktreePath, err)`.
 
-`runner.Options{ComposeFiles, ProjectPrefix, Slug}` is docker-specific.
+`runner.Options{ComposeFiles, ProjectPrefix, Slug}` is shared by the
+compose backends (docker/podman).
 Generic backends should take their own options struct (or none, like the
 `PortainerRunner{}`/`NomadRunner{}` stubs).
 
@@ -160,9 +162,9 @@ Generic backends should take their own options struct (or none, like the
    // ... Up/Down/Logs/Exec/Status ...
    ```
 
-   Start by copying `portainer.go` (stub) or `docker.go` (full `os/exec`
-   example: `composeArgs`/`buildEnv` pure helpers, per-call timeout,
-   stderr captured into the returned error).
+    Start by copying `portainer.go` (stub) or `docker.go`/`podman.go`
+    (full `os/exec` compose examples: `composeArgs`/`buildEnv` pure
+    helpers, per-call timeout, stderr captured into the returned error).
 
 2. **Register in `internal/runner/registry.go`** via the `init()` above.
     This is mandatory — unknown `runner.type` values error listing
@@ -248,7 +250,7 @@ Generic backends should take their own options struct (or none, like the
 go build ./... && go vet ./... && go test ./... -count=1   # full gate (make test)
 ```
 
-`internal/runner` tests take ~10s (real `docker`); everything else is
+`internal/runner` tests take ~10s (real `docker`/`podman` backends); everything else is
 fast/hermetic. For CLI-level checks use a
 throwaway repo — never the real one:
 
