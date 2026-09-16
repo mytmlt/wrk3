@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"sort"
+	"strconv"
 
 	"github.com/mytmlt/wrk3/internal/config"
 	"github.com/mytmlt/wrk3/internal/ports"
@@ -162,6 +163,21 @@ func dashboardProjectDescs(currentName, currentPath string, names []string, path
 		return out[i].ConfigPath < out[j].ConfigPath
 	})
 	return out
+}
+
+// dashboardURLFor returns the clickable link for a worktree row: the
+// gateway <slug>.<domain> URL when proxy.enabled, else plain
+// localhost:<appPort>. Returns "?" when neither is known (no app port).
+func dashboardURLFor(cfg *config.Config, rec ports.WorktreeRecord) string {
+	if cfg != nil && cfg.Proxy.Enabled {
+		return cfg.ProxyURL(rec.Slug)
+	}
+	if rec.Ports != nil {
+		if app, ok := rec.Ports[ports.PortApp]; ok && app > 0 && app <= 65535 {
+			return "http://localhost:" + strconv.Itoa(app)
+		}
+	}
+	return "?"
 }
 
 // selectedKeys returns the sorted keys of a selection set.

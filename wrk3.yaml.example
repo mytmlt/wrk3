@@ -24,9 +24,9 @@ ports:
   base: {app: 8000}
   step: 100
 # Local gateway: http://<slug>.localhost:8080 -> app port (stdlib reverse
-# proxy, no extra dependencies). Opt-in: `up` ensures the gateway when
-# enabled, each worktree gains an append-only APP_URL in its .env, and
-# `status` grows a URL column. Chrome/Firefox/Edge resolve .localhost with
+# proxy, no extra dependencies). Opt-in: `up`/`add`/dashboard ensure the
+# gateway when enabled, each worktree gains an append-only APP_URL in its
+# .env, and `status` grows a URL column (the dashboard always shows one). Chrome/Firefox/Edge resolve .localhost with
 # no setup; Safari/curl need `wrk3 proxy hosts-sync` (sudo for /etc/hosts).
 proxy:
   enabled: false

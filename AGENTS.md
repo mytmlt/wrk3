@@ -9,7 +9,8 @@ the `docker` runner).
 
 Every code or docs task runs on an isolated branch + worktree, with
 tests. The agent commits, pushes, opens PRs, and watches checks
-autonomously; the human merges when green. See the full
+autonomously without asking (standing pre-authorization); the human
+merges when green. See the full
 checklist in `skills/wrk3-dev-flow/SKILL.md`.
 
 1. **Isolate.** `git fetch origin`; create `type/short-slug` from updated
@@ -22,10 +23,15 @@ checklist in `skills/wrk3-dev-flow/SKILL.md`.
 2. **Test.** New functionality → new co-located `*_test.go` covering it.
    Behavior change → update the existing tests for those paths.
    Finish with the full gate green (Essential commands above).
-3. **Autonomy.** The agent commits, pushes, opens PRs, and watches
-   checks on its own — no per-step approval prompts. PR title/body
+3. **Autonomy (standing pre-authorization — never ask).** Committing,
+   pushing the feature branch, opening the PR, and watching checks are
+   pre-authorized once and for all: never ask the human whether to
+   commit, push, open the PR, or keep waiting on checks — just do it
+   and report the PR URL plus check results. PR title/body
    follows `.github/PULL_REQUEST_TEMPLATE.md` with Verification
-   evidence. Never push to `main`, never `--force-push` (rebase +
+   evidence. Standing bash permissions for this flow live in project
+   `opencode.json` (`permission.bash`); pushes to `main`/`master`, tag
+   pushes, and any merge are denied there. Never push to `main`, never `--force-push` (rebase +
    re-run the gate instead), never merge anything — merging is the
    human's job.
 4. **After PR open.** Watch checks with `gh pr checks <number> --watch`

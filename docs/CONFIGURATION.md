@@ -76,7 +76,7 @@ broader than `--mine`, which matches git commit authorship).
 | `entry.logs` | no | When set, `logs` runs it via `sh -c` instead of `compose logs`; when empty, `compose logs` is used. |
 | `ports.base` | no | Defaults to `{app: 8000}`. `app` is required; add more names when the stack binds extra host ports. |
 | `ports.step` | no | Default `100`. Allocation: `allocated[name] = base[name] + index*step`. |
-| `proxy.enabled` | no | Default `false`. When `true`, `up` ensures the local gateway and each worktree gains an append-only `APP_URL` in its `.env`. |
+| `proxy.enabled` | no | Default `false`. When `true`, `up`/`add`/dashboard ensure the local gateway (best-effort, never fails the command) and each worktree gains an append-only `APP_URL` in its `.env`. |
 | `proxy.domain` | no | Default `localhost` → `http://<slug>.localhost:<port>`. Lowercased, hostname chars only. `.localhost` needs no setup in Chrome/Firefox/Edge (RFC 6761); Safari and non-browser clients need `wrk3 proxy hosts-sync`. Avoid `.local` (mDNS/Bonjour conflicts on macOS). |
 | `proxy.addr` | no | Default `127.0.0.1:8080`. Gateway listen addr, must be `host:port` with port 1-65535 (`:80` needs root, so a high port is the default). |
 
@@ -132,11 +132,13 @@ Opt-in stdlib reverse proxy (no Caddy/binary dependency) mapping
 header per request against `<worktreeBase>/.wrk3-state.json`, so
 `add`/`up`/`down`/`remove` take effect immediately with no route sync.
 
-- `up` ensures the gateway in the background when `proxy.enabled`
-  (never fails `up`: spawn errors warn and worktrees stay reachable via
+- `up`, `add`, and the dashboard ensure the gateway in the background when `proxy.enabled`
+  (never fails the command: spawn errors warn and worktrees stay reachable via
   `localhost` ports). Manage it explicitly with `wrk3 proxy
   up|down|status|open <worktree>|hosts-sync` (see `USAGE.md`).
-- `status` grows a `URL` column when enabled; every worktree `.env` and
+- `status` grows a `URL` column when enabled; the dashboard always shows a
+  `URL` column (gateway URL when enabled, else `localhost:<appPort>`, opened
+  with `o`) plus gateway state in its meta line; every worktree `.env` and
   runner env gains append-only `APP_URL` (existing values never
   overwritten; `remove` strips it with the other managed keys).
 - DNS: `.localhost` subdomains auto-resolve in Chrome/Firefox/Edge.

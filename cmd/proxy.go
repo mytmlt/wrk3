@@ -66,14 +66,32 @@ func ensureProxyForUp(r *resolved) (msg string, warned string) {
 	if proxyRunning(r.cfg) {
 		return "", ""
 	}
-	if err := startProxyDetached(r.cfg); err != nil {
-		return "", fmt.Sprintf("proxy gateway not started (%v); worktrees still reachable via localhost ports", err)
-	}
-	// Brief grace so the first proxied request doesn't 502.
-	for i := 0; i < 10 && !proxyRunning(r.cfg); i++ {
-		time.Sleep(100 * time.Millisecond)
+	if warn := ensureProxyForCfg(r.cfg); warn != "" {
+		return "", warn
 	}
 	return fmt.Sprintf("proxy gateway up on %s (<slug>.%s)", r.cfg.ProxyAddr(), r.cfg.ProxyDomain()), ""
+}
+
+// ensureProxyForCfg starts the gateway for cfg when enabled and not already
+// listening. It never fails the caller: an empty string means running (or
+// disabled), otherwise a warning describing why the gateway is unavailable.
+// Dashboard refresh and `add` use this so the proxy runs always without
+// blocking commands on bind/spawn errors.
+func ensureProxyForCfg(cfg *config.Config) (warn string) {
+	if cfg == nil || !cfg.Proxy.Enabled {
+		return ""
+	}
+	if proxyRunning(cfg) {
+		return ""
+	}
+	if err := startProxyDetached(cfg); err != nil {
+		return fmt.Sprintf("proxy gateway not started (%v); worktrees still reachable via localhost ports", err)
+	}
+	// Brief grace so the first proxied request doesn't 502.
+	for i := 0; i < 10 && !proxyRunning(cfg); i++ {
+		time.Sleep(100 * time.Millisecond)
+	}
+	return ""
 }
 
 // startProxyDetached spawns `wrk3 proxy run` detached with logs next to state.
@@ -127,6 +145,16 @@ func stopProxy(cfg *config.Config) error {
 	}
 	_ = os.Remove(proxyPidPath(cfg))
 	return nil
+}
+
+// logProxyEnsureForCmd ensures the gateway for add-style cobra commands,
+// printing startup notes to stdout and warnings to stderr (never errors).
+func logProxyEnsureForCmd(cmd *cobra.Command, r *resolved) {
+	if msg, warn := ensureProxyForUp(r); msg != "" {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), msg)
+	} else if warn != "" {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", warn)
+	}
 }
 
 // proxyTargetsWithMain loads slug->appPort from state for the gateway handler.

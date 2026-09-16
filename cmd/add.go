@@ -33,6 +33,7 @@ var addCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		logProxyEnsureForCmd(cmd, r)
 		if addLocal && (addSelect || addRemote != "" || addMine || addMyPRS) {
 			return fmt.Errorf("pass only one of --local, --select, --remote/--mine/--myprs")
 		}
@@ -123,6 +124,7 @@ func addRemoteMode(cmd *cobra.Command, r *resolved, args []string) error {
 	if (addMine || addMyPRS) && len(args) > 0 {
 		return fmt.Errorf("pass either branch names or --mine/--myprs, not both")
 	}
+	logProxyEnsureForCmd(cmd, r)
 	if err := validateCreateFlags(args); err != nil {
 		return err
 	}
@@ -252,6 +254,7 @@ func addLocalMode(cmd *cobra.Command, r *resolved, args []string) error {
 	if err != nil {
 		return fmt.Errorf("list worktrees: %w", err)
 	}
+	logProxyEnsureForCmd(cmd, r)
 	byBranch := localWorktreesByBranch(r, infos)
 	if len(args) > 0 {
 		recs, err := loadState(r)

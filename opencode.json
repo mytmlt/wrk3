@@ -1,5 +1,27 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "skills": {
+    "paths": ["skills"]
+  },
+  "permission": {
+    "bash": {
+      "wrk3 *": "allow",
+      "./bin/wrk3 *": "allow",
+      "make *": "allow",
+      "golangci-lint *": "allow",
+      "git rebase *": "allow",
+      "gh pr create *": "allow",
+      "gh pr edit *": "allow",
+      "git push *origin*": "allow",
+      "git push origin main": "deny",
+      "git push origin master": "deny",
+      "git push *origin main": "deny",
+      "git push *origin master": "deny",
+      "git push origin v*": "deny",
+      "git merge *": "deny",
+      "gh pr merge *": "deny"
+    }
+  },
   "command": {
     "wrk3-gate": {
       "description": "Run the full Go verification gate (build, vet, test).",
@@ -12,6 +34,10 @@
     "wrk3-status": {
       "description": "Validate the example wrk3 config with status.",
       "template": "Run `go run . -f ./wrk3.yaml.example status` in the wrk3 repo and report the worktree table."
+    },
+    "wrk3-test": {
+      "description": "Run a focused subset of Go tests by -run pattern (empty = full gate).",
+      "template": "In the worktree root, if $ARGUMENTS is empty run the full gate (`go build ./... && go vet ./... && go test ./... -count=1`); otherwise run `go vet ./cmd/ && go test ./cmd/ -run '$ARGUMENTS' -count=1`. Report the result, citing file:line evidence on failure."
     },
     "wrk3-checks": {
       "description": "Watch a PR's CI checks until they complete, then report pass/fail.",

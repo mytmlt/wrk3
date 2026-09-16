@@ -1,5 +1,11 @@
 # Skills
 
+Agent skills in this repo (loaded via `skills.paths` in `opencode.json`):
+
+- `skills/wrk3-dev-flow/SKILL.md` — binding workflow for code/docs tasks
+  in this repo: isolate on branch + worktree, full Go gate, autonomous
+  commit/push/PR/checks-watching. Standing autonomy, never asks.
+
 The bundled source of truth is `wrk3 skill` (`cmd/skill.md` in this
 repo): onboarding-first discovery (learn the manual setup, ask the
 developer when unsure) → compat triage → author + validate `wrk3.yaml`.

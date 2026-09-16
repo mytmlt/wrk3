@@ -498,3 +498,138 @@ func TestDashboardModel_MineToggle(t *testing.T) {
 		t.Error("m should enable mine filter")
 	}
 }
+
+func TestDashboardCmd_DbAlias(t *testing.T) {
+	found := false
+	for _, a := range dashboardCmd.Aliases {
+		if a == "db" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("dashboard aliases = %v, want db shorthand", dashboardCmd.Aliases)
+	}
+}
+
+func TestDashboardURLFor(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfig(t, repo)
+	rec := ports.WorktreeRecord{Branch: "feature-a", Slug: "feature-a", Index: 0, Ports: map[string]int{"app": 8000}}
+	// Proxy disabled (test config default): plain localhost link.
+	if got := dashboardURLFor(cfg, rec); got != "http://localhost:8000" {
+		t.Errorf("disabled proxy: got %q, want localhost link", got)
+	}
+	// Proxy enabled: gateway URL wins over localhost.
+	cfg.Proxy.Enabled = true
+	cfg.Proxy.Domain = "localhost"
+	cfg.Proxy.Addr = "127.0.0.1:8080"
+	if got := dashboardURLFor(cfg, rec); got != "http://feature-a.localhost:8080" {
+		t.Errorf("enabled proxy: got %q", got)
+	}
+	// Nil config falls back to localhost when an app port exists.
+	if got := dashboardURLFor(nil, rec); got != "http://localhost:8000" {
+		t.Errorf("nil cfg: got %q", got)
+	}
+	// No app port anywhere: unknown marker, never an empty link.
+	bare := ports.WorktreeRecord{Branch: "x", Slug: "x"}
+	if got := dashboardURLFor(cfg, bare); got != "http://x.localhost:8080" {
+		t.Errorf("enabled proxy without ports: got %q", got)
+	}
+	cfg.Proxy.Enabled = false
+	if got := dashboardURLFor(cfg, bare); got != "?" {
+		t.Errorf("disabled proxy without ports: got %q, want ?", got)
+	}
+}
+
+func TestDashboardProxyEnsure_DisabledNoop(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfig(t, repo)
+	if info, note := dashboardProxyEnsure(&resolved{cfg: cfg}); info != "" || note != "" {
+		t.Errorf("disabled ensure = (%q,%q), want empty", info, note)
+	}
+	if info, note := dashboardProxyEnsure(nil); info != "" || note != "" {
+		t.Errorf("nil ensure = (%q,%q), want empty", info, note)
+	}
+}
+
+func TestDashboardModel_OpenKeyStartsOp(t *testing.T) {
+	m := dashboardViewModel(t)
+	m.rows[0].Rec.Ports = map[string]int{"app": 8000}
+	next, cmd := m.handleKey(keyMsg("o"))
+	dm := next.(dashboardModel)
+	if !dm.busy || dm.busyLabel != "open" {
+		t.Fatalf("o should start busy open: %+v", dm)
+	}
+	if cmd == nil {
+		t.Fatal("o should return the open command (not executed here: it launches a browser)")
+	}
+	// Complete the op without launching a browser: feed opDone directly.
+	done, _ := dm.Update(dashboardOpDoneMsg{label: "open", lines: []string{"http://localhost:8000"}})
+	dm = done.(dashboardModel)
+	if dm.busy {
+		t.Error("open opDone must clear busy")
+	}
+	found := false
+	for _, l := range dm.log {
+		if strings.Contains(l, "http://localhost:8000") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("open URL missing from log: %v", dm.log)
+	}
+}
+
+func TestDashboardModel_OpenKeyEmpty(t *testing.T) {
+	m := testDashboardModel()
+	m.rows = nil
+	m = applyKey(t, m, "o")
+	if m.busy {
+		t.Error("o with no worktrees must not start an op")
+	}
+	if m.statusMsg == "" {
+		t.Error("o with no worktrees should set a status message")
+	}
+}
+
+func TestDashboardView_URLColumnAndProxyMeta(t *testing.T) {
+	m := dashboardViewModel(t)
+	m.rows[0].Rec.Ports = map[string]int{"app": 8000}
+	m.rows[1].Rec.Ports = map[string]int{"app": 8100}
+	// Narrow default (80 cols): header + proxy state still render
+	// (link cells compact; the `o` key carries the full URL).
+	out := m.View()
+	for _, want := range []string{"URL", "proxy off", "o opens URL"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("narrow view missing %q:\n%s", want, out)
+		}
+	}
+	// Wide: full clickable URLs render untruncated.
+	m.width, m.height = 200, 40
+	out = m.View()
+	for _, want := range []string{"http://localhost:8000", "http://localhost:8100"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("wide view missing %q:\n%s", want, out)
+		}
+	}
+	// Proxy enabled: gateway URLs + configured addr in the meta line.
+	m.projects[0].cfg.Proxy.Enabled = true
+	out = m.View()
+	for _, want := range []string{"http://feature-a.localhost:8080", "proxy 127.0.0.1:8080"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("proxy view missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestDashboardWorkColumns_FitsTableWidth(t *testing.T) {
+	for _, w := range []int{76, 80, 115, 140, 200} {
+		sum := 0
+		for _, c := range dashboardWorkColumns(w) {
+			sum += c.Width
+		}
+		if sum > w {
+			t.Errorf("width %d: columns sum %d overflows the table", w, sum)
+		}
+	}
+}
