@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Always-on proxy: `add` (all modes) and the dashboard (refresh plus TUI
   `up`/`add`) now ensure the gateway when `proxy.enabled`, best-effort
   like `up` (spawn errors warn, commands never fail).
+- Standing agent autonomy: new `skills/wrk3-dev-flow/SKILL.md` checklist
+  (isolate → gate → autonomous commit/push/PR → `gh pr checks --watch`;
+  never merge), `AGENTS.md` pre-authorizes the flow without asking, and
+  project `opencode.json` gains `skills.paths` plus `permission.bash`
+  for the workflow (`wrk3`/`make`/rebase/`gh pr create|edit`/topic-branch
+  pushes allowed; `main`/tag pushes and any merge denied). Also adds the
+  `wrk3-test` slash command (`go vet ./cmd/ && go test ./cmd/ -run
+  '<pattern>' -count=1`, empty args = full gate).
 
 - Dogfood config: committed `wrk3.yaml` for the wrk3 repo itself so
   agents (and humans) run `wrk3 fetch` / `wrk3 add` here per the
