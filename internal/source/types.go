@@ -38,6 +38,14 @@ type BranchRef struct {
 // `git log` output small even on repos with hundreds of remote branches.
 const MineHistoryLimit = 100
 
+// PullOptions controls `git pull` behavior inside a worktree.
+type PullOptions struct {
+	// Rebase passes --rebase (rebase local commits onto the fetched tip).
+	Rebase bool
+	// FFOnly passes --ff-only (refuse merges/rebases, fast-forward only).
+	FFOnly bool
+}
+
 // Source provisions worktree directories from branches.
 type Source interface {
 	// Fetch prunes remote refs (git fetch <remote> --prune).
@@ -76,6 +84,10 @@ type Source interface {
 	AddNew(repoPath, branch, worktreePath, base string) error
 	// Remove deletes the worktree at worktreePath (git worktree remove).
 	Remove(repoPath, worktreePath string, force bool) error
+	// Pull fast-forwards/merges the worktree's branch from its upstream
+	// (git -C worktreePath pull [--rebase|--ff-only]). Rebase and FFOnly
+	// are mutually exclusive.
+	Pull(worktreePath string, opts PullOptions) error
 	// List returns existing worktrees (git worktree list --porcelain).
 	List(repoPath string) ([]WorktreeInfo, error)
 }

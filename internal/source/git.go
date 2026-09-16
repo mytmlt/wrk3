@@ -228,6 +228,27 @@ func (g *GitSource) Remove(repoPath, worktreePath string, force bool) error {
 	return err
 }
 
+// Pull runs git pull inside the worktree at worktreePath (fast-forwards or
+// merges the tracking branch). Rebase and FFOnly map to --rebase/--ff-only
+// and are mutually exclusive.
+func (g *GitSource) Pull(worktreePath string, opts PullOptions) error {
+	if strings.TrimSpace(worktreePath) == "" {
+		return fmt.Errorf("git pull: empty worktree path")
+	}
+	if opts.Rebase && opts.FFOnly {
+		return fmt.Errorf("git pull: pass either --rebase or --ff-only, not both")
+	}
+	args := []string{"pull"}
+	if opts.Rebase {
+		args = append(args, "--rebase")
+	}
+	if opts.FFOnly {
+		args = append(args, "--ff-only")
+	}
+	_, err := g.run(worktreePath, args...)
+	return err
+}
+
 // List parses git worktree list --porcelain.
 func (g *GitSource) List(repoPath string) ([]WorktreeInfo, error) {
 	out, err := g.run(repoPath, "worktree", "list", "--porcelain")

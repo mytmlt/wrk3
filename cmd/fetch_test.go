@@ -45,6 +45,9 @@ func (s *stubSource) AddNew(repoPath, branch, worktreePath, base string) error {
 func (s *stubSource) Remove(repoPath, worktreePath string, force bool) error {
 	return nil
 }
+func (s *stubSource) Pull(worktreePath string, opts source.PullOptions) error {
+	return nil
+}
 func (s *stubSource) List(repoPath string) ([]source.WorktreeInfo, error) { return nil, nil }
 
 func detailedFixture() []source.BranchRef {

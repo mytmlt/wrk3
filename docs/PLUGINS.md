@@ -53,7 +53,9 @@ type Source interface {
     BranchHistory(repoPath, remote, branch, base string, limit int) ([]BranchRef, error)
     Identity(repoPath string) (name, email string, err error)
     Add(repoPath, branch, worktreePath, remote string) error
+    AddNew(repoPath, branch, worktreePath, base string) error
     Remove(repoPath, worktreePath string, force bool) error
+    Pull(worktreePath string, opts PullOptions) error
     List(repoPath string) ([]WorktreeInfo, error)
 }
 ```
@@ -85,7 +87,14 @@ Semantics (match `internal/source/git.go`):
   Error on empty `branch`/`worktreePath` (`fmt.Errorf("...: %w", err)`).
   When the branch has no local ref but `<remote>/<branch>` exists, create
   a tracking branch (`worktree add --track -b`).
+- `AddNew(repoPath, branch, worktreePath, base)` — provision one worktree
+  dir with a new local branch starting at `base`
+  (`worktree add -b <branch> <path> <base>`).
 - `Remove(repoPath, worktreePath string, force bool)` — delete it.
+- `Pull(worktreePath string, opts PullOptions)` — pull the worktree's
+  branch from its upstream (git: `-C <worktreePath> pull`
+  with `--rebase`/`--ff-only` from `opts`; the two flags are mutually
+  exclusive). Powers `wrk3 pull`.
 - `List(repoPath)` — return existing worktrees as `[]WorktreeInfo`
   (`Path` absolute, `Branch` short name, `Commit` SHA, `Bare` flag).
   Keep paths absolute — state file paths stay absolute
