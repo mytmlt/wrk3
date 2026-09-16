@@ -18,5 +18,6 @@ $
 ## Checklist
 
 - [ ] `go build ./... && go vet ./... && go test ./... -count=1` green
+- [ ] `ocr review --from origin/main --to <branch> --audience agent` run; every finding fixed or justified (note outcome)
 - [ ] New Source/Runner types registered in `registry.go` (if any)
 - [ ] No secrets, absolute personal paths, or local-only configs committed

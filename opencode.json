@@ -16,6 +16,7 @@
       "head *": "allow",
       "golangci-lint *": "allow",
       "git rebase *": "allow",
+      "ocr review *": "allow",
       "gh pr create *": "allow",
       "gh pr edit *": "allow",
       "gh pr view *": "allow",

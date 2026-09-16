@@ -59,6 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   branch + worktree, test with the full gate, autonomous
   commit/push/PR/checks-watching with `gh pr checks --watch`; human
   merges when green).
+- Mandatory `ocr` review gate before every PR: run
+  `ocr review --from origin/main --to <branch> --audience agent`,
+  fix-or-justify each finding (new commits or a one-line justification),
+  then re-run to confirm nothing new. Wired into
+  `skills/wrk3-dev-flow/SKILL.md` (pre-authorized + allow-listed),
+  `AGENTS.md` step 3, `opencode.json` (`ocr review *` allowed), and the
+  PR template checklist.
 
 - `wrk3 add <new-branch>` now offers to create the branch when the name
   matches no local or remote branch: it refreshes the remote once (stale

@@ -27,10 +27,14 @@ checklist in `skills/wrk3-dev-flow/SKILL.md`.
    Behavior change → update the existing tests for those paths.
    Finish with the full gate green (Essential commands above).
 3. **Autonomy (standing pre-authorization — never ask).** Committing,
-   pushing the feature branch, opening the PR, and watching checks are
+   pushing the feature branch, running `ocr review`, opening the PR, and
+   watching checks are
    pre-authorized once and for all: never ask the human whether to
-   commit, push, open the PR, or keep waiting on checks — just do it
-   and report the PR URL plus check results. PR title/body
+   commit, push, review, open the PR, or keep waiting on checks — just do it
+   and report the PR URL plus check results. Before opening the PR, run
+   `ocr review --from origin/main --to <branch> --audience agent` and
+   fix-or-justify every finding (new commits or a one-line justification each),
+   then re-run to confirm nothing new. PR title/body
    follows `.github/PULL_REQUEST_TEMPLATE.md` with Verification
    evidence. Standing bash permissions for this flow live in project
    `opencode.json` (`permission.bash`); pushes to `main`/`master`, tag

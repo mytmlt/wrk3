@@ -10,15 +10,15 @@ merges when green; everything before that is the agent's job.
 
 ## Standing autonomy (never ask)
 
-Committing, pushing the feature branch, opening the PR, and watching
-checks are pre-authorized once and for all. Never ask the human whether
-to commit, push, open the PR, or keep waiting on checks — just do it
+Committing, pushing the feature branch, opening the PR, watching
+checks, and running `ocr review` are pre-authorized once and for all. Never ask the human whether
+to commit, push, review, open the PR, or keep waiting on checks — just do it
 and report the PR URL plus check results. Running builds, vets, tests,
 and linters never needs approval either.
 
 Standing bash permissions for this flow live in project `opencode.json`
 (`permission.bash`: `wrk3 *`, `./bin/wrk3 *`, `make *`, `go build|vet|test *`,
-`go run . *`, `head *`, `golangci-lint *`, `git rebase *`,
+`go run . *`, `head *`, `golangci-lint *`, `git rebase *`, `ocr review *`,
 `gh pr create|edit|view|checks *`, `git push *origin*` on topic branches).
 Denied there on purpose: pushes to `main`/`master`, tag pushes,
 `git merge *`, `gh pr merge *`. If a command is held for approval anyway
@@ -57,6 +57,12 @@ Denied there on purpose: pushes to `main`/`master`, tag pushes,
 - One logical change per commit; each commit builds green. Conventional,
   imperative, lowercase type (`feat:`, `fix:`, `docs:`, `chore:`,
   `test:`).
+- After the gate is green and before `gh pr create`, run the mandatory
+  `ocr` review gate: `ocr review --from origin/main --to <branch>
+  --audience agent`. Every finding is fix-or-justify: fix it with a new
+  commit on the same branch, or record a one-line justification. Then
+  re-run `ocr review` to confirm nothing new, and note the outcome in
+  the PR body.
 - Push the feature branch (`git push -u origin <branch>`). Never push to
   `main`, never `--force-push` (rebase + re-run the gate instead),
   never push tags (maintainers cut releases).
