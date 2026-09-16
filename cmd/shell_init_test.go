@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -116,6 +117,12 @@ func TestShellInit_CLIOutputsWrapper(t *testing.T) {
 // PATH and asserts the calling shell actually changes directory — the
 // whole point of the integration. The target contains spaces.
 func TestShellInit_BashWrapperCds(t *testing.T) {
+	// POSIX-shell e2e: temp paths are Windows-style (C:\...) under
+	// git-bash and break sourcing/cd. Windows coverage comes from the
+	// powershell wrapper plus the OS-independent directive test.
+	if runtime.GOOS == "windows" {
+		t.Skip("bash wrapper e2e is POSIX-only")
+	}
 	bash, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skip("bash not on PATH")
