@@ -27,24 +27,29 @@ worktree state and remote branches (default every 15s, `--poll 0`
 disables), and runs the same operations as the CLI without leaving the
 screen.
 
-Three panes (side-by-side on terminals ≥132 cols, stacked otherwise):
+Layout: **WORKTREES** table on top (full width), **REMOTE BRANCHES** +
+**DETAILS** preview in the middle (side-by-side on terminals ≥132 cols,
+stacked otherwise), **LOG** at the bottom:
 
-- **WORKTREES (left)** — `WORKTREE/BRANCH/STATUS/PORTS/URL/PROJECT`, live
+- **WORKTREES (top)** — `WORKTREE/BRANCH/STATUS/PORTS/URL/PROJECT`, live
   runner status included (`running`, `stopped`, `setting up`,
   `stopping`, `failed`, `stale`/`?` when the directory is missing).
   `URL` is the clickable gateway link when `proxy.enabled`, else
   `localhost:<appPort>` (`o` opens it in a browser, `O` copies it to the clipboard).
-- **REMOTE BRANCHES (right)** — queueable refs with `STATE`
+- **REMOTE BRANCHES (middle-left)** — queueable refs with `STATE`
   (`new` queueable, `orphan` = on-disk worktree missing from state and
   adoptable, `registered`/`checked out` not queueable).
-- **LOG (bottom)** — operation output, scrollable with
-  `pgup`/`pgdn`/`home`/`end`.
+- **DETAILS (middle-right, preview)** — selected/cursor worktree
+  (`branch/slug/status/ports/url/path/project`), follows the worktree
+  cursor and multi-select.
+- **LOG (bottom, focusable)** — operation output; focus it and scroll with
+  `j/k`/`↑/↓` (plus `pgup`/`pgdn`/`home`/`end` from any pane).
 
 | Keys | Action |
 | ---- | ------ |
-| `j/k` or `↑/↓` | move cursor |
+| `j/k` or `↑/↓` | move cursor (scrolls the log when LOG is focused) |
 | `space` | select (multi-select; `u`/`d`/`x` fall back to the cursor row) |
-| `1`/`2` or `←`/`→` | switch pane |
+| `1`/`2`/`3` or `←`/`→` | switch pane (worktrees/branches/log) |
 | `tab` | switch project |
 | `u` / `d` | `up` / `down` selected worktrees (rows flip to `setting up`/`stopping` immediately) |
 | `a` | `add` queued branches (creates the checkout, or adopts the on-disk worktree) |

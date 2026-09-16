@@ -975,14 +975,23 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "2":
 		m.pane = 1
 		return m, nil
+	case "3":
+		m.pane = 2
+		return m, nil
 	case "left", "right":
-		if m.pane == 0 {
-			m.pane = 1
+		// Cycle worktrees -> branches -> logs (detail preview is not
+		// focusable; it follows the worktree cursor/selection).
+		if msg.String() == "left" {
+			m.pane = (m.pane + 2) % 3
 		} else {
-			m.pane = 0
+			m.pane = (m.pane + 1) % 3
 		}
 		return m, nil
 	case "up", "k":
+		if m.pane == 2 {
+			m.logView.ScrollUp(1)
+			return m, nil
+		}
 		if m.pane == 0 && m.workCursor > 0 {
 			m.workCursor--
 		} else if m.pane == 1 && m.brCursor > 0 {
@@ -990,6 +999,10 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "down", "j":
+		if m.pane == 2 {
+			m.logView.ScrollDown(1)
+			return m, nil
+		}
 		if m.pane == 0 && m.workCursor < len(m.rows)-1 {
 			m.workCursor++
 		} else if m.pane == 1 && m.brCursor < len(m.branches)-1 {
@@ -998,6 +1011,9 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case " ":
 		if m.busy {
+			return m, nil
+		}
+		if m.pane == 2 {
 			return m, nil
 		}
 		if m.pane == 0 {
@@ -1215,9 +1231,9 @@ type dashboardKeys struct {
 
 func newDashboardKeys() dashboardKeys {
 	return dashboardKeys{
-		Move:          key.NewBinding(key.WithKeys("j", "k", "up", "down"), key.WithHelp("j/k", "move")),
+		Move:          key.NewBinding(key.WithKeys("j", "k", "up", "down"), key.WithHelp("j/k", "move/scroll")),
 		Select:        key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "select")),
-		Pane:          key.NewBinding(key.WithKeys("1", "2", "left", "right"), key.WithHelp("1/2", "pane")),
+		Pane:          key.NewBinding(key.WithKeys("1", "2", "3", "left", "right"), key.WithHelp("1/2/3", "pane")),
 		Project:       key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "project")),
 		OpUp:          key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "up")),
 		OpDown:        key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "down")),
@@ -1527,7 +1543,63 @@ func (m dashboardModel) branchPane(width, height int) string {
 	return dashboardPaneStyle(focused).Width(width).Render(title + "\n" + body)
 }
 
+// detailRecord follows the worktree selection: first selected row in table
+// order, else the cursor row. The detail pane is a read-only preview, never
+// focusable.
+func (m dashboardModel) detailRecord() *dashboardRow {
+	if len(m.rows) == 0 {
+		return nil
+	}
+	for _, row := range m.rows {
+		if m.workSel[row.Rec.Branch] {
+			r := row
+			return &r
+		}
+	}
+	if m.workCursor >= 0 && m.workCursor < len(m.rows) {
+		r := m.rows[m.workCursor]
+		return &r
+	}
+	r := m.rows[0]
+	return &r
+}
+
+func (m dashboardModel) detailPane(width, height int) string {
+	title := dashPaneTitleBlurred.Render("DETAILS (preview)")
+	rec := m.detailRecord()
+	if rec == nil {
+		return dashboardPaneStyle(false).Width(width).Render(
+			title + "\n" + dashDimStyle.Render("  (no worktree selected)"))
+	}
+	var urlCfg *config.Config
+	if p := m.curProject(); p != nil {
+		urlCfg = p.cfg
+	}
+	status := rec.Status
+	if rec.Stale {
+		status += " (stale)"
+	}
+	if rec.IsMain {
+		status += " (main)"
+	}
+	lines := []string{
+		"branch:  " + rec.Rec.Branch,
+		"slug:    " + rec.Rec.Slug,
+		"status:  " + status,
+		"ports:   " + rec.Ports,
+		"url:     " + dashboardURLFor(urlCfg, rec.Rec),
+		"path:    " + rec.Rec.AbsPath,
+		"project: " + rec.Rec.ComposeProject,
+	}
+	if height > 0 && len(lines) > height {
+		lines = lines[:height]
+	}
+	return dashboardPaneStyle(false).Width(width).Render(
+		title + "\n" + strings.Join(lines, "\n"))
+}
+
 func (m dashboardModel) logPane(width int) string {
+	focused := m.pane == 2
 	w := max(width-2, 10)
 	// Wrap to the current pane width so long lines become multiple lines
 	// instead of being cut off horizontally (viewport truncates MaxWidth).
@@ -1544,7 +1616,10 @@ func (m dashboardModel) logPane(width int) string {
 	} else {
 		lv.SetYOffset(m.logView.YOffset)
 	}
-	title := "LOG (pgup/pgdn scroll)"
+	title := "LOG (3, j/k scroll)"
+	if focused {
+		title += " ●"
+	}
 	if total := len(wrapped); total > dashboardLogHeight {
 		remaining := total - dashboardLogHeight - lv.YOffset
 		if remaining > 0 {
@@ -1553,8 +1628,12 @@ func (m dashboardModel) logPane(width int) string {
 			title += " [bottom]"
 		}
 	}
-	return dashboardPaneStyle(false).Width(width).Render(
-		dashLogTitleStyle.Render(title) + "\n" + lv.View())
+	titleStyled := dashLogTitleStyle.Render(title)
+	if focused {
+		titleStyled = dashPaneTitleFocused.Render(title)
+	}
+	return dashboardPaneStyle(focused).Width(width).Render(
+		titleStyled + "\n" + lv.View())
 }
 
 func (m dashboardModel) View() string {
@@ -1582,25 +1661,31 @@ func (m dashboardModel) View() string {
 
 	// Vertical budget: header (2) + gap (1) + footer (help 1-2 + status
 	// 0-1 + confirm 0-1, reserve 4) + log box + body split.
+	// Layout: top = wrk3 ls worktree table (full width);
+	// middle = branches left + worktree details preview right;
+	// bottom = focusable log pane.
 	const footerReserve = 4
 	logBoxH := dashboardLogHeight + 3 // title + viewport + border
 	bodyH := max(h-2-1-footerReserve-logBoxH-1, 8)
+	topH := max(bodyH*45/100, 4)
+	midH := max(bodyH-topH, 4)
+	topTableH := max(topH-3, 4) // pane title + borders
+	midTableH := max(midH-3, 4)
 
+	b.WriteString(m.worktreePane(w-2, topTableH) + "\n")
 	if w >= dashboardWideLayout {
-		// lazydocker-style: worktrees left, branches right.
-		workBoxW := w*3/5 - 1
-		brBoxW := w - workBoxW - 1
-		tableH := max(bodyH-3, 4) // pane title + borders
+		brOuter := (w - 3) / 2
+		detOuter := w - 3 - brOuter
 		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top,
-			m.worktreePane(workBoxW-2, tableH),
+			m.branchPane(brOuter, midTableH),
 			" ",
-			m.branchPane(brBoxW-2, tableH),
+			m.detailPane(detOuter, midTableH),
 		) + "\n")
 	} else {
-		workH := max(bodyH*3/5, 4)
-		brH := max(bodyH-workH, 4)
-		b.WriteString(m.worktreePane(w-2, max(workH-3, 4)) + "\n")
-		b.WriteString(m.branchPane(w-2, max(brH-3, 4)) + "\n")
+		brH := max(midH/2, 3)
+		detH := max(midH-brH, 3)
+		b.WriteString(m.branchPane(w-2, max(brH-3, 3)) + "\n")
+		b.WriteString(m.detailPane(w-2, max(detH-3, 3)) + "\n")
 	}
 	b.WriteString("\n" + m.logPane(w-2) + "\n")
 	if m.statusMsg != "" {

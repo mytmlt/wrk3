@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard redesign: WORKTREES table on top (full width), REMOTE
+  BRANCHES + read-only DETAILS preview (selected/cursor worktree:
+  branch/slug/status/ports/url/path/project) in the middle, and a
+  focusable LOG at the bottom. Panes switch with `1`/`2`/`3` or
+  `←`/`→` (DETAILS is never focused); `j`/`k`/`↑`/`↓` scroll the log
+  when it is focused (`pgup`/`pgdn`/`home`/`end` still scroll from any
+  pane).
+
 ### Fixed
 
 - The repo-root main checkout now serves exactly the `ports.base`
