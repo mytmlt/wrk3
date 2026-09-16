@@ -120,6 +120,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   offline-safe list, parallel probes, persist/display matrices, docker
   primary + label-based fallbacks); `README.md` summarizes with a link,
   `CONFIGURATION.md` points at it.
+- Dashboard `p` pulls the selected worktrees (cursor worktree when
+  nothing is selected): plain `git pull` per target in parallel via the
+  existing `Source.Pull`, reusing the `wrk3 pull` runner. `P` still
+  toggles the myprs branch filter.
+- Dashboard redesign: WORKTREES table on top (full width), REMOTE
+  BRANCHES + read-only DETAILS preview (selected/cursor worktree:
+  branch/slug/status/ports/url/path/project) in the middle, and a
+  focusable LOG at the bottom. Panes switch with `1`/`2`/`3` or
+  `←`/`→` (DETAILS is never focused); `j`/`k`/`↑`/`↓` scroll the log
+  when it is focused (`pgup`/`pgdn`/`home`/`end` still scroll from any
+  pane).
 
 ### Security
 
@@ -143,6 +154,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `wrk3 update` no longer 404s: the release download URLs dropped the
   stray `/repos/` segment (an `api.github.com` path shape that does not
   exist on the `github.com` download host).
+- The repo-root main checkout now serves exactly the `ports.base`
+  allocation (reserved index `0`, e.g. `app=8000` with defaults) instead
+  of `base` minus one step (e.g. `app=7900`). Managed worktrees allocate
+  from `max(index)+1` floored at `1`, so the first `add` takes index `1`
+  (e.g. `app=8100`) and existing managed indexes are never renumbered.
+- Pre-main-at-base state files holding a managed index `0` allocation
+  overlapping main's `ports.base` ports no longer hard-error with
+  `main worktree ports collide ...` and block `status`/`pull`/dashboard.
+  The next `status`/`ls`/`up`/`down`/`pull`/`remove`/dashboard run
+  auto-migrates the colliding record to the next collision-free index
+  (`base+step` onwards, chain-shifting when taken) and persists it;
+  `add`/`adopt` and the dashboard `next app port` preview use the same
+  collision-free scan. Main stays exactly at `ports.base`.
 
 ## [0.8.0] - 2026-09-15
 

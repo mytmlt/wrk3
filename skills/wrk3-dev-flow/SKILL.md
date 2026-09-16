@@ -18,7 +18,7 @@ and linters never needs approval either.
 
 Standing bash permissions for this flow live in project `opencode.json`
 (`permission.bash`: `wrk3 *`, `./bin/wrk3 *`, `make *`, `go build|vet|test *`,
-`go run . *`, `head *`, `golangci-lint *`, `ocr review *`, `git rebase *`,
+`go run . *`, `head *`, `golangci-lint *`, `ocr *`, `git rebase *`,
 `gh pr create|edit|view|checks *`, `git push *origin*` on topic branches).
 Denied there on purpose: pushes to `main`/`master`, tag pushes,
 `git merge *`, `gh pr merge *`. If a command is held for approval anyway
