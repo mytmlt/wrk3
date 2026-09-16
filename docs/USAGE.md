@@ -187,7 +187,9 @@ else `localhost:<appPort>`), gateway state in the meta line, and the next free `
 and runs the same operations
 as the CLI: `space` selects, `u`/`d`/`l` up/down/reload (cursor worktree when nothing
 is selected), `a` adds queued branches, `o` opens the cursor worktree URL
-in a browser (the full URL is logged too), `x` removes (asks `y/n`, refuses
+in a browser (the full URL is logged too), `O` copies that URL to the OS
+clipboard (`pbcopy` on macOS, `wl-copy`/`xclip`/`xsel` on Linux, `clip` on
+Windows), `x` removes (asks `y/n`, refuses
 main like `remove`), `X` force-removes like `remove --force` (asks
 `y/n`, for dirty worktrees with modified/untracked files), `r` refreshes
 state, `R` fetches the remote

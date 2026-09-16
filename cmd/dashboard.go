@@ -675,6 +675,22 @@ func dashboardRemoveCmd(p *dashboardProject, branches []string, force bool) tea.
 	})
 }
 
+// dashboardCopiedMsg reports a clipboard copy of a worktree URL.
+type dashboardCopiedMsg struct {
+	url string
+	err error
+}
+
+// dashboardCopyCmd copies url to the OS clipboard (pbcopy on macOS,
+// wl-copy/xclip/xsel on Linux, clip on Windows) and reports back via
+// dashboardCopiedMsg so Update (not the background goroutine) mutates
+// state.
+func dashboardCopyCmd(url string) tea.Cmd {
+	return func() tea.Msg {
+		return dashboardCopiedMsg{url: url, err: copyTextToClipboard(url)}
+	}
+}
+
 // dashboardOpenCmd logs the worktree URL and opens it in a browser.
 // Browser failures still leave the clickable URL in the log pane.
 func dashboardOpenCmd(p *dashboardProject, rec ports.WorktreeRecord) tea.Cmd {
@@ -825,6 +841,15 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusMsg = "fetch done"
 		m = m.appendLog("fetch done")
 		return m, dashboardRefreshRowsCmd(m.curProject())
+	case dashboardCopiedMsg:
+		if msg.err != nil {
+			m.statusMsg = "copy failed: " + msg.err.Error()
+			m = m.appendLog("copy failed for " + msg.url + ": " + msg.err.Error())
+		} else {
+			m.statusMsg = "copied " + msg.url
+			m = m.appendLog("copied " + msg.url)
+		}
+		return m, nil
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -1086,6 +1111,29 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.busy = true
 		m.busyLabel = "open"
 		return m, dashboardOpenCmd(m.curProject(), rec)
+	case "O":
+		targets := m.selectedWorktrees()
+		if len(targets) == 0 {
+			m.statusMsg = "nothing selected (space to select, or cursor worktree)"
+			return m, nil
+		}
+		rec := targets[0]
+		var urlCfg *config.Config
+		if p := m.curProject(); p != nil {
+			urlCfg = p.cfg
+		}
+		target := dashboardURLFor(urlCfg, rec)
+		if target == "" || target == "?" {
+			m.statusMsg = "no URL to copy for " + rec.Branch + " (no app port)"
+			return m, nil
+		}
+		if len(targets) > 1 {
+			m = m.appendLog(fmt.Sprintf("copy %s (first of %d selected)", rec.Branch, len(targets)))
+		} else {
+			m = m.appendLog("copy " + rec.Branch)
+		}
+		m.statusMsg = "copying " + target + "…"
+		return m, dashboardCopyCmd(target)
 	case "x", "X":
 		if m.busy {
 			return m, nil
@@ -1158,11 +1206,11 @@ const (
 // bindings are display-only; handleKey still owns dispatch so selection
 // and op semantics stay in one place (and stay unit-testable).
 type dashboardKeys struct {
-	Move, Select, Pane, Project                                    key.Binding
-	OpUp, OpDown, OpReload, OpAdd, OpOpen, OpRemove, OpForceRemove key.Binding
-	Refresh, Fetch, Mine, MyPRS                                    key.Binding
-	LogScroll                                                      key.Binding
-	Help, Quit                                                     key.Binding
+	Move, Select, Pane, Project                                               key.Binding
+	OpUp, OpDown, OpReload, OpAdd, OpOpen, OpCopyURL, OpRemove, OpForceRemove key.Binding
+	Refresh, Fetch, Mine, MyPRS                                               key.Binding
+	LogScroll                                                                 key.Binding
+	Help, Quit                                                                key.Binding
 }
 
 func newDashboardKeys() dashboardKeys {
@@ -1176,6 +1224,7 @@ func newDashboardKeys() dashboardKeys {
 		OpReload:      key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "reload")),
 		OpAdd:         key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
 		OpOpen:        key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open URL")),
+		OpCopyURL:     key.NewBinding(key.WithKeys("O"), key.WithHelp("O", "copy URL")),
 		OpRemove:      key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "remove")),
 		OpForceRemove: key.NewBinding(key.WithKeys("X"), key.WithHelp("X", "force remove")),
 		Refresh:       key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
@@ -1202,7 +1251,7 @@ func (k dashboardKeys) ShortHelp() []key.Binding {
 // ActHelp is the second sticky-bar line (worktree/branch operations).
 func (k dashboardKeys) ActHelp() []key.Binding {
 	return []key.Binding{
-		k.OpUp, k.OpDown, k.OpReload, k.OpAdd, k.OpOpen, k.OpRemove, k.OpForceRemove,
+		k.OpUp, k.OpDown, k.OpReload, k.OpAdd, k.OpOpen, k.OpCopyURL, k.OpRemove, k.OpForceRemove,
 		k.Refresh, k.Fetch, k.Mine, k.MyPRS,
 	}
 }
@@ -1211,7 +1260,7 @@ func (k dashboardKeys) ActHelp() []key.Binding {
 func (k dashboardKeys) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Move, k.Select, k.Pane, k.Project},
-		{k.OpUp, k.OpDown, k.OpReload, k.OpAdd, k.OpOpen, k.OpRemove, k.OpForceRemove},
+		{k.OpUp, k.OpDown, k.OpReload, k.OpAdd, k.OpOpen, k.OpCopyURL, k.OpRemove, k.OpForceRemove},
 		{k.Refresh, k.Fetch, k.Mine, k.MyPRS},
 		{k.LogScroll, k.Help, k.Quit},
 	}
@@ -1221,8 +1270,8 @@ func (k dashboardKeys) FullHelp() [][]key.Binding {
 // the table never exceeds its pane: ✓/STATUS have fixed widths (STATUS fits
 // "setting up"). Wide tables get full PORTS + URL widths for multi-port
 // lists and clickable gateway/localhost links; narrow tables compact both
-// (bubbles/table truncates excess — the `o` key still opens and logs the
-// full URL). The rest splits 25/40/35 across WORKTREE/BRANCH/PROJECT.
+// (bubbles/table truncates excess — `o` still opens and `O` still copies
+// the full URL). The rest splits 25/40/35 across WORKTREE/BRANCH/PROJECT.
 func dashboardWorkColumns(width int) []table.Column {
 	portsW, urlW := 28, dashboardURLWidth
 	if width < 110 {
@@ -1244,7 +1293,7 @@ func dashboardWorkColumns(width int) []table.Column {
 }
 
 // dashboardURLWidth fits http://<slug>.localhost:<port> for typical slugs;
-// longer URLs truncate (the `o` key still opens the full URL).
+// longer URLs truncate (`o` still opens and `O` still copies the full URL).
 const dashboardURLWidth = 32
 
 // dashboardBranchColumns gives everything left after ✓/STATE/padding to
@@ -1410,7 +1459,7 @@ func (m dashboardModel) dashboardMeta() string {
 			proxySeg = "proxy off"
 		}
 	}
-	return fmt.Sprintf("remote %s · fetch %s · poll %s · next app port %d · %s · %s (m toggles mine, P toggles myprs, o opens URL)",
+	return fmt.Sprintf("remote %s · fetch %s · poll %s · next app port %d · %s · %s (m toggles mine, P toggles myprs, o opens URL, O copies URL)",
 		p.remote, fetchInfo, pollInfo, next, filterInfo, proxySeg)
 }
 

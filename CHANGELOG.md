@@ -25,7 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dashboard worktree links + `db` shorthand: the worktree table grows a
   `URL` column (gateway `<slug>.<domain>` URL when `proxy.enabled`, else
   `localhost:<appPort>`; compacted on narrow terminals), `o` opens the
-  cursor worktree URL in a browser (full URL is logged too), the meta line
+  cursor worktree URL in a browser (full URL is logged too), `O` copies
+  that URL to the OS clipboard (`pbcopy` on macOS, `wl-copy`/`xclip`/`xsel`
+  on Linux, `clip` on Windows), the meta line
   shows gateway state, and `wrk3 db` aliases `wrk3 dashboard`.
 - Always-on proxy: `add` (all modes) and the dashboard (refresh plus TUI
   `up`/`add`) now ensure the gateway when `proxy.enabled`, best-effort

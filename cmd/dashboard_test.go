@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -577,6 +578,93 @@ func TestDashboardModel_OpenKeyStartsOp(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("open URL missing from log: %v", dm.log)
+	}
+}
+
+func TestDashboardModel_CopyKeyCopiesURL(t *testing.T) {
+	oldFeed, oldLook := clipboardFeed, clipboardLookPath
+	t.Cleanup(func() { clipboardFeed, clipboardLookPath = oldFeed, oldLook })
+	var copied string
+	clipboardLookPath = func(string) (string, error) { return "/usr/bin/pbcopy", nil }
+	clipboardFeed = func(_ string, _ []string, text string) error {
+		copied = text
+		return nil
+	}
+	m := dashboardViewModel(t)
+	m.rows[0].Rec.Ports = map[string]int{"app": 8000}
+	next, cmd := m.handleKey(keyMsg("O"))
+	dm := next.(dashboardModel)
+	if cmd == nil {
+		t.Fatal("O should return the copy command")
+	}
+	msg, ok := cmd().(dashboardCopiedMsg)
+	if !ok {
+		t.Fatalf("copy cmd returned %T, want dashboardCopiedMsg", cmd())
+	}
+	if msg.err != nil {
+		t.Fatalf("copy cmd: %v", msg.err)
+	}
+	if msg.url != "http://localhost:8000" {
+		t.Errorf("copy url = %q, want http://localhost:8000", msg.url)
+	}
+	done, _ := dm.Update(msg)
+	dm = done.(dashboardModel)
+	found := false
+	for _, l := range dm.log {
+		if strings.Contains(l, "copied http://localhost:8000") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("copied URL missing from log: %v", dm.log)
+	}
+	if copied != "http://localhost:8000" {
+		t.Errorf("clipboard got %q, want http://localhost:8000", copied)
+	}
+}
+
+func TestDashboardModel_CopyKeyEmpty(t *testing.T) {
+	m := testDashboardModel()
+	m.rows = nil
+	next, cmd := m.handleKey(keyMsg("O"))
+	dm := next.(dashboardModel)
+	if cmd != nil {
+		t.Error("O with no worktrees must not return a command")
+	}
+	if dm.statusMsg == "" {
+		t.Error("O with no worktrees should set a status message")
+	}
+}
+
+func TestDashboardModel_CopyKeyNoURL(t *testing.T) {
+	m := dashboardViewModel(t)
+	// Proxy disabled (test config default) and no app port: no copyable URL.
+	m.rows[0].Rec.Ports = nil
+	next, cmd := m.handleKey(keyMsg("O"))
+	dm := next.(dashboardModel)
+	if cmd != nil {
+		t.Error("O with no URL must not return a command")
+	}
+	if !strings.Contains(dm.statusMsg, "no URL to copy") {
+		t.Errorf("status = %q, want a no-URL hint", dm.statusMsg)
+	}
+}
+
+func TestDashboardCopiedMsg_Failure(t *testing.T) {
+	m := testDashboardModel()
+	next, _ := m.Update(dashboardCopiedMsg{url: "http://localhost:8000", err: errors.New("no clipboard tool")})
+	dm := next.(dashboardModel)
+	if !strings.Contains(dm.statusMsg, "copy failed") {
+		t.Errorf("status = %q, want a copy-failed hint", dm.statusMsg)
+	}
+	found := false
+	for _, l := range dm.log {
+		if strings.Contains(l, "http://localhost:8000") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("failed URL missing from log (must stay manually copyable): %v", dm.log)
 	}
 }
 

@@ -33,7 +33,7 @@ Three panes (side-by-side on terminals ≥132 cols, stacked otherwise):
   runner status included (`running`, `stopped`, `setting up`,
   `stopping`, `failed`, `stale`/`?` when the directory is missing).
   `URL` is the clickable gateway link when `proxy.enabled`, else
-  `localhost:<appPort>` (`o` opens it in a browser).
+  `localhost:<appPort>` (`o` opens it in a browser, `O` copies it to the clipboard).
 - **REMOTE BRANCHES (right)** — queueable refs with `STATE`
   (`new` queueable, `orphan` = on-disk worktree missing from state and
   adoptable, `registered`/`checked out` not queueable).
@@ -49,6 +49,7 @@ Three panes (side-by-side on terminals ≥132 cols, stacked otherwise):
 | `u` / `d` | `up` / `down` selected worktrees (rows flip to `setting up`/`stopping` immediately) |
 | `a` | `add` queued branches (creates the checkout, or adopts the on-disk worktree) |
 | `o` | open the cursor worktree `URL` in a browser (full URL is logged too) |
+| `O` | copy the cursor worktree `URL` to the OS clipboard (`pbcopy` on macOS, `wl-copy`/`xclip`/`xsel` on Linux, `clip` on Windows; the URL is logged too) |
 | `x` / `X` | `remove` / `remove --force` selected worktrees (asks `y/n`, never touches main) |
 | `r` / `R` | refresh state / fetch remote |
 | `m` / `P` | toggle `mine` / `myprs` branch filters |
