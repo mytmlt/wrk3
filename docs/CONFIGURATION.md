@@ -84,7 +84,10 @@ broader than `--mine`, which matches git commit authorship).
 
 ## Ports and `.env`
 
-- Each `add` takes the next index (`max(index)+1`, starting at 0) and
+- Each `add` takes the next index (`max(index)+1`, floored at 1 —
+  index `0` is reserved for the repo-root main checkout, so the first
+  managed worktree allocates index `1`, e.g. `8100` with
+  `base: {app: 8000}, step: 100`) and
   ensures the allocation in the worktree's `.env` plus the state file.
   Ensure means: wrk3 checks the file has its managed port section and
   appends only the managed keys that are missing (under a
@@ -106,7 +109,8 @@ broader than `--mine`, which matches git commit authorship).
   stripped on `remove`). App URLs such as `BASE_URL` are never managed:
   they copy verbatim from the repo-root `.env` seed into fresh worktrees.
 - The repo-root main checkout is implicit (no state entry) with reserved
-  index `-1` (e.g. `7900` with `base: {app: 8000}, step: 100`). Its
+  index `0`, i.e. exactly the `ports.base` allocation (e.g. `8000` with
+  `base: {app: 8000}, step: 100`). Its
   managed `.env` section is ensured on `up`/`down`/`exec` like any other
   worktree. Port/project collisions with managed worktrees surface as errors.
 - `remove` strips only the managed keys from the worktree `.env` (deleting

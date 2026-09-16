@@ -278,13 +278,13 @@ func TestEnsureInherited_SeedsSecretsNotPorts(t *testing.T) {
 	}
 	// Seed (main .env) holds secrets, user URLs, plus main's own port values.
 	// Only <NAME>_PORT is managed: URLs copy verbatim, ports do not leak.
-	seedContent := "SECRET=topsecret\nAPP_PORT=7900\nBASE_URL=http://localhost:7900\n"
+	seedContent := "SECRET=topsecret\nAPP_PORT=8000\nBASE_URL=http://localhost:8000\n"
 	seedPath := filepath.Join(seedDir, EnvFileName)
 	if err := os.WriteFile(seedPath, []byte(seedContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	added, diverged, err := EnsureInherited(wt, seedPath, a.Allocate(0).Ports)
+	added, diverged, err := EnsureInherited(wt, seedPath, a.Allocate(1).Ports)
 	if err != nil {
 		t.Fatalf("EnsureInherited() = %v", err)
 	}
@@ -302,13 +302,13 @@ func TestEnsureInherited_SeedsSecretsNotPorts(t *testing.T) {
 	if !strings.Contains(s, "SECRET=topsecret\n") {
 		t.Errorf("secret not inherited.\n%s", s)
 	}
-	if !strings.Contains(s, "BASE_URL=http://localhost:7900\n") {
+	if !strings.Contains(s, "BASE_URL=http://localhost:8000\n") {
 		t.Errorf("user URL not inherited verbatim.\n%s", s)
 	}
-	if !strings.Contains(s, "APP_PORT=8000\n") {
+	if !strings.Contains(s, "APP_PORT=8100\n") {
 		t.Errorf("own allocation missing.\n%s", s)
 	}
-	if strings.Contains(s, "APP_PORT=7900") {
+	if strings.Contains(s, "APP_PORT=8000") {
 		t.Errorf("seed's managed port leaked into worktree.\n%s", s)
 	}
 }

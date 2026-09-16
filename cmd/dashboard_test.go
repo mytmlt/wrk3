@@ -101,8 +101,8 @@ func TestCheckedOutSet_SkipsBareAndDetached(t *testing.T) {
 func TestNextAppPort(t *testing.T) {
 	repo := initMainTestRepo(t)
 	cfg := writeTestConfig(t, repo)
-	if got := nextAppPort(cfg, nil); got != 8000 {
-		t.Errorf("empty state: got %d, want 8000", got)
+	if got := nextAppPort(cfg, nil); got != 8100 {
+		t.Errorf("empty state: got %d, want 8100 (index 0 is the main checkout)", got)
 	}
 	recs := []ports.WorktreeRecord{{Branch: "a", Index: 0}, {Branch: "b", Index: 2}}
 	if got := nextAppPort(cfg, recs); got != 8300 {

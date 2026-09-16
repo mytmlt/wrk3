@@ -25,8 +25,8 @@ func checkoutTestRepo(t *testing.T) (repo, wtDir string) {
 		Branch:         "feature/foo",
 		Slug:           "feature-foo",
 		AbsPath:        wtDir,
-		Index:          0,
-		Ports:          map[string]int{"app": 8000},
+		Index:          1,
+		Ports:          map[string]int{"app": 8100},
 		Status:         ports.StatusStopped,
 		ComposeProject: "demo-feature-foo",
 	}}

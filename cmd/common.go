@@ -94,9 +94,12 @@ func saveState(r *resolved, recs []ports.WorktreeRecord) error {
 	return nil
 }
 
-// nextIndex returns max(index)+1, or 0 when empty.
+// nextIndex returns max(index)+1 for managed worktrees, floored at 1:
+// index 0 is reserved for the implicit main checkout
+// (mainWorktreeIndex), so the first managed worktree allocates index 1
+// even when state is empty. Existing managed indexes are never renumbered.
 func nextIndex(recs []ports.WorktreeRecord) int {
-	max := -1
+	max := 0
 	for _, rec := range recs {
 		if rec.Index > max {
 			max = rec.Index

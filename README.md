@@ -221,7 +221,8 @@ for where the `docker` / `portainer` / `nomad` / bare-machine runners stand.
     `env=ports`), then `docker compose -p <prefix>-<slug> up`, then
     `entry.run` — in parallel across worktrees via errgroup with prefixed logs.
     Bare `up`/`down` apply to all worktrees including the implicit main
-    checkout (repo root, reserved port index -1, managed `.env` section ensured on run);
+    checkout (repo root, reserved port index 0 — the `ports.base` allocation,
+    managed `.env` section ensured on run);
     pass names to filter.
 3. `wrk3 status` → reconciles the state file against `git worktree list`
     (on-disk worktrees missing from state are adopted, ports recovered

@@ -84,6 +84,10 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 		}
 		path := byBranch[branch]
 
+		// -1 is the unassigned sentinel here (not a port index):
+		// allocationIndex never returns mainWorktreeIndex and
+		// nextIndex floors at 1, so adopted worktrees never take
+		// the main slot.
 		idx := -1
 		var allocation ports.Allocation
 		if recovered, ok := ports.ReadPorts(path, base); ok {

@@ -115,8 +115,8 @@ keep `stopping` until the next `down` fixes them.
 
 Main checkout: the repo root is always included implicitly (no state entry)
 in `up`/`down` (bare = all including main), `status`/`ls`, and as an
-`exec`/`logs` target by branch/slug. It uses reserved port index `-1`
-(e.g. `7900` with defaults) with the managed `.env` section ensured on `up`/`down`/`exec`;
+`exec`/`logs` target by branch/slug. It uses reserved port index `0`
+(the `ports.base` allocation, e.g. `8000` with defaults) with the managed `.env` section ensured on `up`/`down`/`exec`;
 `remove` refuses main and `remove --all` covers only managed worktrees.
 
 State recovery: the state file (`.wrk3-state.json` under `worktreeBase`)
@@ -138,7 +138,7 @@ branch order for deterministic indexes:
 
 - Ports are recovered from the worktree `.env` only when the set is a
   complete, valid grid point (`app` on `base + index*step`, full map
-  equals `Allocate(index)`) with no collisions (main index `-1` included);
+   equals `Allocate(index)`) with no collisions (main index `0` included);
   otherwise a fresh next-available index is assigned (collision scan, so a
   `ports.base`/`step` change never reuses a taken port). The worktree
   `.env` is gap-filled (existing values never overwritten, divergences
@@ -222,8 +222,9 @@ wrk3 add pr-101 pr-102
 wrk3 up
 wrk3 status
 # WORKTREE  BRANCH  STATUS   PORTS       COMPOSE_PROJECT
-# pr-101    pr-101  running  app=8000    demo-pr-101
-# pr-102    pr-102  running  app=8100    demo-pr-102
+# main      main    running  app=8000    demo-main
+# pr-101    pr-101  running  app=8100    demo-pr-101
+# pr-102    pr-102  running  app=8200    demo-pr-102
 
 # Run tests inside one worktree without cd'ing there
 wrk3 exec pr-101 -- go test ./... -count=1
@@ -244,6 +245,7 @@ wrk3 down pr-102 && wrk3 remove pr-102
 | `stale` / `?` in status | Worktree directory deleted out-of-band; `remove --force` to clean state, or re-`add`. |
 | deleted `.wrk3-state.json` | Self-heals: next `status`/`ls`/`up`/`down`/dashboard run re-adopts on-disk worktrees (ports from `.env` when intact). |
 | `already checked out at ... (use add --local ...)` | On-disk worktree missing from state (e.g. state file deleted); `add <branch>` adopts it automatically, or use `add --local`. |
+| `main worktree ports collide with worktree "x" ...` | State predates the main-at-base fix and still holds a managed index `0` allocation overlapping main's `ports.base` ports — `remove x` then re-`add` it to reallocate at a fresh index. |
 | `pass either branch names or --all, not both` | `remove` takes explicit names **or** `--all`. |
 | `--myprs supports GitHub remotes only ...` | The remote URL (`git remote get-url`) is not GitHub — `--myprs` is GitHub-only for now. |
 | `github forge needs the gh CLI ...` / `gh is not authenticated ...` | Install `gh` from https://cli.github.com, then run `gh auth login` (wrk3 reuses your session, stores no tokens). |

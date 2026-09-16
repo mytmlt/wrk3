@@ -13,10 +13,12 @@ import (
 )
 
 // mainWorktreeIndex is the reserved port index for the implicit main
-// worktree (repo root). It is never assigned by nextIndex (which grows
-// from max+1 >= 0), so main ports stay stable as managed worktrees are
-// added/removed. With defaults (8000+index*100) main gets 7900.
-const mainWorktreeIndex = -1
+// worktree (repo root). Allocate(0) is exactly the ports.base allocation,
+// so main always serves the ports written in wrk3.yaml. It is never
+// assigned by nextIndex (which grows from max+1 >= 1), so main ports stay
+// stable as managed worktrees are added/removed. With defaults
+// (8000+index*100) main gets 8000 and the first managed worktree 8100.
+const mainWorktreeIndex = 0
 
 // sameRepoRoot compares a git-reported worktree path with the repo root,
 // tolerating macOS /var -> /private/var symlinks (git reports the resolved
@@ -82,7 +84,7 @@ func mainRecord(r *resolved, recs []ports.WorktreeRecord) (*ports.WorktreeRecord
 	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
 	for _, rec := range recs {
 		if alloc.IndexesCollide(mainWorktreeIndex, rec.Index) || ports.AllocationsCollide(allocation.Ports, rec.Ports) {
-			return nil, fmt.Errorf("main worktree ports collide with worktree %q (ports.base/step leaves no room for reserved index %d)", rec.Branch, mainWorktreeIndex)
+			return nil, fmt.Errorf("main worktree ports collide with worktree %q (main reserves index %d, the ports.base allocation)", rec.Branch, mainWorktreeIndex)
 		}
 		if rec.ComposeProject == composeProject {
 			return nil, fmt.Errorf("main worktree compose project %q collides with worktree %q", composeProject, rec.Branch)
