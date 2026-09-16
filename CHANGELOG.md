@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Dashboard branch pane ordering: your branches sort first — open
+  involving-me PR branches when the forge answers (GitHub + `gh`),
+  else tip-matching `--mine` branches — then everything else
+  newest-first by tip committer date (git exposes no true branch
+  creation date, so tip recency is the proxy; local-only branches
+  without a remote ref sort last alphabetically). Filtered views
+  (`--mine`/`--author`/`--myprs`, `m`/`P` toggles) just sort
+  newest-first. All ordering inputs are best-effort and never fail the
+  pane.
 - Dashboard `p` pulls the selected worktrees (cursor worktree when
   nothing is selected): plain `git pull` per target in parallel via the
   existing `Source.Pull`, reusing the `wrk3 pull` runner. `P` still

@@ -63,20 +63,28 @@ func dashboardBranchRefs(src source.Source, repoPath, remote string, mine bool, 
 // displayBranches lists branches for the dashboard branch pane. Unfiltered
 // views union remote refs with local-only branches so a checkout can be
 // created from either; filtered views (mine/author/myprs) stay remote-only
-// since those filters are defined over remote tip metadata.
+// since those filters are defined over remote tip metadata. Either way the
+// result is ordered for the pane: prioritized branches first (open
+// involving-me PRs when the forge answers, else tip-matching --mine
+// branches; filtered views already are the priority set so they skip the
+// lookup), then newest-first by tip committer date (git exposes no true
+// branch creation date; local-only branches without a remote ref sort last
+// alphabetically). All ordering inputs are best-effort and degrade to the
+// underlying ref order, never an error.
 func displayBranches(src source.Source, repoPath, remote string, mine bool, authors []string, myprs bool) ([]string, error) {
 	refs, err := dashboardBranchRefs(src, repoPath, remote, mine, authors, myprs)
 	if err != nil {
 		return nil, err
 	}
-	if mine || len(authors) > 0 || myprs {
-		return refs, nil
+	filtered := mine || len(authors) > 0 || myprs
+	if filtered {
+		return orderDisplayBranches(src, repoPath, remote, refs, true), nil
 	}
 	local, err := src.LocalBranches(repoPath)
 	if err != nil {
-		return refs, nil
+		return orderDisplayBranches(src, repoPath, remote, refs, false), nil
 	}
-	return unionBranches(refs, local), nil
+	return orderDisplayBranches(src, repoPath, remote, unionBranches(refs, local), false), nil
 }
 
 // intersectMyPRS narrows refs to branches with an open involving-me PR.

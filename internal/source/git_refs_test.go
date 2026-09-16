@@ -76,6 +76,9 @@ func TestRefsDetailed_AuthorsAndSkips(t *testing.T) {
 	if al.CommitterName != "Alice" || al.CommitterEmail != "alice@example.com" {
 		t.Errorf("alice committer wrong: %+v", al)
 	}
+	if al.CommitterDate.IsZero() {
+		t.Errorf("alice CommitterDate should be set (tip recency for branch sorting): %+v", al)
+	}
 	bo, ok := byName["bob/feat"]
 	if !ok {
 		t.Fatalf("missing bob/feat in %+v", refs)
@@ -152,10 +155,10 @@ func TestIdentity_UnsetEmpty(t *testing.T) {
 }
 
 func TestParseRefsDetailed(t *testing.T) {
-	out := "origin\x00t\x00<t@t>\x00t\x00<t@t>\n" +
-		"origin/alice/feat\x00Alice\x00<alice@example.com>\x00Alice\x00<alice@example.com>\n" +
-		"origin/cursor/feat\x00Cursor Bot\x00<bot@cursor.com>\x00Ada\x00<ada@example.com>\n" +
-		"origin/HEAD\x00t\x00<t@t>\x00t\x00<t@t>\n" +
+	out := "origin\x00t\x00<t@t>\x00t\x00<t@t>\x001700000000\n" +
+		"origin/alice/feat\x00Alice\x00<alice@example.com>\x00Alice\x00<alice@example.com>\x001750000000\n" +
+		"origin/cursor/feat\x00Cursor Bot\x00<bot@cursor.com>\x00Ada\x00<ada@example.com>\x001780000000\n" +
+		"origin/HEAD\x00t\x00<t@t>\x00t\x00<t@t>\x001700000000\n" +
 		"broken-line-without-separators\n"
 	refs := parseRefsDetailed(out, "origin")
 	if len(refs) != 2 {
@@ -167,11 +170,42 @@ func TestParseRefsDetailed(t *testing.T) {
 	if refs[0].CommitterName != "Alice" || refs[0].CommitterEmail != "alice@example.com" {
 		t.Errorf("wrong committer parse: %+v", refs[0])
 	}
+	if refs[0].CommitterDate.Unix() != 1750000000 {
+		t.Errorf("wrong date parse: %+v", refs[0])
+	}
 	if refs[1].Name != "cursor/feat" || refs[1].AuthorName != "Cursor Bot" {
 		t.Errorf("wrong bot author parse: %+v", refs[1])
 	}
 	if refs[1].CommitterName != "Ada" || refs[1].CommitterEmail != "ada@example.com" {
 		t.Errorf("wrong bot committer parse: %+v", refs[1])
+	}
+	if refs[1].CommitterDate.Unix() != 1780000000 {
+		t.Errorf("wrong bot date parse: %+v", refs[1])
+	}
+}
+
+func TestParseRefsDetailed_LegacyFiveFieldsNoDate(t *testing.T) {
+	out := "origin/alice/feat\x00Alice\x00<alice@example.com>\x00Alice\x00<alice@example.com>\n"
+	refs := parseRefsDetailed(out, "origin")
+	if len(refs) != 1 {
+		t.Fatalf("got %+v", refs)
+	}
+	if refs[0].Name != "alice/feat" || refs[0].AuthorName != "Alice" {
+		t.Errorf("wrong parse: %+v", refs[0])
+	}
+	if !refs[0].CommitterDate.IsZero() {
+		t.Errorf("five-field date should be zero: %+v", refs[0])
+	}
+}
+
+func TestParseRefsDetailed_BadDateLeavesZero(t *testing.T) {
+	out := "origin/alice/feat\x00Alice\x00<alice@example.com>\x00Alice\x00<alice@example.com>\x00not-a-date\n"
+	refs := parseRefsDetailed(out, "origin")
+	if len(refs) != 1 {
+		t.Fatalf("got %+v", refs)
+	}
+	if !refs[0].CommitterDate.IsZero() {
+		t.Errorf("bad date should stay zero: %+v", refs[0])
 	}
 }
 
