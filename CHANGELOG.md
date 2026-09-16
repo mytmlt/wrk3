@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Dashboard lazydocker-style `Menu` popup: `?` opens an executable list of
+  every dashboard action (`j/k`/`↑`/`↓` move, `enter` runs the highlighted
+  row through the normal key dispatch, `esc`/`?` closes without acting).
+  Raw op keys are swallowed while the menu is open, `x`/`X` rows land in
+  the usual `y/n` confirm, and the menu cannot open while a confirm is
+  pending.
 - Dashboard branch pane ordering: your branches sort first — open
   involving-me PR branches when the forge answers (GitHub + `gh`),
   else tip-matching `--mine` branches — then everything else

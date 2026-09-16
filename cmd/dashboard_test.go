@@ -142,6 +142,8 @@ func keyMsg(s string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeySpace}
 	case "tab":
 		return tea.KeyMsg{Type: tea.KeyTab}
+	case "enter":
+		return tea.KeyMsg{Type: tea.KeyEnter}
 	case "esc":
 		return tea.KeyMsg{Type: tea.KeyEsc}
 	case "up":
@@ -388,7 +390,7 @@ func dashboardViewModel(t *testing.T) dashboardModel {
 	m.projects[0].cfg = cfg
 	m.projects[0].remote = "origin"
 	m.keys = newDashboardKeys()
-	m.log = []string{"dashboard started — r refresh, R fetch, ? help"}
+	m.log = []string{"dashboard started — r refresh, R fetch, ? menu"}
 	return m
 }
 
@@ -401,7 +403,7 @@ func TestDashboardView_TablesAndHelp(t *testing.T) {
 		"WORKTREE", "BRANCH", "STATUS", "PORTS", "PROJECT", "STATE",
 		"feature-a", "feature-b", "pr-1", "pr-2",
 		"running", "stopped", "registered",
-		"space", "select", "quit", "dashboard started",
+		"space", "select", "quit", "menu", "dashboard started",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("view missing %q:\n%s", want, out)
@@ -410,17 +412,164 @@ func TestDashboardView_TablesAndHelp(t *testing.T) {
 	if strings.Contains(out, "truncated to 20") {
 		t.Errorf("branch list must scroll via the table, not truncate:\n%s", out)
 	}
+	if strings.Contains(out, "enter run") {
+		t.Errorf("menu popup must stay closed until ?: \n%s", out)
+	}
 }
 
-func TestDashboardView_FullHelp(t *testing.T) {
+func TestDashboardView_MenuPopup(t *testing.T) {
 	m := dashboardViewModel(t)
-	m.showHelp = true
-	m.help.ShowAll = true
+	m.showMenu = true
+	m.width, m.height = 100, 40
 	out := m.View()
-	for _, want := range []string{"project", "myprs", "remove", "refresh"} {
+	for _, want := range []string{
+		"Menu",
+		"up selected worktrees", "down selected worktrees",
+		"add queued branches", "force remove",
+		"toggle mine filter", "toggle myprs filter",
+		"switch project", "quit",
+		"enter run", "esc close",
+	} {
 		if !strings.Contains(out, want) {
-			t.Errorf("full help missing %q:\n%s", want, out)
+			t.Errorf("menu popup missing %q:\n%s", want, out)
 		}
+	}
+	// Panes hide behind the popup.
+	for _, gone := range []string{"WORKTREES", "REMOTE BRANCHES"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("menu popup should replace panes, found %q:\n%s", gone, out)
+		}
+	}
+}
+
+func TestDashboardMenuItems_MatchBindings(t *testing.T) {
+	items := dashboardMenuItems()
+	if len(items) == 0 {
+		t.Fatal("menu must list dashboard actions")
+	}
+	seen := map[string]bool{}
+	for _, it := range items {
+		if it.Key == "" || it.Desc == "" || it.Run == "" {
+			t.Errorf("menu item must have key/desc/run: %+v", it)
+		}
+		if seen[it.Run] {
+			t.Errorf("duplicate menu run %q", it.Run)
+		}
+		seen[it.Run] = true
+	}
+	// Every Run value must dispatch through the normal key handler.
+	for _, run := range []string{"u", "d", "l", "p", "a", "o", "O", "x", "X", "r", "R", "m", "P", "1", "2", "3", "tab", "q"} {
+		if !seen[run] {
+			t.Errorf("menu missing run %q (drift from newDashboardKeys)", run)
+		}
+	}
+}
+
+func TestDashboardModel_MenuOpenClose(t *testing.T) {
+	m := testDashboardModel()
+	m = applyKey(t, m, "?")
+	if !m.showMenu {
+		t.Fatalf("? should open the menu: %+v", m)
+	}
+	if out := m.menuPane(60); !strings.Contains(out, "Menu") {
+		t.Errorf("menu pane should title Menu:\n%s", out)
+	}
+	// Raw op keys are swallowed while the menu is open.
+	opened := m
+	opened = applyKey(t, opened, "u")
+	if opened.busy {
+		t.Error("u with menu open must not start an op")
+	}
+	if !opened.showMenu {
+		t.Error("u with menu open must keep the menu open")
+	}
+	m = applyKey(t, m, "esc")
+	if m.showMenu {
+		t.Error("esc should close the menu")
+	}
+	m = applyKey(t, m, "?")
+	m = applyKey(t, m, "?")
+	if m.showMenu {
+		t.Error("second ? should close the menu")
+	}
+	m = applyKey(t, m, "?")
+	m = applyKey(t, m, "q")
+	if m.showMenu {
+		t.Error("q should close the menu, not quit")
+	}
+}
+
+func TestDashboardModel_MenuNavigateWrap(t *testing.T) {
+	m := testDashboardModel()
+	m = applyKey(t, m, "?")
+	n := len(dashboardMenuItems())
+	m.menuCursor = 0
+	m = applyKey(t, m, "k")
+	if m.menuCursor != n-1 {
+		t.Errorf("k at top should wrap to %d, got %d", n-1, m.menuCursor)
+	}
+	m = applyKey(t, m, "j")
+	if m.menuCursor != 0 {
+		t.Errorf("j at bottom should wrap to 0, got %d", m.menuCursor)
+	}
+	m = applyKey(t, m, "j")
+	if m.menuCursor != 1 {
+		t.Errorf("j should advance to 1, got %d", m.menuCursor)
+	}
+}
+
+func menuCursorForRun(t *testing.T, run string) int {
+	t.Helper()
+	for i, it := range dashboardMenuItems() {
+		if it.Run == run {
+			return i
+		}
+	}
+	t.Fatalf("menu has no run %q", run)
+	return 0
+}
+
+func TestDashboardModel_MenuEnterRunsAction(t *testing.T) {
+	// Pull via the menu: same busy op as pressing p directly.
+	m := testDashboardModel()
+	m = applyKey(t, m, "?")
+	m.menuCursor = menuCursorForRun(t, "p")
+	next, cmd := m.handleKey(keyMsg("enter"))
+	dm := next.(dashboardModel)
+	if dm.showMenu {
+		t.Error("enter should close the menu")
+	}
+	if !dm.busy || dm.busyLabel != "pull" {
+		t.Errorf("menu pull should start busy pull: %+v", dm)
+	}
+	if cmd == nil {
+		t.Error("menu pull should return the pull command")
+	}
+	// Remove via the menu lands in the y/n confirm flow.
+	m = testDashboardModel()
+	m.workSel["feature-a"] = true
+	m = applyKey(t, m, "?")
+	m.menuCursor = menuCursorForRun(t, "x")
+	next, cmd = m.handleKey(keyMsg("enter"))
+	dm = next.(dashboardModel)
+	if dm.showMenu {
+		t.Error("enter should close the menu")
+	}
+	if dm.confirm != "remove" || cmd != nil {
+		t.Errorf("menu remove should stage confirm (no cmd yet): %+v", dm)
+	}
+}
+
+func TestDashboardModel_MenuBlockedByConfirm(t *testing.T) {
+	m := testDashboardModel()
+	m.workSel["feature-a"] = true
+	m = applyKey(t, m, "x")
+	if m.confirm == "" {
+		t.Fatal("x should stage a remove confirm")
+	}
+	m = applyKey(t, m, "?")
+	if m.showMenu {
+		t.Error("? must not open the menu while a confirm is pending")
 	}
 }
 
