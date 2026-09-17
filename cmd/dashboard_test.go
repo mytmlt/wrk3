@@ -274,16 +274,16 @@ func TestDashboardModel_ConfirmRemoveFlow(t *testing.T) {
 	m = applyKey(t, m, "x")
 	next, cmd := m.handleKey(keyMsg("y"))
 	dm := next.(dashboardModel)
-	if !dm.busy || dm.busyLabel != "remove" {
+	if !dm.isBusy() || dm.busyTitle() != "remove feature-a" {
 		t.Errorf("y should start busy remove: %+v", dm)
 	}
 	if cmd == nil {
 		t.Fatal("y should return the remove command")
 	}
 	// Complete the op without executing docker: feed opDone directly.
-	done, _ := dm.Update(dashboardOpDoneMsg{label: "remove", lines: []string{"removed feature-a"}})
+	done, _ := dm.Update(dashboardOpDoneMsg{opID: dm.ops[0].id, label: "remove", lines: []string{"removed feature-a"}})
 	dm = done.(dashboardModel)
-	if dm.busy || len(dm.workSel) != 0 {
+	if dm.isBusy() || len(dm.workSel) != 0 {
 		t.Errorf("opDone should clear busy+selections: %+v", dm)
 	}
 }
@@ -300,16 +300,16 @@ func TestDashboardModel_ForceRemoveFlow(t *testing.T) {
 	}
 	next, cmd := m.handleKey(keyMsg("y"))
 	dm := next.(dashboardModel)
-	if !dm.busy || dm.busyLabel != "remove --force" {
+	if !dm.isBusy() || dm.busyTitle() != "remove --force feature-a" {
 		t.Errorf("X+y should start busy force remove: %+v", dm)
 	}
 	if cmd == nil {
 		t.Fatal("X+y should return the remove command")
 	}
 	// Force label must clear selections like the clean remove.
-	done, _ := dm.Update(dashboardOpDoneMsg{label: "remove --force", lines: []string{"removed feature-a"}})
+	done, _ := dm.Update(dashboardOpDoneMsg{opID: dm.ops[0].id, label: "remove --force", lines: []string{"removed feature-a"}})
 	dm = done.(dashboardModel)
-	if dm.busy || len(dm.workSel) != 0 {
+	if dm.isBusy() || len(dm.workSel) != 0 {
 		t.Errorf("X opDone should clear busy+selections: %+v", dm)
 	}
 	if dm.pendingForce {
@@ -338,7 +338,7 @@ func TestDashboardModel_ForceRemoveFlow(t *testing.T) {
 func TestDashboardModel_AddRequiresQueuedBranches(t *testing.T) {
 	m := testDashboardModel()
 	m = applyKey(t, m, "a")
-	if m.busy {
+	if m.isBusy() {
 		t.Error("a with empty queue must not start an op")
 	}
 	if m.statusMsg == "" {
@@ -346,7 +346,7 @@ func TestDashboardModel_AddRequiresQueuedBranches(t *testing.T) {
 	}
 	m.brSel["pr-1"] = true
 	m = applyKey(t, m, "a")
-	if !m.busy || m.busyLabel != "add" {
+	if !m.isBusy() || m.busyTitle() != "add pr-1" {
 		t.Errorf("a with queue should start busy add: %+v", m)
 	}
 }
@@ -477,7 +477,7 @@ func TestDashboardModel_MenuOpenClose(t *testing.T) {
 	// Raw op keys are swallowed while the menu is open.
 	opened := m
 	opened = applyKey(t, opened, "u")
-	if opened.busy {
+	if opened.isBusy() {
 		t.Error("u with menu open must not start an op")
 	}
 	if !opened.showMenu {
@@ -539,7 +539,7 @@ func TestDashboardModel_MenuEnterRunsAction(t *testing.T) {
 	if dm.showMenu {
 		t.Error("enter should close the menu")
 	}
-	if !dm.busy || dm.busyLabel != "pull" {
+	if !dm.isBusy() || dm.busyTitle() != "pull feature-a" {
 		t.Errorf("menu pull should start busy pull: %+v", dm)
 	}
 	if cmd == nil {
@@ -631,11 +631,11 @@ func TestProbeDashboardRows_StaleWithoutDocker(t *testing.T) {
 
 func TestDashboardFetchDone_ClearsBusy(t *testing.T) {
 	m := testDashboardModel()
-	m.busy = true
-	m.busyLabel = "fetch"
-	next, _ := m.Update(dashboardFetchDoneMsg{entries: []branchEntry{{Name: "pr-9"}}})
+	m.startOp("fetch", nil)
+	fetchID := m.ops[0].id
+	next, _ := m.Update(dashboardFetchDoneMsg{opID: fetchID, entries: []branchEntry{{Name: "pr-9"}}})
 	dm := next.(dashboardModel)
-	if dm.busy {
+	if dm.isBusy() {
 		t.Error("fetchDone must clear busy")
 	}
 	if len(dm.branches) != 1 || dm.fetchedAt.IsZero() {
@@ -656,7 +656,7 @@ func TestDashboardModel_PullKeyStartsOp(t *testing.T) {
 	empty := testDashboardModel()
 	empty.rows = nil
 	empty = applyKey(t, empty, "p")
-	if empty.busy {
+	if empty.isBusy() {
 		t.Error("p with no worktrees must not start an op")
 	}
 	if empty.statusMsg == "" {
@@ -666,7 +666,7 @@ func TestDashboardModel_PullKeyStartsOp(t *testing.T) {
 	m := testDashboardModel()
 	next, cmd := m.handleKey(keyMsg("p"))
 	dm := next.(dashboardModel)
-	if !dm.busy || dm.busyLabel != "pull" {
+	if !dm.isBusy() || dm.busyTitle() != "pull feature-a" {
 		t.Fatalf("p should start busy pull: %+v", dm)
 	}
 	if cmd == nil {
@@ -685,20 +685,22 @@ func TestDashboardModel_PullKeyStartsOp(t *testing.T) {
 		t.Errorf("pull target missing from log: %v", dm.log)
 	}
 	// Complete the op: feed opDone directly (no git here).
-	done, _ := dm.Update(dashboardOpDoneMsg{label: "pull", lines: []string{"[feature-a] pulled"}})
+	done, _ := dm.Update(dashboardOpDoneMsg{opID: dm.ops[0].id, label: "pull", lines: []string{"[feature-a] pulled"}})
 	dm = done.(dashboardModel)
-	if dm.busy {
+	if dm.isBusy() {
 		t.Error("pull opDone must clear busy")
 	}
 }
 
 func TestDashboardModel_PullKeyWhileBusy(t *testing.T) {
 	m := testDashboardModel()
-	m.busy = true
-	m.busyLabel = "up"
+	m.startOp("up", []string{"feature-a"})
 	m = applyKey(t, m, "p")
-	if m.busyLabel != "up" {
-		t.Errorf("p while busy must not hijack the running op: %+v", m.busyLabel)
+	if len(m.ops) != 1 || m.busyTitle() != "up feature-a" {
+		t.Errorf("p on the same branch while up runs must not start a second op: %+v", m.ops)
+	}
+	if !strings.Contains(m.statusMsg, "already running") {
+		t.Errorf("same-branch conflict should explain the block: %q", m.statusMsg)
 	}
 }
 
@@ -727,7 +729,7 @@ func TestDashboardPullCmd_RunsPullTargets(t *testing.T) {
 	}
 	dir := t.TempDir()
 	targets := []ports.WorktreeRecord{{Branch: "feature-a", Slug: "feature-a", AbsPath: dir}}
-	msg := dashboardPullCmd(p, targets)()
+	msg := dashboardPullCmd(p, 0, targets)()
 	done, ok := msg.(dashboardOpDoneMsg)
 	if !ok {
 		t.Fatalf("pull cmd returned %T, want dashboardOpDoneMsg", msg)
@@ -806,16 +808,16 @@ func TestDashboardModel_OpenKeyStartsOp(t *testing.T) {
 	m.rows[0].Rec.Ports = map[string]int{"app": 8000}
 	next, cmd := m.handleKey(keyMsg("o"))
 	dm := next.(dashboardModel)
-	if !dm.busy || dm.busyLabel != "open" {
+	if !dm.isBusy() || dm.busyTitle() != "open" {
 		t.Fatalf("o should start busy open: %+v", dm)
 	}
 	if cmd == nil {
 		t.Fatal("o should return the open command (not executed here: it launches a browser)")
 	}
 	// Complete the op without launching a browser: feed opDone directly.
-	done, _ := dm.Update(dashboardOpDoneMsg{label: "open", lines: []string{"http://localhost:8000"}})
+	done, _ := dm.Update(dashboardOpDoneMsg{opID: dm.ops[0].id, label: "open", lines: []string{"http://localhost:8000"}})
 	dm = done.(dashboardModel)
-	if dm.busy {
+	if dm.isBusy() {
 		t.Error("open opDone must clear busy")
 	}
 	found := false
@@ -920,7 +922,7 @@ func TestDashboardModel_OpenKeyEmpty(t *testing.T) {
 	m := testDashboardModel()
 	m.rows = nil
 	m = applyKey(t, m, "o")
-	if m.busy {
+	if m.isBusy() {
 		t.Error("o with no worktrees must not start an op")
 	}
 	if m.statusMsg == "" {

@@ -105,7 +105,7 @@ func TestDashboardReloadKey_FlipsRowsImmediately(t *testing.T) {
 	m.projects[0].cfg = nil
 	next, cmd := m.handleKey(keyMsg("l"))
 	dm := next.(dashboardModel)
-	if !dm.busy || dm.busyLabel != "reload" {
+	if !dm.isBusy() || dm.busyTitle() != "reload feature-a" {
 		t.Fatalf("l should start busy reload: %+v", dm)
 	}
 	if cmd == nil {
