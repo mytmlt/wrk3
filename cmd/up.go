@@ -60,9 +60,10 @@ func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func
 	}
 	// Preflight before any setup entry (which typically runs
 	// `docker compose up --wait --build` and would otherwise fail
-	// minutes in with a container-name conflict).
-	if r.cfg.Runner.Type == "docker" {
-		if err := runner.CheckComposeFiles(rec.AbsPath, r.cfg.Runner.Docker.ComposeFiles); err != nil {
+	// minutes in with a container-name conflict). Applies to both
+	// compose backends (docker and podman).
+	if r.cfg.Runner.Type == "docker" || r.cfg.Runner.Type == "podman" {
+		if err := runner.CheckComposeFiles(rec.AbsPath, r.cfg.ComposeFiles()); err != nil {
 			return fmt.Errorf("up %q: %w", rec.Branch, err)
 		}
 	}

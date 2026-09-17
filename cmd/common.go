@@ -67,8 +67,9 @@ func newSource(cfg *config.Config) (source.Source, error) {
 }
 
 // newRunner builds the Runner backend for slug via registry.
-// Docker runners carry compose files + prefix + slug via Options; other
-// backends receive empty Options (stubs return not implemented).
+// Compose runners (docker/podman) carry compose files + prefix + slug
+// via Options; other backends receive empty Options (stubs return
+// not implemented).
 func newRunner(cfg *config.Config, slug string) (runner.Runner, error) {
 	f, err := runner.Resolve(cfg.Runner.Type)
 	if err != nil {
@@ -163,7 +164,7 @@ func resolveTargetsRequired(recs []ports.WorktreeRecord, args []string, all bool
 
 // envForWorktree maps an allocation to runner env vars plus the gateway
 // APP_URL when proxy.enabled. COMPOSE_PROJECT_NAME is forced by the
-// docker runner and is not set here.
+// compose runners (docker/podman) and is not set here.
 func envForWorktree(cfg *config.Config, rec ports.WorktreeRecord) map[string]string {
 	out := envFromPorts(rec.Ports)
 	for k, v := range proxyEnvForSlug(cfg, rec.Slug) {
@@ -174,7 +175,7 @@ func envForWorktree(cfg *config.Config, rec ports.WorktreeRecord) map[string]str
 
 // envFromPorts maps an allocation to runner env vars (generic <NAME>_PORT
 // names, one per ports.base entry). COMPOSE_PROJECT_NAME is forced by
-// the docker runner and is not set here.
+// the compose runners (docker/podman) and is not set here.
 func envFromPorts(p map[string]int) map[string]string {
 	out := make(map[string]string, len(p))
 	for name, v := range p {

@@ -10,7 +10,7 @@ Report unacceptable behavior via the channel in [SECURITY.md](SECURITY.md).
 
 ## Getting started
 
-Prerequisites: Go ≥ 1.26, `git`, `docker` (for runner E2E only).
+Prerequisites: Go ≥ 1.26, `git`, `docker` and/or `podman` (for runner E2E only).
 
 ```bash
 git clone https://github.com/mytmlt/wrk3.git && cd wrk3
@@ -21,7 +21,7 @@ go test ./... -count=1
 Project layout:
 
 - `cmd/` — thin cobra commands; depend on `internal/*` **interfaces only**
-  (one `docker` options exception in `cmd/common.go`, see `docs/PLUGINS.md`)
+  (one compose-options exception in `cmd/common.go`, see `docs/PLUGINS.md`)
 - `internal/project|source|runner|ports|config|forge|proxy` — registry + implementations
 - `cmd/skill.md` — bundled `wrk3 skill` guide; `docs/` — user docs
 

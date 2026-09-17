@@ -1,6 +1,6 @@
 // Package runner abstracts where worktrees execute.
 //
-// v1 ships the docker runner (docker compose -p <prefix>-<slug> with
+// v1 ships the docker and podman runners (compose -p <prefix>-<slug> with
 // make entry commands, cwd=worktreePath, env=allocated ports).
 // Portainer/Nomad stubs return "not implemented". New Runner types
 // register in registry.go; unknown types error listing available
@@ -18,7 +18,7 @@ const (
 	// StateStopped means no compose containers are up.
 	StateStopped State = "stopped"
 	// StateUnknown means the state could not be determined
-	// (e.g. docker daemon unreachable).
+	// (e.g. container engine unreachable).
 	StateUnknown State = "unknown"
 )
 
@@ -32,7 +32,7 @@ type Status struct {
 	Detail string
 }
 
-// Options configures a Runner for one worktree.
+// Options configures a compose Runner (docker or podman) for one worktree.
 //
 // ComposeFiles lists the -f files passed to every compose invocation.
 // ProjectPrefix and Slug combine into the compose project name

@@ -80,8 +80,9 @@ alongside — `wrk3 add` in another terminal shows up on the next poll or
 
 - **Parallel worktrees** — `git worktree add/remove/list` behind a `Source`
   interface (`git` ships; the shape reserves future backends).
-- **Isolated runners** — `docker compose -p <prefix>-<slug>` per worktree
-  behind a `Runner` interface (`docker` ships; `portainer`/`nomad` stubs
+- **Isolated runners** — `docker compose` or `podman compose` with
+  `-p <prefix>-<slug>` per worktree behind a `Runner` interface
+  (`docker` and `podman` ship; `portainer`/`nomad` stubs
   return `not implemented`).
 - **Deterministic ports** — `allocated = base + index * step` per port name,
   ensured in each worktree's `.env` (missing managed keys appended under a
@@ -97,7 +98,9 @@ alongside — `wrk3 add` in another terminal shows up on the next poll or
 - **Worktree switching** — `wrk3 checkout <branch|slug>` cds to the
   worktree (via a `wrk3 shell-init` wrapper eval'd once in your rc file;
   prints the path without it, so `cd "$(wrk3 checkout x)"` always works).
-- **Single static binary** — Go, no runtime deps besides `git` and `docker`.
+- **Single static binary** — Go, no runtime deps besides `git` and a
+  container engine (`docker` for the `docker` runner, `podman` for the
+  `podman` runner).
  - **Interactive dashboard** — `wrk3 dashboard` polls worktrees, remote
   branches, and ports across the current repo and registered projects
   (`tab` switches), with `up`/`down`/`add`/`remove` from the keyboard
@@ -106,8 +109,9 @@ alongside — `wrk3 add` in another terminal shows up on the next poll or
 
 ## Install
 
-No Go toolchain needed — `git` and `docker` at runtime
-(docker only for the `docker` runner). Full details:
+No Go toolchain needed — `git` and a container engine at runtime
+(`docker` for the `docker` runner, `podman` for the `podman` runner).
+Full details:
 [docs/INSTALL.md](docs/INSTALL.md).
 
 ```bash
@@ -201,7 +205,7 @@ Full field reference, port table, `.env` mapping, and multi-project patterns:
 
 Project goal: turn **any codebase** into a `wrk3.yaml` that runs the app
 the way its developers run it locally — see [ROADMAP.md](ROADMAP.md)
-for where the `docker` / `portainer` / `nomad` / bare-machine runners stand.
+for where the `docker` / `podman` / `portainer` / `nomad` / bare-machine runners stand.
 
 > **Agents / automation:** run `wrk3 skill` to print the bundled setup
 > guide (local-setup discovery + compat triage + `wrk3.yaml` template +
@@ -227,7 +231,8 @@ for where the `docker` / `portainer` / `nomad` / bare-machine runners stand.
    `source.git.remote`, else `origin`), skipping already registered or
    checked-out branches.
 2. `wrk3 up` → runs `entry.setup` commands (`sh -c`, `cwd=worktree`,
-    `env=ports`), then `docker compose -p <prefix>-<slug> up`, then
+    `env=ports`), then `compose -p <prefix>-<slug> up` via the configured
+    engine (`docker` or `podman`), then
     `entry.run` — in parallel across worktrees via errgroup with prefixed logs.
     Bare `up`/`down` apply to all worktrees including the implicit main
     checkout (repo root, reserved port index 0 — the `ports.base` allocation,
@@ -237,7 +242,7 @@ for where the `docker` / `portainer` / `nomad` / bare-machine runners stand.
     (on-disk worktrees missing from state are adopted, ports recovered
     from `.env` or freshly allocated), probes live runner status
     (`compose ps -q`, then label-based fallbacks so out-of-band
-    `docker compose up` counts as `running`), syncs drift back to the
+    compose up counts as `running`), syncs drift back to the
     state file, and prints
     `WORKTREE/BRANCH/STATUS/PORTS/COMPOSE_PROJECT` (plus `URL` when
     `proxy.enabled` → `http://<slug>.localhost:<port>` via the stdlib

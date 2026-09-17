@@ -59,6 +59,24 @@ func TestValidateTable(t *testing.T) {
 		{"empty projectPrefix", func(s string) string {
 			return strings.Replace(s, "projectPrefix: demo", "projectPrefix: \"\"", 1)
 		}, "projectPrefix"},
+		{"podman happy", func(s string) string {
+			s = strings.Replace(s, "type: docker", "type: podman", 1)
+			s = strings.Replace(s, "  docker:\n    composeFiles: [docker-compose.yml]\n    projectPrefix: demo",
+				"  podman:\n    composeFiles: [docker-compose.yml]\n    projectPrefix: demo", 1)
+			return s
+		}, ""},
+		{"podman empty composeFiles", func(s string) string {
+			s = strings.Replace(s, "type: docker", "type: podman", 1)
+			s = strings.Replace(s, "  docker:\n    composeFiles: [docker-compose.yml]\n    projectPrefix: demo",
+				"  podman:\n    composeFiles: []\n    projectPrefix: demo", 1)
+			return s
+		}, "runner.podman.composeFiles"},
+		{"podman empty projectPrefix", func(s string) string {
+			s = strings.Replace(s, "type: docker", "type: podman", 1)
+			s = strings.Replace(s, "  docker:\n    composeFiles: [docker-compose.yml]\n    projectPrefix: demo",
+				"  podman:\n    composeFiles: [docker-compose.yml]\n    projectPrefix: \"\"", 1)
+			return s
+		}, "runner.podman.projectPrefix"},
 		{"empty entry.run", func(s string) string {
 			return strings.Replace(s, `run: "echo run"`, `run: ""`, 1)
 		}, "entry.run"},
@@ -150,5 +168,38 @@ func TestLoadBadFile(t *testing.T) {
 	path := writeConfig(t, "::: not yaml :::")
 	if _, err := Load(path); err == nil {
 		t.Error("Load(bad yaml) = nil, want error")
+	}
+}
+
+func TestComposeOptionsPodman(t *testing.T) {
+	body := `project:
+  worktreeBase: .worktrees
+source:
+  type: git
+runner:
+  type: podman
+  podman:
+    composeFiles: [docker-compose.yml]
+    projectPrefix: demo
+entry:
+  run: "echo run"
+  stop: "echo stop"
+ports:
+  base: {app: 8000}
+  step: 100
+`
+	cfg, err := Load(writeConfig(t, body))
+	if err != nil {
+		t.Fatalf("Load = %v", err)
+	}
+	opts := cfg.ComposeOptions("feat-x")
+	if opts.ProjectName() != "demo-feat-x" {
+		t.Errorf("ProjectName = %q, want demo-feat-x", opts.ProjectName())
+	}
+	if len(opts.ComposeFiles) != 1 || opts.ComposeFiles[0] != "docker-compose.yml" {
+		t.Errorf("ComposeFiles = %v, want [docker-compose.yml]", opts.ComposeFiles)
+	}
+	if got := cfg.ComposeFiles(); len(got) != 1 || got[0] != "docker-compose.yml" {
+		t.Errorf("ComposeFiles() = %v, want [docker-compose.yml]", got)
 	}
 }

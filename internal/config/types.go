@@ -1,7 +1,7 @@
 // Package config loads and validates wrk3.yaml.
 //
 // Config shape mirrors docs/CONFIGURATION.md (project worktreeBase,
-// source git, runner docker, entry setup/run/stop/logs,
+// source git, runner docker/podman, entry setup/run/stop/logs,
 // ports base+step with the required `app` port plus any custom names).
 //
 // Path decision: worktreeBase is resolved relative to the config file
@@ -68,10 +68,18 @@ type DockerConfig struct {
 	ProjectPrefix string   `yaml:"projectPrefix"`
 }
 
+// PodmanConfig holds podman runner options (mirrors DockerConfig;
+// `podman compose` is CLI-compatible for the wrk3-managed flags).
+type PodmanConfig struct {
+	ComposeFiles  []string `yaml:"composeFiles"`
+	ProjectPrefix string   `yaml:"projectPrefix"`
+}
+
 // RunnerConfig selects the Runner backend.
 type RunnerConfig struct {
 	Type   string       `yaml:"type"`
 	Docker DockerConfig `yaml:"docker"`
+	Podman PodmanConfig `yaml:"podman"`
 }
 
 // EntryConfig holds host entry commands run inside each worktree.
@@ -184,13 +192,33 @@ func proxyURLFor(domain, addr, slug string) string {
 	return "http://" + slug + "." + d + ":" + strconv.Itoa(port)
 }
 
-// ComposeOptions builds runner.Options for slug.
+// ComposeOptions builds runner.Options for slug from the selected
+// compose backend (docker or podman).
 func (c *Config) ComposeOptions(slug string) runner.Options {
+	if c.Runner.Type == "podman" {
+		return runner.Options{
+			ComposeFiles:  append([]string(nil), c.Runner.Podman.ComposeFiles...),
+			ProjectPrefix: c.Runner.Podman.ProjectPrefix,
+			Slug:          slug,
+		}
+	}
 	return runner.Options{
 		ComposeFiles:  append([]string(nil), c.Runner.Docker.ComposeFiles...),
 		ProjectPrefix: c.Runner.Docker.ProjectPrefix,
 		Slug:          slug,
 	}
+}
+
+// ComposeFiles returns the compose files of the selected compose backend
+// (docker or podman). Empty for non-compose backends.
+func (c *Config) ComposeFiles() []string {
+	if c.Runner.Type == "podman" {
+		return c.Runner.Podman.ComposeFiles
+	}
+	if c.Runner.Type == "docker" {
+		return c.Runner.Docker.ComposeFiles
+	}
+	return nil
 }
 
 // Load reads and validates the config at path.
@@ -246,6 +274,19 @@ func (c *Config) Validate() error {
 		}
 		if strings.TrimSpace(c.Runner.Docker.ProjectPrefix) == "" {
 			return fmt.Errorf("runner.docker.projectPrefix must not be empty")
+		}
+	}
+	if c.Runner.Type == "podman" {
+		if len(c.Runner.Podman.ComposeFiles) == 0 {
+			return fmt.Errorf("runner.podman.composeFiles must list at least one compose file")
+		}
+		for i, f := range c.Runner.Podman.ComposeFiles {
+			if strings.TrimSpace(f) == "" {
+				return fmt.Errorf("runner.podman.composeFiles[%d] must not be empty", i)
+			}
+		}
+		if strings.TrimSpace(c.Runner.Podman.ProjectPrefix) == "" {
+			return fmt.Errorf("runner.podman.projectPrefix must not be empty")
 		}
 	}
 	if strings.TrimSpace(c.Entry.Run) == "" {

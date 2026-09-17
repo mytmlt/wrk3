@@ -15,6 +15,11 @@ runner:
   docker:
     composeFiles: [docker-compose.yml]
     projectPrefix: demo
+  # Alternative backend (set runner.type: podman and use `podman compose`
+  # in entry.*):
+  # podman:
+  #   composeFiles: [docker-compose.yml]
+  #   projectPrefix: demo
 entry:
   setup: ["docker compose up --wait --build"]
   run: "docker compose logs -f"

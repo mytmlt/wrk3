@@ -2,8 +2,8 @@
 
 `wrk3` runs multiple branches of the same repo in parallel as git worktrees,
 each isolated with its own ports and container project. Single static Go
-binary (`Go ≥ 1.26`); runtime deps are `git` and `docker` (docker only for
-the `docker` runner).
+binary (`Go ≥ 1.26`); runtime deps are `git` and a container engine
+(`docker` for the `docker` runner, `podman` for the `podman` runner).
 
 ## Agent development workflow (binding)
 
@@ -61,11 +61,11 @@ hermetic (temp git repos, temp dirs — no network).
 ## Layout and architecture (binding)
 
 - `main.go` → `cmd/` (thin cobra commands) → `internal/*` **interfaces only**
-  (see `docs/PLUGINS.md` for the one `docker` options exception in `cmd/common.go`).
+  (see `docs/PLUGINS.md` for the one compose-options exception in `cmd/common.go`).
 - `internal/config/` — `wrk3.yaml`/`wrk3.yml` load + validation + upward
   discovery (`discover.go`; `docs/CONFIGURATION.md` is the field reference).
 - `internal/source/` — `Source` iface + `registry.go` + `git.go`.
-- `internal/runner/` — `Runner` iface + `registry.go` + `docker.go`
+- `internal/runner/` — `Runner` iface + `registry.go` + `docker.go` + `podman.go`
   (`portainer`/`nomad` are intentional `not implemented` stubs).
 - `internal/ports/` — `allocated = base + index*step` allocator, `.env`
   writer, `<worktreeBase>/.wrk3-state.json` state file.

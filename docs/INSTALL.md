@@ -1,8 +1,8 @@
 # Installation
 
 `wrk3` is a single static binary — **no Go toolchain required**. You need
-`git` and `docker` on `PATH` at runtime (docker only for the `docker`
-runner).
+`git` and a container engine on `PATH` at runtime (`docker` for the
+`docker` runner, `podman` for the `podman` runner).
 
 ## Option 1 — install script (recommended)
 
@@ -121,5 +121,5 @@ wrk3 --help        # lists all commands
 wrk3 version
 go version             # ≥ 1.26 if building from source
 git --version
-docker --version
+docker --version       # or: podman --version
 ```
