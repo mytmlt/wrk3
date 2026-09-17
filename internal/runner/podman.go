@@ -24,7 +24,8 @@ var podmanComposeLabelKeys = []string{
 }
 
 // PodmanRunner implements Runner via stdlib os/exec `podman compose`
-// calls with `-p <prefix>-<slug>`, cwd=worktreePath and env=allocated
+// calls with `-p <prefix>-<slug>` (or `-p <slug>` when the prefix is
+// empty), cwd=worktreePath and env=allocated
 // ports plus COMPOSE_PROJECT_NAME. Shape mirrors DockerRunner; shared
 // pure helpers (buildComposeArgs, buildEnv, SanitizeProjectName,
 // CandidateProjects, CheckComposeFiles, countIDs, runDockerCmd) are
@@ -55,7 +56,7 @@ func (r *PodmanRunner) timeout() time.Duration {
 }
 
 // ProjectName returns the sanitized compose project name
-// "<prefix>-<slug>".
+// "<prefix>-<slug>" (empty prefix => slug-only).
 func (r *PodmanRunner) ProjectName() string {
 	return r.opts.ProjectName()
 }

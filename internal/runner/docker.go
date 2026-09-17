@@ -18,7 +18,8 @@ import (
 const defaultDockerTimeout = 5 * time.Minute
 
 // DockerRunner implements Runner via stdlib os/exec `docker compose`
-// calls with `-p <prefix>-<slug>`, cwd=worktreePath and env=allocated
+// calls with `-p <prefix>-<slug>` (or `-p <slug>` when the prefix is
+// empty), cwd=worktreePath and env=allocated
 // ports plus COMPOSE_PROJECT_NAME.
 type DockerRunner struct {
 	opts Options
@@ -46,13 +47,13 @@ func (r *DockerRunner) timeout() time.Duration {
 }
 
 // ProjectName returns the sanitized compose project name
-// "<prefix>-<slug>".
+// "<prefix>-<slug>" (empty prefix => slug-only).
 func (r *DockerRunner) ProjectName() string {
 	return r.opts.ProjectName()
 }
 
 // ProjectName returns the sanitized compose project name
-// "<prefix>-<slug>". Empty prefix/slug fall back to "wrk3".
+// "<prefix>-<slug>" (empty prefix => slug-only; empty both => "wrk3").
 func (o Options) ProjectName() string {
 	combined := ""
 	switch {

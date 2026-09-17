@@ -64,12 +64,16 @@ type SourceConfig struct {
 
 // DockerConfig holds docker runner options.
 type DockerConfig struct {
-	ComposeFiles  []string `yaml:"composeFiles"`
-	ProjectPrefix string   `yaml:"projectPrefix"`
+	ComposeFiles []string `yaml:"composeFiles"`
+	// ProjectPrefix is optional. Empty (or missing/whitespace-only, which
+	// normalizes to empty) means the compose project name is just the
+	// worktree slug; otherwise it is "<prefix>-<slug>" (sanitized).
+	ProjectPrefix string `yaml:"projectPrefix"`
 }
 
 // PodmanConfig holds podman runner options (mirrors DockerConfig;
 // `podman compose` is CLI-compatible for the wrk3-managed flags).
+// ProjectPrefix is optional: empty means slug-only project names.
 type PodmanConfig struct {
 	ComposeFiles  []string `yaml:"composeFiles"`
 	ProjectPrefix string   `yaml:"projectPrefix"`
@@ -272,9 +276,9 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("runner.docker.composeFiles[%d] must not be empty", i)
 			}
 		}
-		if strings.TrimSpace(c.Runner.Docker.ProjectPrefix) == "" {
-			return fmt.Errorf("runner.docker.projectPrefix must not be empty")
-		}
+		// ProjectPrefix is optional: empty/missing/whitespace-only means
+		// slug-only compose project names (see runner.Options.ProjectName).
+		c.Runner.Docker.ProjectPrefix = strings.TrimSpace(c.Runner.Docker.ProjectPrefix)
 	}
 	if c.Runner.Type == "podman" {
 		if len(c.Runner.Podman.ComposeFiles) == 0 {
@@ -285,9 +289,9 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("runner.podman.composeFiles[%d] must not be empty", i)
 			}
 		}
-		if strings.TrimSpace(c.Runner.Podman.ProjectPrefix) == "" {
-			return fmt.Errorf("runner.podman.projectPrefix must not be empty")
-		}
+		// ProjectPrefix is optional: empty/missing/whitespace-only means
+		// slug-only compose project names (see runner.Options.ProjectName).
+		c.Runner.Podman.ProjectPrefix = strings.TrimSpace(c.Runner.Podman.ProjectPrefix)
 	}
 	if strings.TrimSpace(c.Entry.Run) == "" {
 		return fmt.Errorf("entry.run must not be empty")

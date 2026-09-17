@@ -1,6 +1,7 @@
 // Package runner abstracts where worktrees execute.
 //
-// v1 ships the docker and podman runners (compose -p <prefix>-<slug> with
+// v1 ships the docker and podman runners (compose -p <prefix>-<slug>,
+// or -p <slug> when the prefix is empty, with
 // make entry commands, cwd=worktreePath, env=allocated ports).
 // Portainer/Nomad stubs return "not implemented". New Runner types
 // register in registry.go; unknown types error listing available
@@ -36,7 +37,8 @@ type Status struct {
 //
 // ComposeFiles lists the -f files passed to every compose invocation.
 // ProjectPrefix and Slug combine into the compose project name
-// "<prefix>-<slug>" (sanitized); see Options.ProjectName.
+// "<prefix>-<slug>" (sanitized); an empty prefix means the project name
+// is just the slug (see Options.ProjectName).
 type Options struct {
 	ComposeFiles  []string
 	ProjectPrefix string

@@ -174,8 +174,8 @@ Generic backends should take their own options struct (or none, like the
    - Add `MyConfig` struct + field on `RunnerConfig` (e.g. `My MyConfig`).
    - Extend `Validate()`: after the `runner.Resolve` check, validate your
      section when `Runner.Type == "myrunner"` (required fields non-empty),
-     mirroring the `docker` branch (`composeFiles` non-empty,
-     `projectPrefix` non-empty).
+     mirroring the `docker` branch (`composeFiles` non-empty;
+     `projectPrefix` optional, empty => slug-only).
    - Document fields in `docs/CONFIGURATION.md` and `wrk3.yaml.example`
      if the backend should be user-visible.
 

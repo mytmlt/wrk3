@@ -170,14 +170,16 @@ always wins; otherwise stored `setting up` / `stopping` / `failed` win
 over a non-running probe while entries execute; a probe error falls back
 to stored state (`unknown` when nothing is stored).
 
-Docker probe order: primary `docker compose -p <prefix>-<slug> ps -q`,
+Docker probe order: primary `docker compose -p <prefix>-<slug> ps -q` (`-p <slug>` when
+projectPrefix is empty),
 then label-based `docker ps --filter label=com.docker.compose.project=…`
 fallbacks covering stacks started out-of-band via plain
 `docker compose up` — slug, worktree folder basename, and stored project
 (label check is independent of compose files and cwd). Any candidate with
 >0 containers counts as `running`, else `stopped`.
 
-Podman probe order: primary `podman compose -p <prefix>-<slug> ps -q`,
+Podman probe order: primary `podman compose -p <prefix>-<slug> ps -q` (`-p <slug>` when
+projectPrefix is empty),
 then label-based `podman ps` fallbacks over the same project candidates.
 Both `com.docker.compose.project` (docker-compat) and
 `io.podman.compose.project` (native) label keys are probed.
