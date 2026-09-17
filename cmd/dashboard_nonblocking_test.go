@@ -3,8 +3,6 @@ package cmd
 import (
 	"strings"
 	"testing"
-
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // Starting up on one worktree must not block operating on an unrelated
@@ -99,7 +97,6 @@ func TestDashboardModel_TickRefreshesWhileOpsRun(t *testing.T) {
 	if cmd == nil {
 		t.Error("tick while op runs must return refresh commands")
 	}
-	var _ tea.Cmd = cmd
 }
 
 // Fetch runs alongside worktree ops but a second fetch is rejected.
