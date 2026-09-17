@@ -192,7 +192,7 @@ func newDashboardModel(descs []dashboardProjectDesc, poll time.Duration, remote 
 	}
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
-	lv := viewport.New(78, dashboardLogHeight)
+	lv := viewport.New(78, dashboardLogFallbackHeight)
 	seed := []string{"dashboard started — r refresh, R fetch, ? menu"}
 	lv.SetContent(strings.Join(wrapLogLines(seed, 78), "\n"))
 	lv.GotoBottom()
@@ -535,7 +535,7 @@ func (m *dashboardModel) syncLogView() {
 		m.logView.Width = w
 	}
 	if m.logView.Height <= 0 {
-		m.logView.Height = dashboardLogHeight
+		m.logView.Height = dashboardLogViewportHeight(m.height)
 	}
 	wasBottom := m.logView.AtBottom()
 	m.logView.SetContent(strings.Join(wrapLogLines(m.log, max(w, 10)), "\n"))
@@ -829,7 +829,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// rewrapped line count (and maxYOffset) stays valid for scrolling.
 		wasBottom := m.logView.AtBottom()
 		m.logView.Width = max(max(m.width-4, 10), 10)
-		m.logView.Height = dashboardLogHeight
+		m.logView.Height = dashboardLogViewportHeight(msg.Height)
 		m.logView.SetContent(strings.Join(wrapLogLines(m.log, m.logView.Width), "\n"))
 		if wasBottom || len(m.log) == 0 {
 			m.logView.GotoBottom()
@@ -1446,10 +1446,22 @@ func branchNamesOf(recs []ports.WorktreeRecord) []string {
 
 // Layout tuning: side-by-side panes need roughly this many columns;
 // narrower terminals stack the panes vertically instead.
-const (
-	dashboardWideLayout = 132
-	dashboardLogHeight  = 5
-)
+const dashboardWideLayout = 132
+
+// dashboardLogFallbackHeight is the log viewport height before the first
+// WindowSizeMsg arrives (and in unit tests that never set a size).
+const dashboardLogFallbackHeight = 5
+
+// dashboardLogViewportHeight gives the log viewport its 40% share of the
+// screen: the log box (title + viewport + border) takes 40% of the total
+// terminal height, minus 3 lines of box chrome for the viewport itself.
+// Branches/details shrink to make room; worktrees keep priority.
+func dashboardLogViewportHeight(totalH int) int {
+	if totalH <= 0 {
+		return dashboardLogFallbackHeight
+	}
+	return max(totalH*40/100-3, dashboardLogFallbackHeight)
+}
 
 // Dashboard key bindings. They double as the always-visible shortcut bar:
 // the footer renders ShortHelp, `?` toggles the full grouped view. The
@@ -1519,35 +1531,125 @@ func (k dashboardKeys) FullHelp() [][]key.Binding {
 	}
 }
 
-// dashboardWorkColumns scales the text columns to the available width so
-// the table never exceeds its pane: ✓/STATUS have fixed widths (STATUS fits
-// "setting up"). Wide tables get full PORTS + URL widths for multi-port
-// lists and clickable gateway/localhost links; narrow tables compact both
-// (bubbles/table truncates excess — `o` still opens and `O` still copies
-// the full URL). The rest splits 25/40/35 across WORKTREE/BRANCH/PROJECT.
-func dashboardWorkColumns(width int) []table.Column {
-	portsW, urlW := 28, dashboardURLWidth
-	if width < 110 {
-		portsW, urlW = 16, 18
-	}
-	rest := max(width-3-11-portsW-urlW-12, 20)
-	wt := max(rest*25/100, 8)
-	br := max(rest*40/100, 12)
-	pr := max(rest-wt-br, 8)
-	return []table.Column{
-		{Title: "✓", Width: 3},
-		{Title: "WORKTREE", Width: wt},
-		{Title: "BRANCH", Width: br},
-		{Title: "STATUS", Width: 11},
-		{Title: "PORTS", Width: portsW},
-		{Title: "URL", Width: urlW},
-		{Title: "PROJECT", Width: pr},
-	}
+// dashboardWorkCells is the visible text of one worktree row, used to
+// size columns to fit content.
+type dashboardWorkCells struct {
+	worktree string
+	branch   string
+	status   string
+	ports    string
+	url      string
+	project  string
 }
 
-// dashboardURLWidth fits http://<slug>.localhost:<port> for typical slugs;
-// longer URLs truncate (`o` still opens and `O` still copies the full URL).
-const dashboardURLWidth = 32
+// dashboardWorkColumns sizes columns without content (all flex columns at
+// their minimums, table filled when wide). Prefer
+// dashboardWorkColumnsFor with real row cells so columns expand or shrink
+// to fit content.
+func dashboardWorkColumns(width int) []table.Column {
+	return dashboardWorkColumnsFor(width, nil)
+}
+
+// dashboardWorkColumnsFor sizes each text column to fit its content: every
+// flex column starts at its widest cell (or header) clamped to its cap.
+// Leftover width goes to capped columns with truncated content first
+// (URL, PORTS, BRANCH, WORKTREE, PROJECT), then fills the table; overflow
+// shrinks PROJECT first and URL/PORTS last so long port lists and links
+// stay visible (bubbles/table truncates only the remainder — `o` still
+// opens and `O` still copies the full URL). ✓/STATUS stay fixed (STATUS
+// fits "setting up").
+func dashboardWorkColumnsFor(width int, cells []dashboardWorkCells) []table.Column {
+	const (
+		checkW  = 3
+		statusW = 11
+	)
+	type flex struct {
+		header   int
+		min      int
+		max      int
+		need     int // clamped content width
+		overflow int // content beyond max, wants slack first
+	}
+	cols := []flex{
+		{header: len("WORKTREE"), min: 8, max: 32},
+		{header: len("BRANCH"), min: 12, max: 40},
+		{header: len("PORTS"), min: 8, max: 48},
+		{header: len("URL"), min: 10, max: 48},
+		{header: len("PROJECT"), min: 8, max: 32},
+	}
+	contentMax := make([]int, len(cols))
+	for _, c := range cells {
+		vals := []string{c.worktree, c.branch, c.ports, c.url, c.project}
+		for i, v := range vals {
+			if w := len([]rune(v)); w > contentMax[i] {
+				contentMax[i] = w
+			}
+		}
+	}
+	for i := range cols {
+		want := max(cols[i].header, contentMax[i])
+		if contentMax[i] > cols[i].max {
+			cols[i].overflow = contentMax[i] - cols[i].max
+		}
+		cols[i].need = min(max(want, cols[i].min), cols[i].max)
+	}
+	widths := make([]int, len(cols))
+	for i := range cols {
+		widths[i] = cols[i].need
+	}
+	total := checkW + statusW
+	for _, w := range widths {
+		total += w
+	}
+	if total < width {
+		slack := width - total
+		order := []int{3, 2, 1, 0, 4} // url, ports, branch, worktree, project
+		for _, i := range order {
+			if slack == 0 {
+				break
+			}
+			give := min(slack, cols[i].overflow)
+			widths[i] += give
+			slack -= give
+		}
+		for slack > 0 {
+			progress := false
+			for _, i := range order {
+				if slack == 0 {
+					break
+				}
+				if widths[i] < cols[i].max {
+					widths[i]++
+					slack--
+					progress = true
+				}
+			}
+			if !progress {
+				break
+			}
+		}
+	} else if total > width {
+		over := total - width
+		for _, i := range []int{4, 0, 1, 2, 3} { // project first, url/ports last
+			if over <= 0 {
+				break
+			}
+			if cut := min(over, widths[i]-cols[i].min); cut > 0 {
+				widths[i] -= cut
+				over -= cut
+			}
+		}
+	}
+	return []table.Column{
+		{Title: "✓", Width: checkW},
+		{Title: "WORKTREE", Width: widths[0]},
+		{Title: "BRANCH", Width: widths[1]},
+		{Title: "STATUS", Width: statusW},
+		{Title: "PORTS", Width: widths[2]},
+		{Title: "URL", Width: widths[3]},
+		{Title: "PROJECT", Width: widths[4]},
+	}
+}
 
 // dashboardBranchColumns gives everything left after ✓/STATE/padding to
 // the BRANCH column.
@@ -1619,26 +1721,37 @@ func dashboardTableStyles(focused bool) table.Styles {
 // bubbles/table truncates with runewidth (not ANSI-aware), so embedded
 // color codes would break column alignment.
 func (m dashboardModel) buildWorkTable(width, height int, focused bool) table.Model {
-	t := table.New(
-		table.WithColumns(dashboardWorkColumns(width)),
-		table.WithFocused(false),
-		table.WithStyles(dashboardTableStyles(focused)),
-	)
-	rows := make([]table.Row, 0, len(m.rows))
 	var urlCfg *config.Config
 	if len(m.projects) > 0 && m.projects[m.cur] != nil {
 		urlCfg = m.projects[m.cur].cfg
 	}
+	cells := make([]dashboardWorkCells, 0, len(m.rows))
 	for _, row := range m.rows {
-		box := "[ ]"
-		if m.workSel[row.Rec.Branch] {
-			box = "[x]"
-		}
 		branch := row.Rec.Branch
 		if row.IsMain {
 			branch += " (main)"
 		}
-		rows = append(rows, table.Row{box, row.Rec.Slug, branch, row.Status, row.Ports, dashboardURLFor(urlCfg, row.Rec), row.Rec.ComposeProject})
+		cells = append(cells, dashboardWorkCells{
+			worktree: row.Rec.Slug,
+			branch:   branch,
+			status:   row.Status,
+			ports:    row.Ports,
+			url:      dashboardURLFor(urlCfg, row.Rec),
+			project:  row.Rec.ComposeProject,
+		})
+	}
+	t := table.New(
+		table.WithColumns(dashboardWorkColumnsFor(width, cells)),
+		table.WithFocused(false),
+		table.WithStyles(dashboardTableStyles(focused)),
+	)
+	rows := make([]table.Row, 0, len(cells))
+	for i, c := range cells {
+		box := "[ ]"
+		if m.workSel[m.rows[i].Rec.Branch] {
+			box = "[x]"
+		}
+		rows = append(rows, table.Row{box, c.worktree, c.branch, c.status, c.ports, c.url, c.project})
 	}
 	t.SetRows(rows)
 	t.SetWidth(max(width, 10))
@@ -1887,12 +2000,16 @@ func (m dashboardModel) menuPane(width int) string {
 func (m dashboardModel) logPane(width int) string {
 	focused := m.pane == 2
 	w := max(width-2, 10)
+	vpH := m.logView.Height
+	if vpH <= 0 {
+		vpH = dashboardLogViewportHeight(m.height)
+	}
 	// Wrap to the current pane width so long lines become multiple lines
 	// instead of being cut off horizontally (viewport truncates MaxWidth).
 	wrapped := wrapLogLines(m.log, w)
 	lv := m.logView
 	lv.Width = w
-	lv.Height = dashboardLogHeight
+	lv.Height = vpH
 	lv.SetContent(strings.Join(wrapped, "\n"))
 	// Preserve the user's scroll position: only stick to the bottom when
 	// the model view was already there. Never force GotoBottom here —
@@ -1906,8 +2023,8 @@ func (m dashboardModel) logPane(width int) string {
 	if focused {
 		title += " ●"
 	}
-	if total := len(wrapped); total > dashboardLogHeight {
-		remaining := total - dashboardLogHeight - lv.YOffset
+	if total := len(wrapped); total > vpH {
+		remaining := total - vpH - lv.YOffset
 		if remaining > 0 {
 			title += fmt.Sprintf(" ↑%d more", remaining)
 		} else {
@@ -1960,13 +2077,13 @@ func (m dashboardModel) View() string {
 	// Vertical budget: header (2) + gap (1) + footer (help 1-2 + status
 	// 0-1 + confirm 0-1, reserve 4) + log box + body split.
 	// Layout: top = wrk3 ls worktree table (full width);
-	// middle = branches left + worktree details preview right;
-	// bottom = focusable log pane.
+	// middle = branches left + worktree details preview right (shrinks);
+	// bottom = focusable log pane at 40% of the screen height.
 	const footerReserve = 4
-	logBoxH := dashboardLogHeight + 3 // title + viewport + border
+	logBoxH := dashboardLogViewportHeight(h) + 3 // viewport + title + border
 	bodyH := max(h-2-1-footerReserve-logBoxH-1, 8)
-	topH := max(bodyH*45/100, 4)
-	midH := max(bodyH-topH, 4)
+	topH := max(bodyH*60/100, 4) // worktrees keep priority
+	midH := max(bodyH-topH, 4)    // branches/details take the remainder
 	topTableH := max(topH-3, 4) // pane title + borders
 	midTableH := max(midH-3, 4)
 
