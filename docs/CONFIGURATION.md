@@ -23,7 +23,7 @@ runner:
   type: docker
   docker:
     composeFiles: [docker-compose.yml]  # at least one
-    projectPrefix: demo                 # used as compose -p <prefix>-<slug>
+    projectPrefix: demo                 # optional; compose -p <prefix>-<slug>, empty/missing => -p <slug>
   # podman:                             # alternative backend (runner.type: podman)
   #   composeFiles: [docker-compose.yml]
   #   projectPrefix: demo
@@ -73,9 +73,9 @@ broader than `--mine`, which matches git commit authorship).
 | ---- | -------- | ----- |
 | `runner.type` | yes | `docker` or `podman` (both ship). `portainer`/`nomad` exist as stubs → `not implemented`. Unknown values error listing available runners. |
 | `runner.docker.composeFiles` | yes (docker) | At least one compose file, resolved inside each worktree. Compose files must not set `container_name:` — it is global on the daemon and bypasses `-p <prefix>-<slug>` isolation, so `up` fails fast naming the offending file/services. Compose generates `<project>-<service>-1` automatically. |
-| `runner.docker.projectPrefix` | yes (docker) | Compose project becomes `<prefix>-<slug>` → free volume/network isolation. |
+| `runner.docker.projectPrefix` | no (docker) | Compose project is `<prefix>-<slug>` → free volume/network isolation. Empty, missing, or whitespace-only means slug-only (`<slug>`); slug-only names can collide across repos sharing a daemon. |
 | `runner.podman.composeFiles` | yes (podman) | Same as `runner.docker.composeFiles`, for `podman compose`. `up` runs the same `container_name:` preflight. |
-| `runner.podman.projectPrefix` | yes (podman) | Same as `runner.docker.projectPrefix`, for `podman compose`. |
+| `runner.podman.projectPrefix` | no (podman) | Same as `runner.docker.projectPrefix`, for `podman compose` (empty => slug-only). |
 | `entry.setup` | no | Ordered list, each run via `sh -c` with `cwd=worktree`, `env=allocated ports`. Empty strings skipped. |
 | `entry.run` | yes | Long-running command started after compose up (e.g. dev server). Run via `sh -c` with `cwd=worktree`, `env=allocated ports`. |
 | `entry.stop` | yes | Run via `sh -c` before `compose down` by `down` (failures warn, never block teardown). |

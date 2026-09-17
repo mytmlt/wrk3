@@ -115,7 +115,7 @@ runner:
   type: docker              # or `podman` when the developers use podman (entry.* must then call `podman compose ...`)
   docker:
     composeFiles: [docker-compose.yml]  # at least one; resolved inside each worktree
-    projectPrefix: demo                 # compose project becomes <prefix>-<slug>
+    projectPrefix: demo                 # optional; compose project is <prefix>-<slug>, empty/missing => <slug>
   # podman:                     # alternative backend for runner.type: podman
   #   composeFiles: [docker-compose.yml]
   #   projectPrefix: demo
@@ -143,7 +143,8 @@ Rules:
   intentional `not implemented` stubs; bare-machine is roadmap — see
   `github.com/mytmlt/wrk3/blob/main/ROADMAP.md`). `runner.docker.composeFiles` (or
   `runner.podman.composeFiles` for the podman backend) needs at least one file;
-  `runner.docker.projectPrefix` (or `runner.podman.projectPrefix`) is required. Never set
+  `runner.docker.projectPrefix` (or `runner.podman.projectPrefix`) is optional
+  (empty/missing => slug-only compose project). Never set
   `container_name:` in compose files. `entry.*` commands must call the matching
   engine (`docker compose ...` vs `podman compose ...`).
 - `entry.*` strings execute verbatim via `sh -c` with `cwd=worktree`

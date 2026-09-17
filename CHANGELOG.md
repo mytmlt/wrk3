@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `runner.docker.projectPrefix` and `runner.podman.projectPrefix` are now
+  optional: empty, missing, or whitespace-only means slug-only compose
+  project names (`-p <slug>` instead of `-p <prefix>-<slug>`), so stacks
+  that must keep bare service names can set `projectPrefix: ""`.
+
 ### Added
 
 - `podman` runner (`runner.type: podman` with `runner.podman.composeFiles` /

@@ -187,7 +187,7 @@ runner:
   type: docker
   docker:
     composeFiles: [docker-compose.yml]
-    projectPrefix: demo
+    projectPrefix: demo                 # optional; empty/missing => slug-only compose project
 entry:
   setup: ["docker compose up --wait --build"]
   run: "docker compose logs -f"

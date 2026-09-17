@@ -58,7 +58,7 @@ func TestValidateTable(t *testing.T) {
 		}, "composeFiles"},
 		{"empty projectPrefix", func(s string) string {
 			return strings.Replace(s, "projectPrefix: demo", "projectPrefix: \"\"", 1)
-		}, "projectPrefix"},
+		}, ""},
 		{"podman happy", func(s string) string {
 			s = strings.Replace(s, "type: docker", "type: podman", 1)
 			s = strings.Replace(s, "  docker:\n    composeFiles: [docker-compose.yml]\n    projectPrefix: demo",
@@ -76,7 +76,7 @@ func TestValidateTable(t *testing.T) {
 			s = strings.Replace(s, "  docker:\n    composeFiles: [docker-compose.yml]\n    projectPrefix: demo",
 				"  podman:\n    composeFiles: [docker-compose.yml]\n    projectPrefix: \"\"", 1)
 			return s
-		}, "runner.podman.projectPrefix"},
+		}, ""},
 		{"empty entry.run", func(s string) string {
 			return strings.Replace(s, `run: "echo run"`, `run: ""`, 1)
 		}, "entry.run"},
@@ -201,5 +201,76 @@ ports:
 	}
 	if got := cfg.ComposeFiles(); len(got) != 1 || got[0] != "docker-compose.yml" {
 		t.Errorf("ComposeFiles() = %v, want [docker-compose.yml]", got)
+	}
+}
+
+func TestEmptyProjectPrefix(t *testing.T) {
+	dockerBase := `project:
+  worktreeBase: .worktrees
+source:
+  type: git
+runner:
+  type: docker
+  docker:
+    composeFiles: [docker-compose.yml]
+%sentry:
+  run: "echo run"
+  stop: "echo stop"
+ports:
+  base: {app: 8000}
+  step: 100
+`
+	cases := []struct {
+		name    string
+		frag    string
+		wantPre string
+	}{
+		{"explicit empty", "    projectPrefix: \"\"\n", ""},
+		{"missing key", "", ""},
+		{"whitespace-only", "    projectPrefix: \"   \"\n", ""},
+	}
+	for _, c := range cases {
+		t.Run("docker "+c.name, func(t *testing.T) {
+			cfg, err := Load(writeConfig(t, strings.Replace(dockerBase, "%s", c.frag, 1)))
+			if err != nil {
+				t.Fatalf("Load = %v, want nil", err)
+			}
+			if cfg.Runner.Docker.ProjectPrefix != c.wantPre {
+				t.Errorf("ProjectPrefix = %q, want %q", cfg.Runner.Docker.ProjectPrefix, c.wantPre)
+			}
+			if got := cfg.ComposeOptions("feat-x").ProjectName(); got != "feat-x" {
+				t.Errorf("ProjectName = %q, want feat-x", got)
+			}
+		})
+	}
+
+	podmanBase := `project:
+  worktreeBase: .worktrees
+source:
+  type: git
+runner:
+  type: podman
+  podman:
+    composeFiles: [docker-compose.yml]
+%sentry:
+  run: "echo run"
+  stop: "echo stop"
+ports:
+  base: {app: 8000}
+  step: 100
+`
+	for _, c := range cases {
+		t.Run("podman "+c.name, func(t *testing.T) {
+			cfg, err := Load(writeConfig(t, strings.Replace(podmanBase, "%s", c.frag, 1)))
+			if err != nil {
+				t.Fatalf("Load = %v, want nil", err)
+			}
+			if cfg.Runner.Podman.ProjectPrefix != c.wantPre {
+				t.Errorf("ProjectPrefix = %q, want %q", cfg.Runner.Podman.ProjectPrefix, c.wantPre)
+			}
+			if got := cfg.ComposeOptions("feat-x").ProjectName(); got != "feat-x" {
+				t.Errorf("ProjectName = %q, want feat-x", got)
+			}
+		})
 	}
 }

@@ -14,6 +14,9 @@ runner:
   type: docker
   docker:
     composeFiles: [docker-compose.yml]
+    # Optional: compose project is <prefix>-<slug>; empty/missing means
+    # slug-only (e.g. `projectPrefix: ""`). Slug-only names can collide
+    # across repos sharing a daemon.
     projectPrefix: demo
   # Alternative backend (set runner.type: podman and use `podman compose`
   # in entry.*):
