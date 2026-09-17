@@ -228,7 +228,12 @@ even when the setup itself already started containers. Pressing `l`
 flips the selected rows to `setting up` the same way until the
 `entry.reload` commands finish (and errors when `entry.reload` is empty).
 Pressing `d` flips the selected rows to `stopping` immediately until
-compose down finishes. Branches with an on-disk worktree missing from state show as
+compose down finishes. Ops run in the background without freezing the
+UI: navigation, selection (`space`), refresh (`r`), fetch (`R`), and
+ops on unrelated worktrees stay live while an op runs (the header shows
+e.g. `up feature-a +1 more…`). Only an op targeting the same branch as
+a still-running op is rejected (`up blocked: … already running`),
+and polling keeps refreshing in the background. Branches with an on-disk worktree missing from state show as
 `orphan` and are queueable: `a` adopts them (ports + `.env` + state)
 instead of re-creating the checkout.
 

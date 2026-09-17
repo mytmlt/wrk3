@@ -161,7 +161,7 @@ func TestDashboardUpKey_FlipsRowsImmediately(t *testing.T) {
 	m.projects[0].cfg = nil
 	next, cmd := m.handleKey(keyMsg("u"))
 	dm := next.(dashboardModel)
-	if !dm.busy || dm.busyLabel != "up" {
+	if !dm.isBusy() || dm.busyTitle() != "up feature-a" {
 		t.Fatalf("u should start busy up: %+v", dm)
 	}
 	if cmd == nil {

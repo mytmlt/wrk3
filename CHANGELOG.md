@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   optional: empty, missing, or whitespace-only means slug-only compose
   project names (`-p <slug>` instead of `-p <prefix>-<slug>`), so stacks
   that must keep bare service names can set `projectPrefix: ""`.
+- Dashboard ops no longer freeze the UI: `u`/`d`/`l`/`p`/`a`/`o`/`R`/`x`
+  run as tracked background ops with a per-branch overlap guard, so
+  navigation, selection, refresh, and ops on unrelated worktrees stay
+  live while one runs (header shows e.g. `up feature-a +1 more…`).
+  Only the same branch as a still-running op is rejected, and background
+  polling keeps refreshing during ops.
 
 ### Added
 

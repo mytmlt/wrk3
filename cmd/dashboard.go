@@ -140,6 +140,17 @@ func loadDashboardProject(desc dashboardProjectDesc, remoteOverride string) *das
 	return p
 }
 
+// dashboardOp tracks one in-flight background operation so the UI stays
+// interactive while it runs. Branch-scoped ops (up/down/reload/pull/add/
+// remove) carry their target branches for the per-branch overlap guard;
+// global ops (fetch/open) carry no branches and never conflict.
+type dashboardOp struct {
+	id       int
+	label    string
+	branches []string
+	proj     int
+}
+
 // dashboardModel is the BubbleTea model for the whole dashboard.
 type dashboardModel struct {
 	projects     []*dashboardProject
@@ -155,8 +166,8 @@ type dashboardModel struct {
 	statusMsg    string
 	proxyInfo    string // gateway status for the meta line (set on refresh)
 	fetchedAt    time.Time
-	busy         bool
-	busyLabel    string
+	ops          []dashboardOp
+	nextOpID     int
 	confirm      string // pending confirm label, "" when none
 	pendingX     []string
 	pendingForce bool // true when the pending remove confirm is a --force remove
@@ -205,6 +216,86 @@ func newDashboardModel(descs []dashboardProjectDesc, poll time.Duration, remote 
 
 func (m dashboardModel) curProject() *dashboardProject { return m.projects[m.cur] }
 
+// isBusy reports whether any background op is in flight.
+func (m dashboardModel) isBusy() bool { return len(m.ops) > 0 }
+
+// busyTitle summarizes running ops for the header spinner, e.g.
+// "up feature-a" or "up feature-a +1 more".
+func (m dashboardModel) busyTitle() string {
+	if len(m.ops) == 0 {
+		return ""
+	}
+	first := m.ops[0].label
+	if len(m.ops[0].branches) > 0 {
+		first += " " + strings.Join(m.ops[0].branches, ", ")
+	}
+	if len(m.ops) == 1 {
+		return first
+	}
+	return fmt.Sprintf("%s +%d more", first, len(m.ops)-1)
+}
+
+// startOp registers a background op and returns its ID.
+func (m *dashboardModel) startOp(label string, branches []string) int {
+	id := m.nextOpID
+	m.nextOpID++
+	m.ops = append(m.ops, dashboardOp{id: id, label: label, branches: append([]string(nil), branches...), proj: m.cur})
+	return id
+}
+
+// finishOp removes the op with the given ID, reporting whether it existed.
+func (m *dashboardModel) finishOp(id int) bool {
+	_, ok := m.popOp(id)
+	return ok
+}
+
+// popOp removes the op with the given ID and returns it, so completion
+// handlers can clear only that op's branches from the selection sets.
+func (m *dashboardModel) popOp(id int) (dashboardOp, bool) {
+	for i, op := range m.ops {
+		if op.id == id {
+			m.ops = append(m.ops[:i], m.ops[i+1:]...)
+			return op, true
+		}
+	}
+	return dashboardOp{}, false
+}
+
+// conflictingOp returns the running op in the same project that already
+// touches one of the target branches, or nil when there is no overlap.
+func (m dashboardModel) conflictingOp(targets []string) *dashboardOp {
+	if len(targets) == 0 {
+		return nil
+	}
+	want := map[string]bool{}
+	for _, t := range targets {
+		want[t] = true
+	}
+	for i := range m.ops {
+		if m.ops[i].proj != m.cur {
+			continue
+		}
+		for _, b := range m.ops[i].branches {
+			if want[b] {
+				op := m.ops[i]
+				return &op
+			}
+		}
+	}
+	return nil
+}
+
+// fetchRunning reports whether a fetch op is already in flight for the
+// current project.
+func (m dashboardModel) fetchRunning() bool {
+	for _, op := range m.ops {
+		if op.proj == m.cur && op.label == "fetch" {
+			return true
+		}
+	}
+	return false
+}
+
 // reconciledState loads state and adopts orphan on-disk worktrees,
 // persisting when anything was adopted. Adopted branch names and .env
 // divergence warnings are returned for the log pane.
@@ -245,6 +336,7 @@ type dashboardBranchesMsg struct {
 	err     error
 }
 type dashboardOpDoneMsg struct {
+	opID  int
 	label string
 	lines []string
 	err   error
@@ -514,19 +606,19 @@ func wrapLogLine(line string, width int) []string {
 }
 
 // Op commands: up / down / add / remove over explicit selections.
-func dashboardOpCmd(p *dashboardProject, label string, fn func(logf func(string, ...any)) error) tea.Cmd {
+func dashboardOpCmd(p *dashboardProject, opID int, label string, fn func(logf func(string, ...any)) error) tea.Cmd {
 	return func() tea.Msg {
 		var lines []string
 		logf := func(format string, a ...any) {
 			lines = append(lines, fmt.Sprintf(format, a...))
 		}
 		err := fn(logf)
-		return dashboardOpDoneMsg{label: label, lines: lines, err: err}
+		return dashboardOpDoneMsg{opID: opID, label: label, lines: lines, err: err}
 	}
 }
 
-func dashboardUpCmd(p *dashboardProject, targets []ports.WorktreeRecord) tea.Cmd {
-	return dashboardOpCmd(p, "up", func(logf func(string, ...any)) error {
+func dashboardUpCmd(p *dashboardProject, opID int, targets []ports.WorktreeRecord) tea.Cmd {
+	return dashboardOpCmd(p, opID, "up", func(logf func(string, ...any)) error {
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
@@ -540,8 +632,8 @@ func dashboardUpCmd(p *dashboardProject, targets []ports.WorktreeRecord) tea.Cmd
 	})
 }
 
-func dashboardDownCmd(p *dashboardProject, targets []ports.WorktreeRecord) tea.Cmd {
-	return dashboardOpCmd(p, "down", func(logf func(string, ...any)) error {
+func dashboardDownCmd(p *dashboardProject, opID int, targets []ports.WorktreeRecord) tea.Cmd {
+	return dashboardOpCmd(p, opID, "down", func(logf func(string, ...any)) error {
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
@@ -550,8 +642,8 @@ func dashboardDownCmd(p *dashboardProject, targets []ports.WorktreeRecord) tea.C
 	})
 }
 
-func dashboardReloadCmd(p *dashboardProject, targets []ports.WorktreeRecord) tea.Cmd {
-	return dashboardOpCmd(p, "reload", func(logf func(string, ...any)) error {
+func dashboardReloadCmd(p *dashboardProject, opID int, targets []ports.WorktreeRecord) tea.Cmd {
+	return dashboardOpCmd(p, opID, "reload", func(logf func(string, ...any)) error {
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
@@ -560,8 +652,8 @@ func dashboardReloadCmd(p *dashboardProject, targets []ports.WorktreeRecord) tea
 	})
 }
 
-func dashboardPullCmd(p *dashboardProject, targets []ports.WorktreeRecord) tea.Cmd {
-	return dashboardOpCmd(p, "pull", func(logf func(string, ...any)) error {
+func dashboardPullCmd(p *dashboardProject, opID int, targets []ports.WorktreeRecord) tea.Cmd {
+	return dashboardOpCmd(p, opID, "pull", func(logf func(string, ...any)) error {
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
@@ -570,8 +662,8 @@ func dashboardPullCmd(p *dashboardProject, targets []ports.WorktreeRecord) tea.C
 	})
 }
 
-func dashboardAddCmd(p *dashboardProject, branches []string) tea.Cmd {
-	return dashboardOpCmd(p, "add", func(logf func(string, ...any)) error {
+func dashboardAddCmd(p *dashboardProject, opID int, branches []string) tea.Cmd {
+	return dashboardOpCmd(p, opID, "add", func(logf func(string, ...any)) error {
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
@@ -628,12 +720,12 @@ func dashboardAddCmd(p *dashboardProject, branches []string) tea.Cmd {
 // Refuses the implicit main checkout like `remove`. Force runs
 // `git worktree remove --force` and falls back to rm -rf like
 // `remove --force` when git still refuses.
-func dashboardRemoveCmd(p *dashboardProject, branches []string, force bool) tea.Cmd {
+func dashboardRemoveCmd(p *dashboardProject, opID int, branches []string, force bool) tea.Cmd {
 	label := "remove"
 	if force {
 		label = "remove --force"
 	}
-	return dashboardOpCmd(p, label, func(logf func(string, ...any)) error {
+	return dashboardOpCmd(p, opID, label, func(logf func(string, ...any)) error {
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
@@ -704,8 +796,10 @@ func dashboardCopyCmd(url string) tea.Cmd {
 
 // dashboardOpenCmd logs the worktree URL and opens it in a browser.
 // Browser failures still leave the clickable URL in the log pane.
-func dashboardOpenCmd(p *dashboardProject, rec ports.WorktreeRecord) tea.Cmd {
-	return dashboardOpCmd(p, "open", func(logf func(string, ...any)) error {
+// Open is tracked as a branch-less op: it shows in the title spinner but
+// never conflicts with other ops and never blocks the UI.
+func dashboardOpenCmd(p *dashboardProject, opID int, rec ports.WorktreeRecord) tea.Cmd {
+	return dashboardOpCmd(p, opID, "open", func(logf func(string, ...any)) error {
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
@@ -744,9 +838,9 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case dashboardTickMsg:
-		if m.busy {
-			return m, dashboardTickCmd(m.poll)
-		}
+		// Polling stays live while ops run so unrelated worktrees keep
+		// refreshing; transitional setting-up/stopping states survive
+		// refresh via ports.ResolveDisplayStatus.
 		return m, tea.Batch(
 			dashboardRefreshRowsCmd(m.curProject()),
 			dashboardReloadBranchesCmd(m.curProject(), m.mine, m.authors, m.myprs, m.brSel),
@@ -810,11 +904,10 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case dashboardOpDoneMsg:
-		m.busy = false
-		m.busyLabel = ""
-		m.confirm = ""
-		m.pendingX = nil
-		m.pendingForce = false
+		op, _ := m.popOp(msg.opID)
+		// Staged remove confirms are cleared at op start (y), never here:
+		// a newer y/n prompt staged while this op ran must survive its
+		// completion.
 		for _, l := range msg.lines {
 			m = m.appendLog("[" + msg.label + "] " + l)
 		}
@@ -823,12 +916,17 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.appendLog("error: " + msg.err.Error())
 		} else {
 			m.statusMsg = msg.label + " done"
-			// Clear branch queue after successful add.
+			// Clear only this op's branches so selections queued while it
+			// ran (e.g. a second add/remove on disjoint branches) survive.
 			if msg.label == "add" {
-				m.brSel = map[string]bool{}
+				for _, b := range op.branches {
+					delete(m.brSel, b)
+				}
 			}
 			if strings.HasPrefix(msg.label, "remove") {
-				m.workSel = map[string]bool{}
+				for _, b := range op.branches {
+					delete(m.workSel, b)
+				}
 			}
 		}
 		return m, tea.Batch(
@@ -836,14 +934,23 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			dashboardReloadBranchesCmd(m.curProject(), m.mine, m.authors, m.myprs, m.brSel),
 		)
 	case dashboardFetchDoneMsg:
-		m.busy = false
-		m.busyLabel = ""
+		m.finishOp(msg.opID)
+		prev := m.brSel
 		m.branches = msg.entries
 		m.fetchedAt = time.Now()
+		// Current selections alone reflect intent: entries carry
+		// fetch-start selections, so unioning them back would resurrect
+		// branches the user explicitly dequeued while the fetch ran.
+		// Keep only current selections that are still selectable.
 		m.brSel = map[string]bool{}
-		for _, e := range m.branches {
-			if e.Selected {
-				m.brSel[e.Name] = true
+		for k, v := range prev {
+			if !v {
+				continue
+			}
+			for _, e := range m.branches {
+				if e.Name == k && e.selectable() {
+					m.brSel[k] = true
+				}
 			}
 		}
 		if m.brCursor >= len(m.branches) {
@@ -928,16 +1035,34 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if force {
 				label = "remove --force"
 			}
-			m.busy = true
-			m.busyLabel = label
+			if conflict := m.conflictingOp(targets); conflict != nil {
+				m.statusMsg = label + " blocked: " + conflict.label + " already running for " + strings.Join(targets, ", ") + " (n to cancel, y to retry)"
+				return m, nil
+			}
+			id := m.startOp(label, targets)
+			m.confirm = ""
+			m.pendingX = nil
+			m.pendingForce = false
 			m = m.appendLog(label + " " + strings.Join(targets, ", "))
-			return m, dashboardRemoveCmd(m.curProject(), targets, force)
+			return m, dashboardRemoveCmd(m.curProject(), id, targets, force)
 		case "n", "N", "esc":
 			m.confirm = ""
 			m.pendingX = nil
 			m.pendingForce = false
 			m.statusMsg = "remove cancelled"
 			return m, nil
+		case "tab":
+			// A staged confirm belongs to the current project: cancel it
+			// so y cannot execute old branch names after the switch,
+			// then fall through to the normal project switch.
+			m.confirm = ""
+			m.pendingX = nil
+			m.pendingForce = false
+			m.statusMsg = "remove cancelled (project switched)"
+			if m.showMenu {
+				return m, nil
+			}
+			return m.handleNormalKey(msg)
 		}
 		return m, nil
 	}
@@ -1044,6 +1169,12 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.workCursor = 0
 			m.brCursor = 0
 			m.statusMsg = ""
+			// A staged remove confirm belongs to the previous project:
+			// drop it so y cannot execute old branch names in the new
+			// project.
+			m.confirm = ""
+			m.pendingX = nil
+			m.pendingForce = false
 			m = m.appendLog("switched to " + m.curProject().desc.Name)
 			return m, tea.Batch(
 				dashboardRefreshRowsCmd(m.curProject()),
@@ -1092,9 +1223,7 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case " ":
-		if m.busy {
-			return m, nil
-		}
+		// Selection never blocks, even while ops run.
 		if m.pane == 2 {
 			return m, nil
 		}
@@ -1121,13 +1250,13 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			dashboardReloadBranchesCmd(m.curProject(), m.mine, m.authors, m.myprs, m.brSel),
 		)
 	case "R":
-		if m.busy {
+		if m.fetchRunning() {
+			m.statusMsg = "fetch already running"
 			return m, nil
 		}
-		m.busy = true
-		m.busyLabel = "fetch"
+		id := m.startOp("fetch", nil)
 		m = m.appendLog("fetch " + m.curProject().remote + "…")
-		return m, dashboardFetchOpCmd(m.curProject(), m.mine, m.authors, m.myprs, m.brSel)
+		return m, dashboardFetchOpCmd(m.curProject(), id, m.mine, m.authors, m.myprs, m.brSel)
 	case "m":
 		m.mine = !m.mine
 		m.statusMsg = "mine filter " + map[bool]string{true: "on", false: "off"}[m.mine]
@@ -1137,77 +1266,78 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.statusMsg = "myprs filter " + map[bool]string{true: "on", false: "off"}[m.myprs]
 		return m, dashboardReloadBranchesCmd(m.curProject(), m.mine, m.authors, m.myprs, m.brSel)
 	case "u":
-		if m.busy {
-			return m, nil
-		}
 		targets := m.selectedWorktrees()
 		if len(targets) == 0 {
 			m.statusMsg = "nothing selected (space to select, or cursor worktree)"
 			return m, nil
 		}
-		m.busy = true
-		m.busyLabel = "up"
+		names := branchNamesOf(targets)
+		if conflict := m.conflictingOp(names); conflict != nil {
+			m.statusMsg = "up blocked: " + conflict.label + " already running for " + strings.Join(names, ", ")
+			return m, nil
+		}
+		id := m.startOp("up", names)
 		m = m.appendLog("up " + branchesOf(targets))
 		m = m.markRowsSettingUp(targets)
-		return m, dashboardUpCmd(m.curProject(), targets)
+		return m, dashboardUpCmd(m.curProject(), id, targets)
 	case "d":
-		if m.busy {
-			return m, nil
-		}
 		targets := m.selectedWorktrees()
 		if len(targets) == 0 {
 			m.statusMsg = "nothing selected (space to select, or cursor worktree)"
 			return m, nil
 		}
-		m.busy = true
-		m.busyLabel = "down"
+		names := branchNamesOf(targets)
+		if conflict := m.conflictingOp(names); conflict != nil {
+			m.statusMsg = "down blocked: " + conflict.label + " already running for " + strings.Join(names, ", ")
+			return m, nil
+		}
+		id := m.startOp("down", names)
 		m = m.appendLog("down " + branchesOf(targets))
 		m = m.markRowsStopping(targets)
-		return m, dashboardDownCmd(m.curProject(), targets)
+		return m, dashboardDownCmd(m.curProject(), id, targets)
 	case "l":
-		if m.busy {
-			return m, nil
-		}
 		targets := m.selectedWorktrees()
 		if len(targets) == 0 {
 			m.statusMsg = "nothing selected (space to select, or cursor worktree)"
 			return m, nil
 		}
-		m.busy = true
-		m.busyLabel = "reload"
+		names := branchNamesOf(targets)
+		if conflict := m.conflictingOp(names); conflict != nil {
+			m.statusMsg = "reload blocked: " + conflict.label + " already running for " + strings.Join(names, ", ")
+			return m, nil
+		}
+		id := m.startOp("reload", names)
 		m = m.appendLog("reload " + branchesOf(targets))
 		m = m.markRowsSettingUp(targets)
-		return m, dashboardReloadCmd(m.curProject(), targets)
+		return m, dashboardReloadCmd(m.curProject(), id, targets)
 	case "p":
-		if m.busy {
-			return m, nil
-		}
 		targets := m.selectedWorktrees()
 		if len(targets) == 0 {
 			m.statusMsg = "nothing selected (space to select, or cursor worktree)"
 			return m, nil
 		}
-		m.busy = true
-		m.busyLabel = "pull"
-		m = m.appendLog("pull " + branchesOf(targets))
-		return m, dashboardPullCmd(m.curProject(), targets)
-	case "a":
-		if m.busy {
+		names := branchNamesOf(targets)
+		if conflict := m.conflictingOp(names); conflict != nil {
+			m.statusMsg = "pull blocked: " + conflict.label + " already running for " + strings.Join(names, ", ")
 			return m, nil
 		}
+		id := m.startOp("pull", names)
+		m = m.appendLog("pull " + branchesOf(targets))
+		return m, dashboardPullCmd(m.curProject(), id, targets)
+	case "a":
 		branches := selectedKeys(m.brSel)
 		if len(branches) == 0 {
 			m.statusMsg = "no branches queued (focus branches pane, space to queue)"
 			return m, nil
 		}
-		m.busy = true
-		m.busyLabel = "add"
-		m = m.appendLog("add " + strings.Join(branches, ", "))
-		return m, dashboardAddCmd(m.curProject(), branches)
-	case "o":
-		if m.busy {
+		if conflict := m.conflictingOp(branches); conflict != nil {
+			m.statusMsg = "add blocked: " + conflict.label + " already running for " + strings.Join(branches, ", ")
 			return m, nil
 		}
+		id := m.startOp("add", branches)
+		m = m.appendLog("add " + strings.Join(branches, ", "))
+		return m, dashboardAddCmd(m.curProject(), id, branches)
+	case "o":
 		targets := m.selectedWorktrees()
 		if len(targets) == 0 {
 			m.statusMsg = "nothing selected (space to select, or cursor worktree)"
@@ -1219,9 +1349,8 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m = m.appendLog("open " + rec.Branch)
 		}
-		m.busy = true
-		m.busyLabel = "open"
-		return m, dashboardOpenCmd(m.curProject(), rec)
+		id := m.startOp("open", nil)
+		return m, dashboardOpenCmd(m.curProject(), id, rec)
 	case "O":
 		targets := m.selectedWorktrees()
 		if len(targets) == 0 {
@@ -1246,9 +1375,6 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.statusMsg = "copying " + target + "…"
 		return m, dashboardCopyCmd(target)
 	case "x", "X":
-		if m.busy {
-			return m, nil
-		}
 		targets := m.selectedWorktrees()
 		if len(targets) == 0 {
 			m.statusMsg = "nothing selected (space to select, or cursor worktree)"
@@ -1257,6 +1383,10 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		var names []string
 		for _, t := range targets {
 			names = append(names, t.Branch)
+		}
+		if conflict := m.conflictingOp(names); conflict != nil {
+			m.statusMsg = "remove blocked: " + conflict.label + " already running for " + strings.Join(names, ", ")
+			return m, nil
 		}
 		// x asks for a clean remove; X asks for --force (dirty worktrees
 		// with modified/untracked files).
@@ -1276,31 +1406,40 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // dashboardFetchOpCmd runs a network fetch, then reports branches through
 // dashboardFetchDoneMsg so Update (not the background goroutine) mutates state.
-func dashboardFetchOpCmd(p *dashboardProject, mine bool, authors []string, myprs bool, keepSel map[string]bool) tea.Cmd {
+func dashboardFetchOpCmd(p *dashboardProject, opID int, mine bool, authors []string, myprs bool, keepSel map[string]bool) tea.Cmd {
+	keep := make(map[string]bool, len(keepSel))
+	for k, v := range keepSel {
+		keep[k] = v
+	}
 	return func() tea.Msg {
-		msg := dashboardFetchBranchesCmd(p, mine, authors, myprs, keepSel)()
+		msg := dashboardFetchBranchesCmd(p, mine, authors, myprs, keep)()
 		bm, ok := msg.(dashboardBranchesMsg)
 		if !ok {
-			return dashboardOpDoneMsg{label: "fetch", err: fmt.Errorf("fetch failed")}
+			return dashboardOpDoneMsg{opID: opID, label: "fetch", err: fmt.Errorf("fetch failed")}
 		}
 		if bm.err != nil {
-			return dashboardOpDoneMsg{label: "fetch", err: bm.err}
+			return dashboardOpDoneMsg{opID: opID, label: "fetch", err: bm.err}
 		}
-		return dashboardFetchDoneMsg{entries: bm.entries}
+		return dashboardFetchDoneMsg{opID: opID, entries: bm.entries}
 	}
 }
 
 // dashboardFetchDoneMsg carries a successful fetch branch list.
 type dashboardFetchDoneMsg struct {
+	opID    int
 	entries []branchEntry
 }
 
 func branchesOf(recs []ports.WorktreeRecord) string {
-	var out []string
+	return strings.Join(branchNamesOf(recs), ", ")
+}
+
+func branchNamesOf(recs []ports.WorktreeRecord) []string {
+	out := make([]string, 0, len(recs))
 	for _, r := range recs {
 		out = append(out, r.Branch)
 	}
-	return strings.Join(out, ", ")
+	return out
 }
 
 // View.
@@ -1551,8 +1690,8 @@ func (m dashboardModel) dashboardTitle() string {
 			title += fmt.Sprintf(" (%d/%d, tab to switch)", m.cur+1, len(m.projects))
 		}
 	}
-	if m.busy {
-		title += "  " + m.spinner.View() + " " + m.busyLabel + "…"
+	if m.isBusy() {
+		title += "  " + m.spinner.View() + " " + m.busyTitle() + "…"
 	}
 	return title
 }
