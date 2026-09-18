@@ -29,7 +29,8 @@ Downloads the matching prebuilt asset from GitHub releases, verifies its
 sha256 checksum, and atomically replaces the current binary. No Go
 toolchain required. Set WRK3_NO_UPDATE_CHECK=1 to silence the daily
 "new version available" notice (explicit "wrk3 update" always runs).`,
-	Args: cobra.NoArgs,
+	Args:              cobra.NoArgs,
+	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if updateCheck {
 			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)

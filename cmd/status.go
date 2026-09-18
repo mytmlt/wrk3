@@ -16,9 +16,10 @@ import (
 )
 
 var statusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "WORKTREE/BRANCH/STATUS/PORTS/COMPOSE_PROJECT",
-	Args:  cobra.NoArgs,
+	Use:               "status",
+	Short:             "WORKTREE/BRANCH/STATUS/PORTS/COMPOSE_PROJECT",
+	Args:              cobra.NoArgs,
+	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		r, err := resolveConfig()
 		if err != nil {

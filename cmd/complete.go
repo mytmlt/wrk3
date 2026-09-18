@@ -31,39 +31,85 @@ func stateRecordsForCompletion() []ports.WorktreeRecord {
 	return recs
 }
 
-// completeWorktrees completes existing worktree branch names (with the
-// slug as description), including the implicit main checkout.
-// Used by up/down/reload/pull/logs/exec/remove/checkout.
+// typedSet returns the already-typed positional args as a set, so
+// multi-value commands ([branch...]) don't re-suggest what's typed.
+func typedSet(args []string) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, a := range args {
+		if a != "" {
+			out[a] = struct{}{}
+		}
+	}
+	return out
+}
+
+// completeWorktrees completes existing worktree branch names and slugs
+// (prefix-filtered on what was typed so far), including the implicit
+// main checkout. Branch candidates carry the slug as description and
+// slug candidates carry the branch, so TAB shows both names for each
+// worktree. Used by up/down/reload/pull/logs/checkout/env/proxy open.
 func completeWorktrees(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	return completeWorktreeRecords(args, toComplete, false)
+}
+
+// completeWorktreesExcludingMain is completeWorktrees minus the implicit
+// main checkout. Used by remove, which refuses main by branch/slug
+// instead of reporting "unknown", so completing it would mislead.
+func completeWorktreesExcludingMain(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	return completeWorktreeRecords(args, toComplete, true)
+}
+
+func completeWorktreeRecords(args []string, toComplete string, excludeMain bool) ([]string, cobra.ShellCompDirective) {
 	recs := stateRecordsForCompletion()
+	var mainBranch, mainSlug string
 	// Best-effort main checkout (never fails hard for completion).
 	if path, err := ResolveConfigPath(); err == nil && path != "" {
 		if cfg, err := config.Load(path); err == nil {
 			if src, err := newSource(cfg); err == nil {
 				r := &resolved{cfg: cfg, src: src}
 				if main, err := mainRecord(r, recs); err == nil && main != nil {
+					mainBranch, mainSlug = main.Branch, main.Slug
 					recs = append(recs, *main)
 				}
 			}
 		}
 	}
+	typed := typedSet(args)
 	var out []string
+	seen := map[string]struct{}{}
+	add := func(cand, desc string) {
+		if cand == "" || !strings.HasPrefix(cand, toComplete) {
+			return
+		}
+		if _, ok := typed[cand]; ok {
+			return
+		}
+		if _, ok := seen[cand]; ok {
+			return
+		}
+		seen[cand] = struct{}{}
+		out = append(out, cobra.CompletionWithDesc(cand, desc))
+	}
 	for _, rec := range recs {
-		for _, cand := range []string{rec.Branch, rec.Slug} {
-			if cand == "" || !strings.HasPrefix(cand, toComplete) {
-				continue
-			}
-			out = append(out, cobra.CompletionWithDesc(cand, rec.Slug))
+		if excludeMain && mainBranch != "" && (rec.Branch == mainBranch || rec.Slug == mainSlug) {
+			continue
+		}
+		// Branch name first (description: worktree slug), then the slug
+		// itself when it differs (description: branch name).
+		add(rec.Branch, "worktree "+rec.Slug)
+		if rec.Slug != "" && rec.Slug != rec.Branch {
+			add(rec.Slug, "branch "+rec.Branch)
 		}
 	}
 	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
 // completeWorktreesFirstOnly completes only the first positional arg
-// (the branch); further args are the inner command, not worktrees.
+// (the worktree); further args are the inner command, so file/command
+// completion stays enabled there instead of being suppressed.
 func completeWorktreesFirstOnly(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
-		return nil, cobra.ShellCompDirectiveNoFileComp
+		return nil, cobra.ShellCompDirectiveDefault
 	}
 	return completeWorktrees(cmd, args, toComplete)
 }
@@ -115,10 +161,15 @@ func remoteBranchesForCompletion(cmd *cobra.Command) []string {
 	return out
 }
 
-// completeRemoteBranches completes remote branch names for add.
+// completeRemoteBranches completes remote branch names for add,
+// prefix-filtered and minus already-typed args.
 func completeRemoteBranches(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	typed := typedSet(args)
 	var out []string
 	for _, ref := range remoteBranchesForCompletion(cmd) {
+		if _, ok := typed[ref]; ok {
+			continue
+		}
 		if strings.HasPrefix(ref, toComplete) {
 			out = append(out, ref)
 		}
@@ -182,9 +233,13 @@ func completeLocalWorktreeBranches(cmd *cobra.Command, args []string, toComplete
 			taken[rec.Branch] = struct{}{}
 		}
 	}
+	typed := typedSet(args)
 	var out []string
 	for branch := range byBranch {
 		if _, ok := taken[branch]; ok {
+			continue
+		}
+		if _, ok := typed[branch]; ok {
 			continue
 		}
 		if strings.HasPrefix(branch, toComplete) {

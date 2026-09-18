@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Shell completion now covers every command: subcommand names complete
+  by prefix (including `proxy`/`project` subgroups), branch positions
+  suggest branch names and worktree positions suggest branch names +
+  slugs (prefix-filtered, already-typed names skipped). `remove` skips
+  the implicit main checkout, `exec` keeps file completion after the
+  worktree arg, and no-arg commands (`status`, `fetch`, `log`, `ls`,
+  `dashboard`, `skill`, `version`, `update`, `project`, `proxy
+  up/down/status/hosts-sync`) no longer complete files. Completion
+  coexists with the `shell-init` wrapper (bash + zsh verified).
+
 ### Changed
 
 - Dashboard worktree table columns now expand or shrink to fit content:

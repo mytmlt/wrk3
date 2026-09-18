@@ -19,9 +19,16 @@ wrk3 completion powershell | Out-String | Invoke-Expression
 ```
 
 `add` completes remote branches (for the effective remote — `--remote`
-flag > `source.git.remote` > `origin`); `up`/`down`/`reload`/`pull`/`logs`/`exec`/`env`/`remove`/`checkout`
-complete existing worktrees (branch names and slugs); `ls --project`
-completes registry project names. Completion never
+flag > `source.git.remote` > `origin`); `up`/`down`/`reload`/`pull`/`logs`/`exec`/`env`/`checkout`/`proxy open`
+complete existing worktrees (branch names and slugs, prefix-filtered on
+what you typed — already-typed names are not re-suggested);
+`remove` completes worktrees except the implicit main checkout (which
+`remove` refuses); `ls --project` completes registry project names.
+`exec` completes the worktree only in first position — after that the
+inner command keeps normal file/command completion. Commands taking no
+positional args (`status`, `fetch`, `log`, `ls`, `dashboard`, `skill`,
+`version`, `update`, `project`, `proxy up/down/status/hosts-sync`)
+suppress file completion so TAB only offers flags. Completion never
 fetches from the network — it uses the last `fetch` results.
 
 ## Switching branches/worktrees

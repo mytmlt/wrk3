@@ -18,7 +18,7 @@ var removeForce bool
 var removeCmd = &cobra.Command{
 	Use:               "remove [branch...] | --all",
 	Short:             "compose down -v + worktree remove, cleanup state",
-	ValidArgsFunction: completeWorktrees,
+	ValidArgsFunction: completeWorktreesExcludingMain,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		r, err := resolveConfig()
 		if err != nil {

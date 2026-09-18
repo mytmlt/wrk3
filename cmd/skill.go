@@ -23,7 +23,8 @@ onboarding first, ask when unsure), the compatibility triage, the
 wrk3.yaml template and field rules, and the validation step, so an
 agent can configure wrk3 for any app. It needs no config file and
 prints markdown to stdout.`,
-	Args: cobra.NoArgs,
+	Args:              cobra.NoArgs,
+	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if _, err := fmt.Fprint(cmd.OutOrStdout(), skillGuide); err != nil {
 			return fmt.Errorf("write skill guide: %w", err)
