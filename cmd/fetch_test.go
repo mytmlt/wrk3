@@ -7,13 +7,15 @@ import (
 )
 
 type stubSource struct {
-	refs     []string
-	local    []string
-	detailed []source.BranchRef
-	history  map[string][]source.BranchRef
-	base     string
-	name     string
-	email    string
+	refs      []string
+	local     []string
+	detailed  []source.BranchRef
+	history   map[string][]source.BranchRef
+	base      string
+	name      string
+	email     string
+	gitStatus map[string]source.WorktreeStatus
+	gitErr    map[string]error
 }
 
 func (s *stubSource) Fetch(repoPath, remote string) error { return nil }
@@ -47,6 +49,19 @@ func (s *stubSource) Remove(repoPath, worktreePath string, force bool) error {
 }
 func (s *stubSource) Pull(worktreePath string, opts source.PullOptions) error {
 	return nil
+}
+func (s *stubSource) GitStatus(worktreePath string) (source.WorktreeStatus, error) {
+	if s.gitErr != nil {
+		if err, ok := s.gitErr[worktreePath]; ok {
+			return source.WorktreeStatus{}, err
+		}
+	}
+	if s.gitStatus != nil {
+		if st, ok := s.gitStatus[worktreePath]; ok {
+			return st, nil
+		}
+	}
+	return source.WorktreeStatus{Clean: true}, nil
 }
 func (s *stubSource) List(repoPath string) ([]source.WorktreeInfo, error) { return nil, nil }
 
