@@ -972,6 +972,83 @@ func TestDashboardWorkColumns_FitsTableWidth(t *testing.T) {
 	}
 }
 
+func TestDashboardWorkColumnsFor_FitsContent(t *testing.T) {
+	// Screenshot regression: long multi-port lists and gateway URLs must
+	// not truncate when the terminal is wide enough.
+	portsCell := "app=8002,otel_grpc=4319,otel_http=4320"
+	url := "http://feat-sentry-intake-enrichment.localhost:8080"
+	cells := []dashboardWorkCells{{
+		worktree: "feat-sentry-intake-enrichment",
+		branch:   "feat/sentry-intake-enrichment",
+		ports:    portsCell,
+		url:      url,
+		project:  "sp-feat-sentry-intake-enrichment",
+	}}
+	cols := dashboardWorkColumnsFor(200, cells)
+	byTitle := map[string]int{}
+	sum := 0
+	for _, c := range cols {
+		byTitle[c.Title] = c.Width
+		sum += c.Width
+	}
+	if sum > 200 {
+		t.Errorf("columns sum %d overflows width 200", sum)
+	}
+	if byTitle["PORTS"] < len([]rune(portsCell)) {
+		t.Errorf("PORTS width %d truncates %q", byTitle["PORTS"], portsCell)
+	}
+	if byTitle["URL"] < len([]rune(url)) {
+		t.Errorf("URL width %d truncates %q", byTitle["URL"], url)
+	}
+	if byTitle["STATUS"] != 11 {
+		t.Errorf("STATUS width = %d, want fixed 11", byTitle["STATUS"])
+	}
+}
+
+func TestDashboardWorkColumnsFor_ShrinksProjectFirst(t *testing.T) {
+	long := strings.Repeat("x", 40)
+	cells := []dashboardWorkCells{{
+		worktree: long, branch: long, ports: long, url: long, project: long,
+	}}
+	cols := dashboardWorkColumnsFor(100, cells)
+	byTitle := map[string]int{}
+	sum := 0
+	for _, c := range cols {
+		byTitle[c.Title] = c.Width
+		sum += c.Width
+	}
+	if sum > 100 {
+		t.Fatalf("columns sum %d overflows width 100", sum)
+	}
+	// Needs total 198 at width 100 (over 98): PROJECT 32->8, WORKTREE
+	// 32->8, BRANCH 40->12, PORTS 40->18, URL untouched at 40.
+	want := map[string]int{
+		"✓": 3, "WORKTREE": 8, "BRANCH": 12, "STATUS": 11,
+		"PORTS": 18, "URL": 40, "PROJECT": 8,
+	}
+	for title, w := range want {
+		if byTitle[title] != w {
+			t.Errorf("%s width = %d, want %d (all: %v)", title, byTitle[title], w, byTitle)
+		}
+	}
+}
+
+func TestDashboardLogViewportHeight_FortyPercent(t *testing.T) {
+	for _, tc := range []struct {
+		total, want int
+	}{
+		{40, 13}, // 40*40/100-3
+		{24, 6},  // 24*40/100-3
+		{0, 5},   // unset size falls back
+		{-1, 5},
+		{10, 5}, // clamped to the fallback minimum
+	} {
+		if got := dashboardLogViewportHeight(tc.total); got != tc.want {
+			t.Errorf("height(%d) = %d, want %d", tc.total, got, tc.want)
+		}
+	}
+}
+
 func seedLogModel(t *testing.T, m dashboardModel) dashboardModel {
 	t.Helper()
 	lines := make([]string, 0, 30)

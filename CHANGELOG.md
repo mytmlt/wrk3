@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Dashboard worktree table columns now expand or shrink to fit content:
+  long port lists and URLs take leftover width instead of truncating
+  while narrow terminals still fit (least-important columns shrink
+  first). The log pane takes 40% of the screen height; the
+  branches/details panes shrink to make room while worktrees keep
+  priority.
+
 ### Fixed
 
 - `runner.docker.projectPrefix` and `runner.podman.projectPrefix` are now
