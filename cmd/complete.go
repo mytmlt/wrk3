@@ -47,7 +47,7 @@ func typedSet(args []string) map[string]struct{} {
 // (prefix-filtered on what was typed so far), including the implicit
 // main checkout. Branch candidates carry the slug as description and
 // slug candidates carry the branch, so TAB shows both names for each
-// worktree. Used by up/down/reload/pull/logs/checkout/env/proxy open.
+// worktree. Used by up/down/reload/pull/logs/checkout/env/git-status/proxy open.
 func completeWorktrees(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	return completeWorktreeRecords(args, toComplete, false)
 }

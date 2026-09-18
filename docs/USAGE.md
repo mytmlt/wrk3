@@ -19,7 +19,7 @@ wrk3 completion powershell | Out-String | Invoke-Expression
 ```
 
 `add` completes remote branches (for the effective remote — `--remote`
-flag > `source.git.remote` > `origin`); `up`/`down`/`reload`/`pull`/`logs`/`exec`/`env`/`checkout`/`proxy open`
+flag > `source.git.remote` > `origin`); `up`/`down`/`reload`/`pull`/`logs`/`exec`/`env`/`checkout`/`git-status`/`proxy open`
 complete existing worktrees (branch names and slugs, prefix-filtered on
 what you typed — already-typed names are not re-suggested);
 `remove` completes worktrees except the implicit main checkout (which
@@ -76,6 +76,7 @@ wrk3 up feature-a                   # setup entries + compose up + run entry
 wrk3 up                             # bare = all worktrees including main, in parallel (errgroup)
 wrk3 reload feature-a | wrk3 reload # entry.reload commands (bare = all including main, in parallel)
 wrk3 pull feature-a | wrk3 pull     # git pull in one worktree (bare = all including main, in parallel; --rebase/--ff-only)
+wrk3 git-status | wrk3 git-status feature-a  # git status per worktree (bare = all including main, in parallel; --short adds the file list; gs alias)
 wrk3 status                         # this config (full table, includes main)
 wrk3 ls                             # this config (minimal WORKTREE/BRANCH/STATUS/PORTS, includes main)
 wrk3 ls --project myapp             # worktrees in a registered project, from anywhere
@@ -123,6 +124,16 @@ while entries execute. A failed `up` stays `failed` until the next
 marks targets `stopping` at start, then `stopped` on success; failures
 keep `stopping` until the next `down` fixes them.
 
+Git status: `wrk3 git-status` (`gs` alias) checks `git status` of all
+local worktrees and displays one row per worktree —
+`WORKTREE/BRANCH/GIT/AHEAD/BEHIND/STAGED/UNSTAGED/UNTRACKED` (`GIT` is
+`clean`, `dirty`, or `error` when the probe fails; `AHEAD`/`BEHIND`
+count commits vs the upstream, `0` when there is none). Bare args mean
+all worktrees including main (like `pull`/`up`/`down`); branch names and
+slugs filter interchangeably. Probes run in parallel, stale entries
+(missing directory) render as `error` and join into the exit error, and
+`--short` also prints the short file list per dirty worktree.
+
 Health (optional, display-only): configure `health.checks` (each `run`
 via `sh -c` with `cwd=worktree`, `env=allocated ports`) and a running
 worktree's `STATUS` gains a Docker-style suffix — `running (healthy)`
@@ -134,7 +145,7 @@ worktrees are probed. The dashboard DETAILS preview lists the per-check
 breakdown (`api: pass, db: fail: ...`, containers as `container:<name>`).
 
 Main checkout: the repo root is always included implicitly (no state entry)
-in `up`/`down` (bare = all including main), `status`/`ls`, and as an
+in `up`/`down` (bare = all including main), `status`/`ls`/`git-status`, and as an
 `exec`/`logs` target by branch/slug. It uses reserved port index `0`
 (the `ports.base` allocation, e.g. `8000` with defaults) with the managed `.env` section ensured on `up`/`down`/`exec`;
 `remove` refuses main and `remove --all` covers only managed worktrees.

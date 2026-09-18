@@ -53,6 +53,27 @@ type PullOptions struct {
 	FFOnly bool
 }
 
+// WorktreeStatus describes `git status` for one worktree checkout.
+type WorktreeStatus struct {
+	// Branch is the current branch name (empty when HEAD is detached).
+	Branch string
+	// Clean is true when there are no staged/unstaged/untracked changes.
+	Clean bool
+	// Staged counts entries with staged changes (X not in " ?").
+	Staged int
+	// Unstaged counts entries with worktree changes (Y not in " ?").
+	Unstaged int
+	// Untracked counts `??` entries.
+	Untracked int
+	// Ahead counts commits ahead of the upstream (0 when no upstream).
+	Ahead int
+	// Behind counts commits behind the upstream (0 when no upstream).
+	Behind int
+	// Files holds the porcelain short lines (e.g. " M foo", "?? bar")
+	// in status order, without the `##` branch header.
+	Files []string
+}
+
 // Source provisions worktree directories from branches.
 type Source interface {
 	// Fetch prunes remote refs (git fetch <remote> --prune).
@@ -96,6 +117,9 @@ type Source interface {
 	// (git -C worktreePath pull [--rebase|--ff-only]). Rebase and FFOnly
 	// are mutually exclusive.
 	Pull(worktreePath string, opts PullOptions) error
+	// GitStatus reports `git status --porcelain -b` for the checkout at
+	// worktreePath (staged/unstaged/untracked counts plus ahead/behind).
+	GitStatus(worktreePath string) (WorktreeStatus, error)
 	// List returns existing worktrees (git worktree list --porcelain).
 	List(repoPath string) ([]WorktreeInfo, error)
 }
