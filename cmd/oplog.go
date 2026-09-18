@@ -411,3 +411,11 @@ func (l *loggedSource) List(repoPath string) ([]source.WorktreeInfo, error) {
 	l.logErr("git-list", "list worktrees failed", repoPath, "git worktree list", err)
 	return out, err
 }
+
+// GitStatus probes git status inside the worktree (read-only: logs only
+// on error so status polling stays quiet).
+func (l *loggedSource) GitStatus(worktreePath string) (source.WorktreeStatus, error) {
+	out, err := l.inner.GitStatus(worktreePath)
+	l.logErr("git-status", "git status failed", worktreePath, "git status --porcelain=v1 -b", err)
+	return out, err
+}

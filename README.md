@@ -164,6 +164,7 @@ wrk3 up
 wrk3 dashboard                  # start here — worktrees + branches + up/down/reload/pull/add/remove
 wrk3 reload                     # entry.reload commands (bare = all including main)
 wrk3 pull feature-a             # git pull in one worktree (bare = all including main; --rebase/--ff-only)
+wrk3 git-status                 # git status per worktree (bare = all including main; --short adds files)
 wrk3 status
 wrk3 ls --project myapp   # same worktrees from any dir (after add registers it)
 wrk3 project ls           # all registered projects

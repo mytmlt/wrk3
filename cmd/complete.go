@@ -33,7 +33,7 @@ func stateRecordsForCompletion() []ports.WorktreeRecord {
 
 // completeWorktrees completes existing worktree branch names (with the
 // slug as description), including the implicit main checkout.
-// Used by up/down/reload/pull/logs/exec/remove/checkout.
+// Used by up/down/reload/pull/logs/exec/remove/checkout/git-status.
 func completeWorktrees(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	recs := stateRecordsForCompletion()
 	// Best-effort main checkout (never fails hard for completion).

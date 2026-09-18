@@ -34,6 +34,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `wrk3 git-status [branch...]` (`gs` alias): checks git status of all
+  local worktrees and displays one row per worktree
+  (`WORKTREE/BRANCH/GIT/AHEAD/BEHIND/STAGED/UNSTAGED/UNTRACKED`;
+  `GIT` is `clean`/`dirty`/`error`). Bare args mean all worktrees
+  including main (like `pull`/`up`/`down`), probes run in parallel,
+  stale entries error out, and `--short` also prints the short file
+  list per dirty worktree. Backed by a new
+  `Source.GitStatus(worktreePath)` method (`git status --porcelain=v1
+  -b`).
 - `wrk3 env <branch>` opens the worktree `.env` in your editor (`$VISUAL`,
   then `$EDITOR` with args, then nvim/vim/nano/vi; `--print` cats to
   stdout instead). The `.env` is ensured first (managed port keys

@@ -251,6 +251,21 @@ func (g *GitSource) Pull(worktreePath string, opts PullOptions) error {
 	return err
 }
 
+// GitStatus runs git status --porcelain=v1 -b inside the worktree at
+// worktreePath and parses staged/unstaged/untracked counts plus
+// ahead/behind. Empty path is an error; detached HEAD yields an empty
+// Branch with valid file counts.
+func (g *GitSource) GitStatus(worktreePath string) (WorktreeStatus, error) {
+	if strings.TrimSpace(worktreePath) == "" {
+		return WorktreeStatus{}, fmt.Errorf("git status: empty worktree path")
+	}
+	out, err := g.run(worktreePath, "status", "--porcelain=v1", "-b")
+	if err != nil {
+		return WorktreeStatus{}, err
+	}
+	return parseGitStatusPorcelain(out), nil
+}
+
 // List parses git worktree list --porcelain.
 func (g *GitSource) List(repoPath string) ([]WorktreeInfo, error) {
 	out, err := g.run(repoPath, "worktree", "list", "--porcelain")
@@ -430,4 +445,74 @@ func parseWorktreePorcelain(out string) []WorktreeInfo {
 	}
 	flush()
 	return infos
+}
+
+// parseGitStatusPorcelain parses `git status --porcelain=v1 -b` output.
+// The first `##` line carries the branch plus optional upstream tracking
+// (`## main...origin/main [ahead 1, behind 2]`, `## main`, or
+// `## HEAD (no branch)` for detached HEAD). File lines are two status
+// columns plus a path: `??` counts as untracked, otherwise X counts as
+// staged and Y counts as unstaged.
+func parseGitStatusPorcelain(out string) WorktreeStatus {
+	var st WorktreeStatus
+	var files []string
+	for _, line := range strings.Split(out, "\n") {
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "## ") {
+			st.Branch, st.Ahead, st.Behind = parseStatusBranchLine(strings.TrimPrefix(line, "## "))
+			continue
+		}
+		if len(line) < 2 {
+			continue
+		}
+		files = append(files, line)
+		if line[0] == '?' && line[1] == '?' {
+			st.Untracked++
+			continue
+		}
+		if line[0] != ' ' {
+			st.Staged++
+		}
+		if line[1] != ' ' {
+			st.Unstaged++
+		}
+	}
+	st.Files = files
+	st.Clean = st.Staged == 0 && st.Unstaged == 0 && st.Untracked == 0
+	return st
+}
+
+// parseStatusBranchLine parses the `##` header without its prefix.
+// Detached HEAD (`HEAD (no branch)`) yields an empty branch; `gone`
+// upstreams keep zero ahead/behind.
+func parseStatusBranchLine(header string) (branch string, ahead, behind int) {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return "", 0, 0
+	}
+	// Upstream tracking: "<branch>...<upstream> [ahead N, behind M]".
+	head := header
+	if idx := strings.Index(head, " ["); idx >= 0 {
+		for _, part := range strings.Split(strings.TrimSuffix(strings.TrimPrefix(head[idx:], " ["), "]"), ",") {
+			part = strings.TrimSpace(part)
+			var n int
+			if _, err := fmt.Sscanf(part, "ahead %d", &n); err == nil {
+				ahead = n
+				continue
+			}
+			if _, err := fmt.Sscanf(part, "behind %d", &n); err == nil {
+				behind = n
+			}
+		}
+		head = strings.TrimSpace(head[:idx])
+	}
+	if strings.HasPrefix(head, "HEAD ") || head == "HEAD" {
+		return "", ahead, behind
+	}
+	if idx := strings.Index(head, "..."); idx >= 0 {
+		head = head[:idx]
+	}
+	return strings.TrimSpace(head), ahead, behind
 }
