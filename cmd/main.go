@@ -189,7 +189,7 @@ func recordsForDisplay(cfg *config.Config) ([]ports.WorktreeRecord, error) {
 		sort.Slice(out, func(i, j int) bool { return out[i].Branch < out[j].Branch })
 		return out, nil
 	}
-	r := &resolved{cfg: cfg, src: src, base: cfg.AbsWorktreeBase(), stateP: cfg.StatePath()}
+	r := &resolved{cfg: cfg, src: wrapSource(src, cfg.StatePath(), "cli"), base: cfg.AbsWorktreeBase(), stateP: cfg.StatePath(), logSource: "cli"}
 	recs, adopted, warns, err := reconcileAndSave(r, recs)
 	if err != nil {
 		return nil, err

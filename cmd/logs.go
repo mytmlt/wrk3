@@ -29,7 +29,7 @@ var logsCmd = &cobra.Command{
 		if rec == nil {
 			return fmt.Errorf("unknown worktree %q (see status)", args[0])
 		}
-		rn, err := newRunner(r.cfg, rec.Slug)
+		rn, err := r.runnerFor(*rec)
 		if err != nil {
 			return err
 		}

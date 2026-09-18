@@ -31,6 +31,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Persistent system log (`.wrk3-log.jsonl` next to `.wrk3-state.json`,
+  JSONL with timestamp/op/branch/message/command/cwd/duration/error):
+  every command run (entry strings via `sh -c`, compose up/down, git
+  fetch/pull/worktree add/remove), state transitions (adopt/sync/mark),
+  proxy gateway starts, warnings and errors are appended best-effort from
+  both the CLI and the dashboard. Read-only probes (runner status, git
+  list/refs) log only on error so polling stays quiet; the file rotates
+  at 5 MiB. The dashboard log pane stays brief (last 200 in-memory
+  lines); `wrk3 log [-n N] [--json]` prints the full persisted history.
 - `podman` runner (`runner.type: podman` with `runner.podman.composeFiles` /
   `runner.podman.projectPrefix`): full parity with the `docker` runner via
   native `podman compose -p <prefix>-<slug>` (`up -d --build`, `down`,

@@ -251,8 +251,13 @@ for where the `docker` / `podman` / `portainer` / `nomad` / bare-machine runners
     the same way — live `running` always wins, `unknown` never persists.
     Details: [docs/USAGE.md](docs/USAGE.md).
 4. `wrk3 remove` → `compose down -v` + `git worktree remove` + state cleanup.
-    `remove` never touches main (explicit `remove <main-branch>` is refused;
-    `remove --all` covers only managed worktrees).
+     `remove` never touches main (explicit `remove <main-branch>` is refused;
+     `remove --all` covers only managed worktrees).
+5. `wrk3 log` → every operation above also appends to
+    `<worktreeBase>/.wrk3-log.jsonl` (JSONL next to the state file):
+    exact commands run, cwd, duration, state transitions, warnings/errors.
+    The dashboard log pane stays brief; `wrk3 log [-n N] [--json]` shows
+    the full persisted history.
 
 ## Development
 

@@ -18,6 +18,7 @@ import (
 	"github.com/mytmlt/wrk3/internal/config"
 	"github.com/mytmlt/wrk3/internal/ports"
 	"github.com/mytmlt/wrk3/internal/proxy"
+	"github.com/mytmlt/wrk3/internal/syslog"
 )
 
 // proxyPid holds the gateway daemon identity on disk.
@@ -70,6 +71,25 @@ func ensureProxyForUp(r *resolved) (msg string, warned string) {
 		return "", warn
 	}
 	return fmt.Sprintf("proxy gateway up on %s (<slug>.%s)", r.cfg.ProxyAddr(), r.cfg.ProxyDomain()), ""
+}
+
+// logProxyResult persists a gateway ensure outcome to the system log.
+// Call only from explicit user ops (up/add); never from the dashboard
+// poll path (dashboardProxyEnsure runs every tick, so logging there
+// would append a warning every 15s while the gateway stays down).
+// Success is verified with a dial first: the starter returns before the
+// gateway accepts connections, so an unverified start logs a warning.
+func (r *resolved) logProxyResult(msg, warn string) {
+	switch {
+	case msg != "":
+		if r == nil || r.cfg == nil || !proxyRunning(r.cfg) {
+			r.oplog(syslog.Entry{Level: syslog.LevelWarn, Op: "proxy", Msg: "proxy gateway start issued, not yet listening: " + msg})
+			return
+		}
+		r.oplog(syslog.Entry{Level: syslog.LevelInfo, Op: "proxy", Msg: msg})
+	case warn != "":
+		r.oplog(syslog.Entry{Level: syslog.LevelWarn, Op: "proxy", Msg: "warning: " + warn})
+	}
 }
 
 // ensureProxyForCfg starts the gateway for cfg when enabled and not already
@@ -152,8 +172,10 @@ func stopProxy(cfg *config.Config) error {
 func logProxyEnsureForCmd(cmd *cobra.Command, r *resolved) {
 	if msg, warn := ensureProxyForUp(r); msg != "" {
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), msg)
+		r.logProxyResult(msg, "")
 	} else if warn != "" {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", warn)
+		r.logProxyResult("", warn)
 	}
 }
 

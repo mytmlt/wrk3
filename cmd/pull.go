@@ -84,6 +84,7 @@ func pullOne(r *resolved, rec ports.WorktreeRecord, opts source.PullOptions, log
 // per-target errors join at the end, mirroring `up`/`down` multi-service
 // behavior.
 func runPullTargets(r *resolved, targets []ports.WorktreeRecord, opts source.PullOptions, logf func(string, ...any)) error {
+	r.logOpStart("pull", "pull "+branchesOf(targets))
 	errs := make([]error, len(targets))
 	var wg sync.WaitGroup
 	for i, rec := range targets {
@@ -103,6 +104,7 @@ func runPullTargets(r *resolved, targets []ports.WorktreeRecord, opts source.Pul
 			joined = errors.Join(joined, err)
 		}
 	}
+	r.logOpDone("pull", "pull "+branchesOf(targets), joined)
 	return joined
 }
 

@@ -45,7 +45,9 @@ var downCmd = &cobra.Command{
 // is intentional: every target runs to completion and per-target errors
 // join at the end.
 func runDownTargets(ctx context.Context, r *resolved, targets []ports.WorktreeRecord, logf func(string, ...any)) error {
+	r.logOpStart("down", "down "+branchesOf(targets))
 	if err := markStatus(r, targets, ports.StatusStopping); err != nil {
+		r.logOpDone("down", "down "+branchesOf(targets), err)
 		return err
 	}
 	errs := make([]error, len(targets))
@@ -72,9 +74,10 @@ func runDownTargets(ctx context.Context, r *resolved, targets []ports.WorktreeRe
 	}
 	if len(succeeded) > 0 {
 		if err := markStatus(r, succeeded, ports.StatusStopped); err != nil {
-			return errors.Join(joined, err)
+			joined = errors.Join(joined, err)
 		}
 	}
+	r.logOpDone("down", "down "+branchesOf(targets), joined)
 	return joined
 }
 
@@ -86,7 +89,7 @@ func downOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf fu
 			logf("[%s] warning: %s", rec.Slug, w)
 		}
 	}
-	rn, err := newRunner(r.cfg, rec.Slug)
+	rn, err := r.runnerFor(rec)
 	if err != nil {
 		return fmt.Errorf("down %q: %w", rec.Branch, err)
 	}

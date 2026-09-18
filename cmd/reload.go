@@ -68,7 +68,7 @@ func reloadOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf 
 	if len(cmds) == 0 {
 		return fmt.Errorf("reload %q: entry.reload is not set (define entry.reload in wrk3.yaml)", rec.Branch)
 	}
-	rn, err := newRunner(r.cfg, rec.Slug)
+	rn, err := r.runnerFor(rec)
 	if err != nil {
 		return fmt.Errorf("reload %q: %w", rec.Branch, err)
 	}
@@ -93,7 +93,9 @@ func runReloadTargets(ctx context.Context, r *resolved, targets []ports.Worktree
 	if len(effectiveReload(r)) == 0 {
 		return fmt.Errorf("entry.reload is not set (define entry.reload in wrk3.yaml)")
 	}
+	r.logOpStart("reload", "reload "+branchesOf(targets))
 	if err := markStatus(r, targets, ports.StatusSettingUp); err != nil {
+		r.logOpDone("reload", "reload "+branchesOf(targets), err)
 		return err
 	}
 	errs := make([]error, len(targets))
@@ -121,14 +123,15 @@ func runReloadTargets(ctx context.Context, r *resolved, targets []ports.Worktree
 	}
 	if len(succeeded) > 0 {
 		if err := markStatus(r, succeeded, ports.StatusRunning); err != nil {
-			return errors.Join(joined, err)
+			joined = errors.Join(joined, err)
 		}
 	}
 	if len(failed) > 0 {
 		if err := markStatus(r, failed, ports.StatusFailed); err != nil {
-			return errors.Join(joined, err)
+			joined = errors.Join(joined, err)
 		}
 	}
+	r.logOpDone("reload", "reload "+branchesOf(targets), joined)
 	return joined
 }
 

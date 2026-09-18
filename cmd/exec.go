@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -38,13 +39,16 @@ var execCmd = &cobra.Command{
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)
 			}
 		}
-		rn, err := newRunner(r.cfg, rec.Slug)
+		rn, err := r.runnerFor(*rec)
 		if err != nil {
 			return err
 		}
+		r.logOpStart("exec", "exec "+rec.Branch+" -- "+strings.Join(rest, " "))
 		if err := rn.Exec(cmd.Context(), rec.AbsPath, rest, envForWorktree(r.cfg, *rec)); err != nil {
+			r.logOpDone("exec", "exec "+rec.Branch+" -- "+strings.Join(rest, " "), err)
 			return fmt.Errorf("exec %q: %w", rec.Branch, err)
 		}
+		r.logOpDone("exec", "exec "+rec.Branch+" -- "+strings.Join(rest, " "), nil)
 		return nil
 	},
 }
