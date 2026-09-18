@@ -241,4 +241,3 @@ func parseInspectHealth(out string) []ContainerHealth {
 	}
 	return res
 }
-

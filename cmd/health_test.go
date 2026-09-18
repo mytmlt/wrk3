@@ -119,7 +119,7 @@ func TestHealthReportSummaryInDashboard(t *testing.T) {
 func TestDashboardWorkColumnsFor_HealthSuffix(t *testing.T) {
 	cols := dashboardWorkColumnsFor(200, []dashboardWorkCells{{
 		worktree: "feature-a", branch: "feature-a",
-		status: "running (degraded 1/2)",
+		status:  "running (degraded 1/2)",
 		ports:   "app=8100",
 		url:     "http://localhost:8100",
 		project: "demo-feature-a",

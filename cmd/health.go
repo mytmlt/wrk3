@@ -83,11 +83,11 @@ func shellPhaseBudget(checks []health.Check) time.Duration {
 // statusCell is one display row for status/ls (parallel probing keeps
 // `status` latency near a single worktree budget, like the dashboard).
 type statusCell struct {
-	slug     string
-	branch   string
-	status   string
-	ports    string
-	project  string
+	slug    string
+	branch  string
+	status  string
+	ports   string
+	project string
 }
 
 // probeStatusCells resolves display cells for recs in parallel, preserving

@@ -9,12 +9,12 @@ import (
 
 func TestAggregate(t *testing.T) {
 	cases := []struct {
-		name         string
-		results      []Result
-		wantState    string
-		wantSuffix   string
-		wantPass     int
-		wantTotal    int
+		name       string
+		results    []Result
+		wantState  string
+		wantSuffix string
+		wantPass   int
+		wantTotal  int
 	}{
 		{"empty", nil, "", "", 0, 0},
 		{"single pass", []Result{{Name: "a", Healthy: true}}, StateHealthy, " (healthy)", 1, 1},
