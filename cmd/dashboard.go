@@ -2083,8 +2083,8 @@ func (m dashboardModel) View() string {
 	logBoxH := dashboardLogViewportHeight(h) + 3 // viewport + title + border
 	bodyH := max(h-2-1-footerReserve-logBoxH-1, 8)
 	topH := max(bodyH*60/100, 4) // worktrees keep priority
-	midH := max(bodyH-topH, 4)    // branches/details take the remainder
-	topTableH := max(topH-3, 4) // pane title + borders
+	midH := max(bodyH-topH, 4)   // branches/details take the remainder
+	topTableH := max(topH-3, 4)  // pane title + borders
 	midTableH := max(midH-3, 4)
 
 	b.WriteString(m.worktreePane(w-2, topTableH) + "\n")
