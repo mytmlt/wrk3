@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Dashboard `o`/`O` (open/copy URL) now use only the worktree under the
+  cursor, ignoring `space` selections on other rows, matching the
+  documented "cursor worktree URL" behavior.
 - `runner.docker.projectPrefix` and `runner.podman.projectPrefix` are now
   optional: empty, missing, or whitespace-only means slug-only compose
   project names (`-p <slug>` instead of `-p <prefix>-<slug>`), so stacks

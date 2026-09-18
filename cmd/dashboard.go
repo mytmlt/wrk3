@@ -1013,6 +1013,16 @@ func (m dashboardModel) selectedWorktrees() []ports.WorktreeRecord {
 	return out
 }
 
+// cursorWorktree returns the worktree row under the cursor, ignoring any
+// space selections. Single-target actions (o/O open/copy URL) use this so
+// a stale selection on another row never hijacks which link opens.
+func (m dashboardModel) cursorWorktree() (ports.WorktreeRecord, bool) {
+	if len(m.rows) == 0 || m.workCursor < 0 || m.workCursor >= len(m.rows) {
+		return ports.WorktreeRecord{}, false
+	}
+	return m.rows[m.workCursor].Rec, true
+}
+
 // markRowsSettingUp flips the in-memory rows for targets to setting up so
 // the table updates instantly on `u`, before the background op writes state
 // and the next refresh picks it up. Stale rows (missing dirs) are left
@@ -1360,26 +1370,20 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m = m.appendLog("add " + strings.Join(branches, ", "))
 		return m, dashboardAddCmd(m.curProject(), id, branches)
 	case "o":
-		targets := m.selectedWorktrees()
-		if len(targets) == 0 {
-			m.statusMsg = "nothing selected (space to select, or cursor worktree)"
+		rec, ok := m.cursorWorktree()
+		if !ok {
+			m.statusMsg = "no worktree under cursor"
 			return m, nil
 		}
-		rec := targets[0]
-		if len(targets) > 1 {
-			m = m.appendLog(fmt.Sprintf("open %s (first of %d selected)", rec.Branch, len(targets)))
-		} else {
-			m = m.appendLog("open " + rec.Branch)
-		}
+		m = m.appendLog("open " + rec.Branch)
 		id := m.startOp("open", nil)
 		return m, dashboardOpenCmd(m.curProject(), id, rec)
 	case "O":
-		targets := m.selectedWorktrees()
-		if len(targets) == 0 {
-			m.statusMsg = "nothing selected (space to select, or cursor worktree)"
+		rec, ok := m.cursorWorktree()
+		if !ok {
+			m.statusMsg = "no worktree under cursor"
 			return m, nil
 		}
-		rec := targets[0]
 		var urlCfg *config.Config
 		if p := m.curProject(); p != nil {
 			urlCfg = p.cfg
@@ -1389,11 +1393,7 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.statusMsg = "no URL to copy for " + rec.Branch + " (no app port)"
 			return m, nil
 		}
-		if len(targets) > 1 {
-			m = m.appendLog(fmt.Sprintf("copy %s (first of %d selected)", rec.Branch, len(targets)))
-		} else {
-			m = m.appendLog("copy " + rec.Branch)
-		}
+		m = m.appendLog("copy " + rec.Branch)
 		m.statusMsg = "copying " + target + "…"
 		return m, dashboardCopyCmd(target)
 	case "x", "X":
