@@ -831,6 +831,74 @@ func TestDashboardModel_OpenKeyStartsOp(t *testing.T) {
 	}
 }
 
+func TestDashboardModel_OpenKeyUsesCursorOnly(t *testing.T) {
+	// Space-select feature-a, move the cursor to feature-b: o must open
+	// only the cursor row, never the stale selection.
+	m := dashboardViewModel(t)
+	m.rows[0].Rec.Ports = map[string]int{"app": 8000}
+	m.rows[1].Rec.Ports = map[string]int{"app": 8100}
+	m.workSel["feature-a"] = true
+	m.workCursor = 1
+	next, cmd := m.handleKey(keyMsg("o"))
+	dm := next.(dashboardModel)
+	if !dm.isBusy() || dm.busyTitle() != "open" {
+		t.Fatalf("o should start busy open: %+v", dm)
+	}
+	if cmd == nil {
+		t.Fatal("o should return the open command")
+	}
+	found := false
+	for _, l := range dm.log {
+		if strings.Contains(l, "open feature-b") {
+			found = true
+		}
+		if strings.Contains(l, "open feature-a") {
+			t.Errorf("o must ignore the space selection on feature-a: %v", dm.log)
+		}
+	}
+	if !found {
+		t.Errorf("o should log the cursor worktree feature-b: %v", dm.log)
+	}
+	// Empty rows: cursor-only open reports no worktree under cursor.
+	empty := testDashboardModel()
+	empty.rows = nil
+	empty = applyKey(t, empty, "o")
+	if empty.isBusy() {
+		t.Error("o with no worktrees must not start an op")
+	}
+	if !strings.Contains(empty.statusMsg, "no worktree under cursor") {
+		t.Errorf("status = %q, want a no-worktree-under-cursor hint", empty.statusMsg)
+	}
+}
+
+func TestDashboardModel_CopyKeyUsesCursorOnly(t *testing.T) {
+	oldFeed, oldLook := clipboardFeed, clipboardLookPath
+	t.Cleanup(func() { clipboardFeed, clipboardLookPath = oldFeed, oldLook })
+	clipboardLookPath = func(string) (string, error) { return "/usr/bin/pbcopy", nil }
+	clipboardFeed = func(_ string, _ []string, text string) error { return nil }
+	// Space-select feature-a, move the cursor to feature-b: O must copy
+	// only the cursor row URL.
+	m := dashboardViewModel(t)
+	m.rows[0].Rec.Ports = map[string]int{"app": 8000}
+	m.rows[1].Rec.Ports = map[string]int{"app": 8100}
+	m.workSel["feature-a"] = true
+	m.workCursor = 1
+	_, cmd := m.handleKey(keyMsg("O"))
+	if cmd == nil {
+		t.Fatal("O should return the copy command")
+	}
+	msg, ok := cmd().(dashboardCopiedMsg)
+	if !ok {
+		t.Fatalf("copy cmd returned %T, want dashboardCopiedMsg", msg)
+	}
+	if msg.err != nil {
+		t.Fatalf("copy cmd: %v", msg.err)
+	}
+	if msg.url != "http://localhost:8100" {
+		t.Errorf("copy url = %q, want the cursor worktree URL http://localhost:8100", msg.url)
+	}
+}
+
 func TestDashboardModel_CopyKeyCopiesURL(t *testing.T) {
 	oldFeed, oldLook := clipboardFeed, clipboardLookPath
 	t.Cleanup(func() { clipboardFeed, clipboardLookPath = oldFeed, oldLook })
