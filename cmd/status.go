@@ -48,17 +48,16 @@ func printResolvedStatus(w *tabwriter.Writer, cfg *config.Config) error {
 	if len(recs) == 0 {
 		return nil
 	}
-	for _, rec := range recs {
-		status, portText := rowFor(cfg, rec)
+	for _, cell := range probeStatusCells(cfg, recs) {
 		if cfg.Proxy.Enabled {
 			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				rec.Slug, rec.Branch, status, portText, rec.ComposeProject, cfg.ProxyURL(rec.Slug)); err != nil {
+				cell.slug, cell.branch, cell.status, cell.ports, cell.project, cfg.ProxyURL(cell.slug)); err != nil {
 				return fmt.Errorf("write output: %w", err)
 			}
 			continue
 		}
 		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			rec.Slug, rec.Branch, status, portText, rec.ComposeProject); err != nil {
+			cell.slug, cell.branch, cell.status, cell.ports, cell.project); err != nil {
 			return fmt.Errorf("write output: %w", err)
 		}
 	}
@@ -69,14 +68,16 @@ func printResolvedStatus(w *tabwriter.Writer, cfg *config.Config) error {
 // otherwise live "running" always wins over stored state (out-of-band up
 // clears stale stopped/failed); stored transitional/terminal states
 // (setting up, stopping, failed) win over a non-running probe so the table
-// stays honest while entries are still executing.
+// stays honest while entries are still executing. A running lifecycle
+// gains a health suffix (e.g. "running (healthy)") when health checks or
+// compose container health report data; anything else stays bare.
 func rowFor(cfg *config.Config, rec ports.WorktreeRecord) (status, portText string) {
 	if _, err := os.Stat(rec.AbsPath); err != nil {
 		return "stale", "?"
 	}
 	portText = portsCell(rec.Ports)
 	st, err := liveStatus(cfg, rec)
-	return ports.ResolveDisplayStatus(rec.Status, st, err), portText
+	return withHealthSuffix(cfg, rec, ports.ResolveDisplayStatus(rec.Status, st, err)), portText
 }
 
 // liveStatus queries the runner for running/stopped/unknown.

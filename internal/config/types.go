@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -34,6 +35,7 @@ type Config struct {
 	Entry   EntryConfig   `yaml:"entry"`
 	Ports   PortsConfig   `yaml:"ports"`
 	Proxy   ProxyConfig   `yaml:"proxy"`
+	Health  HealthConfig  `yaml:"health"`
 	rawPath string
 }
 
@@ -110,6 +112,35 @@ type ProxyConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	Domain  string `yaml:"domain"`
 	Addr    string `yaml:"addr"`
+}
+
+// HealthCheck is one user-configured health probe. Run executes verbatim
+// via `sh -c` with cwd=worktree and env=allocated ports (like entry.*).
+// Timeout is a Go duration string (e.g. "10s"); empty means the default.
+type HealthCheck struct {
+	Name    string `yaml:"name"`
+	Run     string `yaml:"run"`
+	Timeout string `yaml:"timeout"`
+}
+
+// HealthConfig holds the optional health check list. Empty means the
+// feature is off for shell checks; compose container health is still
+// probed automatically when the stack defines healthchecks.
+type HealthConfig struct {
+	Checks []HealthCheck `yaml:"checks"`
+}
+
+// EffectiveTimeout parses Timeout, defaulting to 10s. Validation bounds
+// it to 1s-120s; this accessor clamps defensively for direct callers.
+func (h HealthCheck) EffectiveTimeout() time.Duration {
+	if strings.TrimSpace(h.Timeout) == "" {
+		return 10 * time.Second
+	}
+	d, err := time.ParseDuration(strings.TrimSpace(h.Timeout))
+	if err != nil {
+		return 10 * time.Second
+	}
+	return min(max(d, time.Second), 120*time.Second)
 }
 
 // EffectiveRemote returns the configured git remote, defaulting to
@@ -313,6 +344,39 @@ func (c *Config) Validate() error {
 	}
 	if err := c.validateProxy(); err != nil {
 		return err
+	}
+	if err := validateHealth(c.Health); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateHealth checks health.checks entries: non-empty unique names,
+// non-empty run commands, and parseable timeouts (1s-120s, empty=default).
+func validateHealth(h HealthConfig) error {
+	seen := map[string]struct{}{}
+	for i, c := range h.Checks {
+		name := strings.TrimSpace(c.Name)
+		if name == "" {
+			return fmt.Errorf("health.checks[%d].name must not be empty", i)
+		}
+		if _, ok := seen[name]; ok {
+			return fmt.Errorf("health.checks[%d].name %q is duplicated", i, c.Name)
+		}
+		seen[name] = struct{}{}
+		if strings.TrimSpace(c.Run) == "" {
+			return fmt.Errorf("health.checks[%d].run must not be empty", i)
+		}
+		if strings.TrimSpace(c.Timeout) == "" {
+			continue
+		}
+		d, err := time.ParseDuration(strings.TrimSpace(c.Timeout))
+		if err != nil {
+			return fmt.Errorf("health.checks[%d].timeout %q: %w", i, c.Timeout, err)
+		}
+		if d < time.Second || d > 120*time.Second {
+			return fmt.Errorf("health.checks[%d].timeout %q must be 1s-120s", i, c.Timeout)
+		}
 	}
 	return nil
 }

@@ -251,6 +251,9 @@ for where the `docker` / `podman` / `portainer` / `nomad` / bare-machine runners
     gateway; `up` auto-starts it, `wrk3 proxy status|open|hosts-sync`
     manage it). Every read (`status`/`ls`/`up`/`down`/dashboard) syncs
     the same way — live `running` always wins, `unknown` never persists.
+    Optional `health.checks` add a display-only Docker-style suffix to
+    running rows (`running (healthy)` / `running (degraded 1/2)` /
+    `running (unhealthy)`; compose `healthcheck:` containers included).
     Details: [docs/USAGE.md](docs/USAGE.md).
 4. `wrk3 remove` → `compose down -v` + `git worktree remove` + state cleanup.
      `remove` never touches main (explicit `remove <main-branch>` is refused;

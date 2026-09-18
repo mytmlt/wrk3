@@ -116,6 +116,16 @@ while entries execute. A failed `up` stays `failed` until the next
 marks targets `stopping` at start, then `stopped` on success; failures
 keep `stopping` until the next `down` fixes them.
 
+Health (optional, display-only): configure `health.checks` (each `run`
+via `sh -c` with `cwd=worktree`, `env=allocated ports`) and a running
+worktree's `STATUS` gains a Docker-style suffix — `running (healthy)`
+(all pass), `running (degraded 1/2)` (some pass), `running (unhealthy)`
+(none pass); bare `running` when nothing reports. Compose containers with
+a `healthcheck:` are included automatically. Health never fails `up`,
+never blocks `down`, and never persists to the state file; only running
+worktrees are probed. The dashboard DETAILS preview lists the per-check
+breakdown (`api: pass, db: fail: ...`, containers as `container:<name>`).
+
 Main checkout: the repo root is always included implicitly (no state entry)
 in `up`/`down` (bare = all including main), `status`/`ls`, and as an
 `exec`/`logs` target by branch/slug. It uses reserved port index `0`

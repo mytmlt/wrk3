@@ -428,10 +428,12 @@ func dashboardProxyEnsure(r *resolved) (info, note string) {
 // transitional/terminal states (setting up, stopping, failed) win over a
 // non-running probe so rows stay honest while entries execute. Probe
 // errors persist to the system log (debug) with the resolved origin.
+// Running rows gain a health suffix plus a per-check summary for DETAILS.
 func probeDashboardRows(r *resolved, recs []ports.WorktreeRecord, mainBranch string) []dashboardRow {
 	type cell struct {
 		status string
 		ports  string
+		health string
 		stale  bool
 	}
 	cells := make([]cell, len(recs))
@@ -445,7 +447,13 @@ func probeDashboardRows(r *resolved, recs []ports.WorktreeRecord, mainBranch str
 			}
 			portText := portsCell(rec.Ports)
 			st, err := liveStatusWithOrigin(r.cfg, r.stateP, originOf(r), rec)
-			cells[i] = cell{status: ports.ResolveDisplayStatus(rec.Status, st, err), ports: portText}
+			lifecycle := ports.ResolveDisplayStatus(rec.Status, st, err)
+			if lifecycle != ports.StatusRunning {
+				cells[i] = cell{status: lifecycle, ports: portText}
+				return nil
+			}
+			rep := healthReportFor(r.cfg, rec)
+			cells[i] = cell{status: lifecycle + rep.Suffix(), ports: portText, health: rep.Summary()}
 			return nil
 		})
 	}
@@ -456,6 +464,7 @@ func probeDashboardRows(r *resolved, recs []ports.WorktreeRecord, mainBranch str
 			Rec:    rec,
 			Status: cells[i].status,
 			Ports:  cells[i].ports,
+			Health: cells[i].health,
 			Stale:  cells[i].stale,
 			IsMain: mainBranch != "" && rec.Branch == mainBranch && rec.Index == mainWorktreeIndex,
 		})
@@ -1645,13 +1654,19 @@ func dashboardWorkColumns(width int) []table.Column {
 // (URL, PORTS, BRANCH, WORKTREE, PROJECT), then fills the table; overflow
 // shrinks PROJECT first and URL/PORTS last so long port lists and links
 // stay visible (bubbles/table truncates only the remainder — `o` still
-// opens and `O` still copies the full URL). ✓/STATUS stay fixed (STATUS
-// fits "setting up").
+// opens and `O` still copies the full URL). ✓ stays fixed; STATUS starts
+// at 11 ("setting up") and grows to 24 for health suffixes.
 func dashboardWorkColumnsFor(width int, cells []dashboardWorkCells) []table.Column {
-	const (
-		checkW  = 3
-		statusW = 11
-	)
+	const checkW = 3
+	// STATUS fits "setting up" at 11; health suffixes (e.g.
+	// "running (degraded 10/10)") grow it up to 24.
+	statusW := 11
+	for _, c := range cells {
+		if w := len([]rune(c.status)); w > statusW {
+			statusW = w
+		}
+	}
+	statusW = min(max(statusW, 11), 24)
 	type flex struct {
 		header   int
 		min      int
@@ -2025,10 +2040,15 @@ func (m dashboardModel) detailPane(width, height int) string {
 	if rec.IsMain {
 		status += " (main)"
 	}
+	healthLine := rec.Health
+	if healthLine == "" {
+		healthLine = "no checks"
+	}
 	lines := []string{
 		"branch:  " + rec.Rec.Branch,
 		"slug:    " + rec.Rec.Slug,
 		"status:  " + status,
+		"health:  " + healthLine,
 		"ports:   " + rec.Ports,
 		"url:     " + dashboardURLFor(urlCfg, rec.Rec),
 		"path:    " + rec.Rec.AbsPath,
