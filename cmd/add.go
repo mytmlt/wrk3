@@ -579,8 +579,10 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 		Status:         ports.StatusStopped,
 	})
 	if err := saveState(r, *recs); err != nil {
+		r.logOpDone("add", "add "+branch, err)
 		return nil, err
 	}
+	r.logOpDone("add", fmt.Sprintf("added %s (index %d)", branch, idx), nil)
 	return warns, nil
 }
 
@@ -619,8 +621,10 @@ func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator,
 		Status:         ports.StatusStopped,
 	})
 	if err := saveState(r, *recs); err != nil {
+		r.logOpDone("adopt", "adopt "+branch, err)
 		return nil, err
 	}
+	r.logOpDone("adopt", fmt.Sprintf("adopted %s (index %d)", branch, idx), nil)
 	return warns, nil
 }
 

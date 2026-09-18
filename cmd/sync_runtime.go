@@ -10,9 +10,9 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/mytmlt/wrk3/internal/config"
 	"github.com/mytmlt/wrk3/internal/ports"
 	"github.com/mytmlt/wrk3/internal/runner"
+	"github.com/mytmlt/wrk3/internal/syslog"
 )
 
 // syncProbeTimeout bounds each live probe inside a sync pass. liveStatus
@@ -46,9 +46,10 @@ func applyLiveStatuses(recs []ports.WorktreeRecord, live map[string]runner.Statu
 // probeLiveStatuses queries the configured Runner backend for every record
 // with an existing directory. Missing dirs (stale) and probe errors are
 // skipped — errors surface as unknown in display and must not clobber
-// stored state. Main records have no state entry; callers sync only managed
-// records and synthesize main afterwards.
-func probeLiveStatuses(cfg *config.Config, recs []ports.WorktreeRecord) map[string]runner.Status {
+// stored state. Probes run through the logged runner so failures land in
+// the system log (debug); successes stay quiet. Main records have no state
+// entry; callers sync only managed records and synthesize main afterwards.
+func probeLiveStatuses(r *resolved, recs []ports.WorktreeRecord) map[string]runner.Status {
 	out := make(map[string]runner.Status, len(recs))
 	type result struct {
 		branch string
@@ -63,7 +64,7 @@ func probeLiveStatuses(cfg *config.Config, recs []ports.WorktreeRecord) map[stri
 			if _, err := os.Stat(rec.AbsPath); err != nil {
 				return nil
 			}
-			rn, err := newRunner(cfg, rec.Slug)
+			rn, err := r.runnerFor(rec)
 			if err != nil {
 				return nil
 			}
@@ -94,7 +95,7 @@ func syncRuntimeAndSave(r *resolved, recs []ports.WorktreeRecord) ([]ports.Workt
 	if len(recs) == 0 {
 		return recs, nil, nil
 	}
-	updated, changed := applyLiveStatuses(recs, probeLiveStatuses(r.cfg, recs))
+	updated, changed := applyLiveStatuses(recs, probeLiveStatuses(r, recs))
 	if len(changed) == 0 {
 		return updated, nil, nil
 	}
@@ -104,6 +105,7 @@ func syncRuntimeAndSave(r *resolved, recs []ports.WorktreeRecord) ([]ports.Workt
 	if err := ports.Save(r.stateP, updated); err != nil {
 		return nil, nil, fmt.Errorf("save synced runtime state: %w", err)
 	}
+	r.oplog(syslog.Entry{Level: syslog.LevelInfo, Op: "sync", Msg: "synced runtime state: " + strings.Join(changed, ", ")})
 	return updated, changed, nil
 }
 

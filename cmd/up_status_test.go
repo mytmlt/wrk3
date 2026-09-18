@@ -67,7 +67,7 @@ func TestProbeDashboardRows_TransitionalStaysWithoutLiveContainers(t *testing.T)
 			AbsPath: filepath.Join(t.TempDir(), "missing"),
 			Ports:   map[string]int{"app": 8100}, Status: ports.StatusSettingUp},
 	}
-	rows := probeDashboardRows(cfg, recs, "")
+	rows := probeDashboardRows(&resolved{cfg: cfg}, recs, "")
 	byBranch := map[string]dashboardRow{}
 	for _, r := range rows {
 		byBranch[r.Rec.Branch] = r

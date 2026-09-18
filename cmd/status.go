@@ -80,11 +80,21 @@ func rowFor(cfg *config.Config, rec ports.WorktreeRecord) (status, portText stri
 }
 
 // liveStatus queries the runner for running/stopped/unknown.
+// Probe errors are persisted to the system log (debug) via the logged
+// runner; successes stay quiet so status polling does not flood it.
 func liveStatus(cfg *config.Config, rec ports.WorktreeRecord) (string, error) {
-	rn, err := newRunner(cfg, rec.Slug)
+	return liveStatusWithOrigin(cfg, cfg.StatePath(), "cli", rec)
+}
+
+// liveStatusWithOrigin is liveStatus with an explicit system log origin
+// (the dashboard passes "dashboard" so its background probes attribute
+// correctly).
+func liveStatusWithOrigin(cfg *config.Config, stateP, origin string, rec ports.WorktreeRecord) (string, error) {
+	raw, err := newRunner(cfg, rec.Slug)
 	if err != nil {
 		return "", err
 	}
+	rn := &loggedRunner{inner: raw, stateP: stateP, origin: origin, branch: rec.Branch, slug: rec.Slug, project: rec.ComposeProject}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	st, err := rn.Status(ctx, rec.AbsPath)

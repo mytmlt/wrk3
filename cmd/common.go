@@ -24,6 +24,8 @@ type resolved struct {
 	src    source.Source
 	base   string
 	stateP string
+	// logSource tags system log entries ("cli" or "dashboard").
+	logSource string
 }
 
 // resolveConfig resolves -f/--file (or upward scan) and loads wrk3.yaml.
@@ -41,11 +43,13 @@ func resolveConfig() (*resolved, error) {
 		return nil, err
 	}
 	base := cfg.AbsWorktreeBase()
+	stateP := cfg.StatePath()
 	return &resolved{
-		cfg:    cfg,
-		src:    src,
-		base:   base,
-		stateP: cfg.StatePath(),
+		cfg:       cfg,
+		src:       wrapSource(src, stateP, "cli"),
+		base:      base,
+		stateP:    stateP,
+		logSource: "cli",
 	}, nil
 }
 

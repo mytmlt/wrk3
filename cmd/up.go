@@ -38,8 +38,10 @@ var upCmd = &cobra.Command{
 		}
 		if msg, warn := ensureProxyForUp(r); msg != "" {
 			logf("%s", msg)
+			r.logProxyResult(msg, "")
 		} else if warn != "" {
 			logf("warning: %s", warn)
+			r.logProxyResult("", warn)
 		}
 		return runUpTargets(cmd.Context(), r, targets, logf)
 	},
@@ -54,7 +56,7 @@ func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func
 			logf("[%s] warning: %s", rec.Slug, w)
 		}
 	}
-	rn, err := newRunner(r.cfg, rec.Slug)
+	rn, err := r.runnerFor(rec)
 	if err != nil {
 		return fmt.Errorf("up %q: %w", rec.Branch, err)
 	}
@@ -98,7 +100,9 @@ func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func
 // runs to completion and per-target errors join at the end, mirroring
 // `docker compose` multi-service behavior.
 func runUpTargets(ctx context.Context, r *resolved, targets []ports.WorktreeRecord, logf func(string, ...any)) error {
+	r.logOpStart("up", "up "+branchesOf(targets))
 	if err := markStatus(r, targets, ports.StatusSettingUp); err != nil {
+		r.logOpDone("up", "up "+branchesOf(targets), err)
 		return err
 	}
 	errs := make([]error, len(targets))
@@ -126,14 +130,15 @@ func runUpTargets(ctx context.Context, r *resolved, targets []ports.WorktreeReco
 	}
 	if len(succeeded) > 0 {
 		if err := markStatus(r, succeeded, ports.StatusRunning); err != nil {
-			return errors.Join(joined, err)
+			joined = errors.Join(joined, err)
 		}
 	}
 	if len(failed) > 0 {
 		if err := markStatus(r, failed, ports.StatusFailed); err != nil {
-			return errors.Join(joined, err)
+			joined = errors.Join(joined, err)
 		}
 	}
+	r.logOpDone("up", "up "+branchesOf(targets), joined)
 	return joined
 }
 

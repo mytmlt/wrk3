@@ -129,7 +129,7 @@ func loadDashboardProject(desc dashboardProjectDesc, remoteOverride string) *das
 		return p
 	}
 	p.cfg = cfg
-	p.src = src
+	p.src = wrapSource(src, cfg.StatePath(), "dashboard")
 	p.base = cfg.AbsWorktreeBase()
 	p.stateP = cfg.StatePath()
 	if strings.TrimSpace(remoteOverride) != "" {
@@ -138,6 +138,13 @@ func loadDashboardProject(desc dashboardProjectDesc, remoteOverride string) *das
 		p.remote = cfg.EffectiveRemote()
 	}
 	return p
+}
+
+// resolved builds the command-resolved view for this project. All
+// dashboard ops go through here so they share the persistent system log
+// (origin "dashboard") with the CLI.
+func (p *dashboardProject) resolved() *resolved {
+	return &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP, logSource: "dashboard"}
 }
 
 // dashboardOp tracks one in-flight background operation so the UI stays
@@ -300,7 +307,7 @@ func (m dashboardModel) fetchRunning() bool {
 // persisting when anything was adopted. Adopted branch names and .env
 // divergence warnings are returned for the log pane.
 func (p *dashboardProject) reconciledState() (recs []ports.WorktreeRecord, adopted []string, warns []string, err error) {
-	r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
+	r := p.resolved()
 	recs, err = ports.Load(p.stateP)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("load state: %w", err)
@@ -372,7 +379,7 @@ func dashboardRefreshRowsCmd(p *dashboardProject) tea.Cmd {
 		if err != nil {
 			return dashboardRowsMsg{err: err}
 		}
-		r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
+		r := p.resolved()
 		proxyInfo, proxyNote := dashboardProxyEnsure(r)
 		recs, changed, err := syncRuntimeAndSave(r, recs)
 		if err != nil {
@@ -390,7 +397,7 @@ func dashboardRefreshRowsCmd(p *dashboardProject) tea.Cmd {
 		if main != nil {
 			mainBranch = main.Branch
 		}
-		rows := probeDashboardRows(p.cfg, all, mainBranch)
+		rows := probeDashboardRows(r, all, mainBranch)
 		return dashboardRowsMsg{rows: rows, adopted: adopted, warns: warns, proxyInfo: proxyInfo, proxyNote: proxyNote}
 	}
 }
@@ -419,8 +426,9 @@ func dashboardProxyEnsure(r *resolved) (info, note string) {
 // parallel. Missing dirs short-circuit to stale/? without runner calls.
 // Live running always wins over stored state; otherwise stored
 // transitional/terminal states (setting up, stopping, failed) win over a
-// non-running probe so rows stay honest while entries execute.
-func probeDashboardRows(cfg *config.Config, recs []ports.WorktreeRecord, mainBranch string) []dashboardRow {
+// non-running probe so rows stay honest while entries execute. Probe
+// errors persist to the system log (debug) with the resolved origin.
+func probeDashboardRows(r *resolved, recs []ports.WorktreeRecord, mainBranch string) []dashboardRow {
 	type cell struct {
 		status string
 		ports  string
@@ -436,7 +444,7 @@ func probeDashboardRows(cfg *config.Config, recs []ports.WorktreeRecord, mainBra
 				return nil
 			}
 			portText := portsCell(rec.Ports)
-			st, err := liveStatus(cfg, rec)
+			st, err := liveStatusWithOrigin(r.cfg, r.stateP, originOf(r), rec)
 			cells[i] = cell{status: ports.ResolveDisplayStatus(rec.Status, st, err), ports: portText}
 			return nil
 		})
@@ -622,11 +630,13 @@ func dashboardUpCmd(p *dashboardProject, opID int, targets []ports.WorktreeRecor
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
-		r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
+		r := p.resolved()
 		if msg, warn := ensureProxyForUp(r); msg != "" {
 			logf("%s", msg)
+			r.logProxyResult(msg, "")
 		} else if warn != "" {
 			logf("warning: %s", warn)
+			r.logProxyResult("", warn)
 		}
 		return runUpTargets(context.Background(), r, targets, logf)
 	})
@@ -637,7 +647,7 @@ func dashboardDownCmd(p *dashboardProject, opID int, targets []ports.WorktreeRec
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
-		r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
+		r := p.resolved()
 		return runDownTargets(context.Background(), r, targets, logf)
 	})
 }
@@ -647,7 +657,7 @@ func dashboardReloadCmd(p *dashboardProject, opID int, targets []ports.WorktreeR
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
-		r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
+		r := p.resolved()
 		return runReloadTargets(context.Background(), r, targets, logf)
 	})
 }
@@ -657,7 +667,7 @@ func dashboardPullCmd(p *dashboardProject, opID int, targets []ports.WorktreeRec
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
-		r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
+		r := p.resolved()
 		return runPullTargets(r, targets, source.PullOptions{}, logf)
 	})
 }
@@ -667,11 +677,13 @@ func dashboardAddCmd(p *dashboardProject, opID int, branches []string) tea.Cmd {
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
-		r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
+		r := p.resolved()
 		if msg, warn := ensureProxyForUp(r); msg != "" {
 			logf("%s", msg)
+			r.logProxyResult(msg, "")
 		} else if warn != "" {
 			logf("warning: %s", warn)
+			r.logProxyResult("", warn)
 		}
 		if err := ensureBase(r.base); err != nil {
 			return err
@@ -729,7 +741,8 @@ func dashboardRemoveCmd(p *dashboardProject, opID int, branches []string, force 
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
-		r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
+		r := p.resolved()
+		r.logOpStart(label, label+" "+strings.Join(branches, ", "))
 		for _, branch := range branches {
 			recs, err := loadState(r)
 			if err != nil {
@@ -737,13 +750,18 @@ func dashboardRemoveCmd(p *dashboardProject, opID int, branches []string, force 
 			}
 			rec := findRecord(recs, branch)
 			if rec == nil {
-				return fmt.Errorf("unknown worktree %q (see status)", branch)
+				err := fmt.Errorf("unknown worktree %q (see status)", branch)
+				r.logOpDone(label, label+" "+branch, err)
+				return err
 			}
 			if isMainPath(r, rec.AbsPath) {
-				return fmt.Errorf("refusing to remove main worktree %q (repo root is always kept)", rec.Branch)
+				err := fmt.Errorf("refusing to remove main worktree %q (repo root is always kept)", rec.Branch)
+				r.logOpDone(label, label+" "+branch, err)
+				return err
 			}
-			rn, err := newRunner(r.cfg, rec.Slug)
+			rn, err := r.runnerFor(*rec)
 			if err != nil {
+				r.logOpDone(label, label+" "+rec.Branch, err)
 				return err
 			}
 			if err := rn.Down(context.Background(), rec.AbsPath, envForWorktree(r.cfg, *rec)); err != nil {
@@ -754,7 +772,9 @@ func dashboardRemoveCmd(p *dashboardProject, opID int, branches []string, force 
 			}
 			if err := r.src.Remove(r.cfg.RepoPath(), rec.AbsPath, force); err != nil {
 				if !force {
-					return fmt.Errorf("remove worktree %q: %w", rec.Branch, err)
+					err = fmt.Errorf("remove worktree %q: %w", rec.Branch, err)
+					r.logOpDone(label, label+" "+rec.Branch, err)
+					return err
 				}
 				logf("warning: worktree remove for %q: %v", rec.Branch, err)
 				_ = os.RemoveAll(rec.AbsPath)
@@ -770,8 +790,10 @@ func dashboardRemoveCmd(p *dashboardProject, opID int, branches []string, force 
 				kept = []ports.WorktreeRecord{}
 			}
 			if err := saveState(r, kept); err != nil {
+				r.logOpDone(label, label+" "+rec.Branch, err)
 				return err
 			}
+			r.logOpDone(label, "removed "+rec.Branch, nil)
 			logf("removed %s", rec.Branch)
 		}
 		return nil

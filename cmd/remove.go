@@ -72,15 +72,21 @@ var removeCmd = &cobra.Command{
 }
 
 func removeOne(cmd *cobra.Command, r *resolved, recs []ports.WorktreeRecord, branch string) error {
+	r.logOpStart("remove", "remove "+branch)
 	rec := findRecord(recs, branch)
 	if rec == nil {
-		return fmt.Errorf("unknown worktree %q (see status)", branch)
+		err := fmt.Errorf("unknown worktree %q (see status)", branch)
+		r.logOpDone("remove", "remove "+branch, err)
+		return err
 	}
 	if isMainPath(r, rec.AbsPath) {
-		return fmt.Errorf("refusing to remove main worktree %q (repo root is always kept)", rec.Branch)
+		err := fmt.Errorf("refusing to remove main worktree %q (repo root is always kept)", rec.Branch)
+		r.logOpDone("remove", "remove "+branch, err)
+		return err
 	}
-	rn, err := newRunner(r.cfg, rec.Slug)
+	rn, err := r.runnerFor(*rec)
 	if err != nil {
+		r.logOpDone("remove", "remove "+branch, err)
 		return err
 	}
 	env := envForWorktree(r.cfg, *rec)
@@ -96,7 +102,9 @@ func removeOne(cmd *cobra.Command, r *resolved, recs []ports.WorktreeRecord, bra
 	}
 	if err := r.src.Remove(r.cfg.RepoPath(), rec.AbsPath, removeForce); err != nil {
 		if !removeForce {
-			return fmt.Errorf("remove worktree %q: %w", rec.Branch, err)
+			err = fmt.Errorf("remove worktree %q: %w", rec.Branch, err)
+			r.logOpDone("remove", "remove "+branch, err)
+			return err
 		}
 		warnf(cmd, "worktree remove for %q: %v", rec.Branch, err)
 		_ = os.RemoveAll(rec.AbsPath)
@@ -113,8 +121,10 @@ func removeOne(cmd *cobra.Command, r *resolved, recs []ports.WorktreeRecord, bra
 		kept = []ports.WorktreeRecord{}
 	}
 	if err := saveState(r, kept); err != nil {
+		r.logOpDone("remove", "remove "+branch, err)
 		return err
 	}
+	r.logOpDone("remove", "removed "+removedBranch, nil)
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "removed %s\n", removedBranch); err != nil {
 		return fmt.Errorf("write output: %w", err)
 	}

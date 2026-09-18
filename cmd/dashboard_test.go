@@ -620,7 +620,7 @@ func TestProbeDashboardRows_StaleWithoutDocker(t *testing.T) {
 	recs := []ports.WorktreeRecord{
 		{Branch: "gone", Slug: "gone", Index: 3, Ports: map[string]int{"app": 8300}, Status: "running"},
 	}
-	rows := probeDashboardRows(cfg, recs, "")
+	rows := probeDashboardRows(&resolved{cfg: cfg}, recs, "")
 	if len(rows) != 1 {
 		t.Fatalf("got %d rows", len(rows))
 	}

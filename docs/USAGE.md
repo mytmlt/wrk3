@@ -74,6 +74,7 @@ wrk3 ls                             # this config (minimal WORKTREE/BRANCH/STATU
 wrk3 ls --project myapp             # worktrees in a registered project, from anywhere
 wrk3 project ls                     # all auto-registered projects (NAME/CONFIG/WORKTREES)
 wrk3 logs feature-a [-f]            # entry.logs command
+wrk3 log [-n 50] [--json]           # persistent system log: every command run, state change, warning/error (next to the state file)
 wrk3 exec feature-a -- <cmd...>     # run inside worktree env (cwd=worktree)
 wrk3 checkout feature-a             # cd to the worktree (needs shell-init wrapper; else prints path)
 wrk3 down feature-a | wrk3 down     # bare = all including main
@@ -129,6 +130,17 @@ rebuilds it on next use. Branches with no checkout never enter state —
 `add <branch>` (local or remote ref) and the dashboard create them. A name
 matching neither offers to create a new branch from the remote default
 (`--create`/`--no-create` to skip the prompt).
+
+System log: every operation also appends to `.wrk3-log.jsonl` next to the
+state file (JSONL, one entry per line: timestamp, op, branch, message,
+exact command, cwd, duration, error). Entry strings (`sh -c`), compose
+up/down, and git fetch/pull/worktree add/remove log always; read-only
+probes (runner status, git list/refs) log only on error so background
+polling stays quiet. The dashboard log pane stays brief (last 200
+in-memory lines); `wrk3 log` shows the full persisted history
+(`-n/--tail N`, `--json` for raw JSONL). The file rotates at 5 MiB to
+`.wrk3-log.jsonl.1`, and reads span the backup so history stays
+continuous.
 
 ### Worktree reconcile
 

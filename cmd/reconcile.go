@@ -8,6 +8,7 @@ import (
 
 	"github.com/mytmlt/wrk3/internal/ports"
 	"github.com/mytmlt/wrk3/internal/source"
+	"github.com/mytmlt/wrk3/internal/syslog"
 )
 
 // maxReconcileTries bounds the fresh-index scan when recovered or
@@ -175,6 +176,9 @@ func reconcileAndSave(r *resolved, recs []ports.WorktreeRecord) (updated []ports
 	}
 	if err := ports.Save(r.stateP, updated); err != nil {
 		return nil, nil, nil, fmt.Errorf("save reconciled state: %w", err)
+	}
+	if len(adopted) > 0 {
+		r.oplog(syslog.Entry{Level: syslog.LevelInfo, Op: "reconcile", Msg: "reconciled state: adopted " + strings.Join(adopted, ", ")})
 	}
 	return updated, adopted, warns, nil
 }
