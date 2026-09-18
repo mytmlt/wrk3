@@ -67,10 +67,9 @@ func printLsStatus(w *tabwriter.Writer, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	for _, rec := range recs {
-		status, portText := rowFor(cfg, rec)
+	for _, cell := range probeStatusCells(cfg, recs) {
 		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-			rec.Slug, rec.Branch, status, portText); err != nil {
+			cell.slug, cell.branch, cell.status, cell.ports); err != nil {
 			return fmt.Errorf("write output: %w", err)
 		}
 	}

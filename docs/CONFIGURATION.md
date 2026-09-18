@@ -37,6 +37,9 @@ ports:
   base: {app: 8000}
   step: 100
 # proxy: {enabled: false, domain: localhost, addr: 127.0.0.1:8080}  # optional gateway; see below
+# health:  # optional health checks (display-only); see below
+#   checks:
+#     - {name: api, run: "curl -sf http://localhost:${APP_PORT}/healthz", timeout: 10s}
 ```
 
 ## Fields
@@ -86,6 +89,31 @@ broader than `--mine`, which matches git commit authorship).
 | `proxy.enabled` | no | Default `false`. When `true`, `up`/`add`/dashboard ensure the local gateway (best-effort, never fails the command) and each worktree gains an append-only `APP_URL` in its `.env`. |
 | `proxy.domain` | no | Default `localhost` → `http://<slug>.localhost:<port>`. Lowercased, hostname chars only. `.localhost` needs no setup in Chrome/Firefox/Edge (RFC 6761); Safari and non-browser clients need `wrk3 proxy hosts-sync`. Avoid `.local` (mDNS/Bonjour conflicts on macOS). |
 | `proxy.addr` | no | Default `127.0.0.1:8080`. Gateway listen addr, must be `host:port` with port 1-65535 (`:80` needs root, so a high port is the default). |
+| `health.checks` | no | Optional list of `{name, run, timeout}` probes (see below). Empty/missing means no shell checks; compose container health is still probed automatically. |
+| `health.checks[].name` | yes (per check) | Non-empty, unique per config. Shown in the dashboard DETAILS pane (`api: pass`). |
+| `health.checks[].run` | yes (per check) | Shell string run via `sh -c` with `cwd=worktree`, `env=allocated ports` (like `entry.*`). Exit 0 = pass. |
+| `health.checks[].timeout` | no (per check) | Go duration string, default `10s`, must be `1s`–`120s` when set. |
+
+## Health checks
+
+Display-only Docker-style health for running worktrees. Each `health.checks`
+entry plus every compose container with a `healthcheck:` becomes one check;
+`status`/`ls`/dashboard append the aggregate to the `STATUS` cell:
+
+- `running (healthy)` — all checks pass;
+- `running (degraded 1/2)` — some pass (count shown);
+- `running (unhealthy)` — none pass (a single failing check lands here);
+- bare `running` — no checks configured and no container health reported.
+
+Probes run live on every read (shell checks in parallel; the shell phase
+budget is the longest per-check timeout plus 5s headroom, the container
+phase gets 30s) and only for running worktrees —
+`stopped`/`setting up`/`failed`/`stale` never gain a suffix. Failures never
+fail `up`, never block `down`, and never persist to `.wrk3-state.json`.
+The dashboard DETAILS preview lists the per-check breakdown
+(`api: pass, db: fail: ...`); containers appear as `container:<name>`.
+Like `entry.*`, `run` strings execute from your `wrk3.yaml` — only use
+configs you trust.
 
 ## Ports and `.env`
 

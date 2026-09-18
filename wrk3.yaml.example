@@ -32,6 +32,17 @@ entry:
 ports:
   base: {app: 8000}
   step: 100
+# Health checks (optional, display-only): each `run` executes via `sh -c`
+# with cwd=worktree and env=allocated ports (like entry.*). A running
+# worktree shows `running (healthy)` when all pass, `running (degraded 1/2)`
+# when some pass, `running (unhealthy)` when none pass. Compose containers
+# with a `healthcheck:` are probed automatically with no config. Failures
+# never fail `up` and never persist to the state file.
+# health:
+#   checks:
+#     - name: api
+#       run: "curl -sf http://localhost:${APP_PORT}/healthz"
+#       timeout: 10s  # optional, default 10s (1s-120s)
 # Local gateway: http://<slug>.localhost:8080 -> app port (stdlib reverse
 # proxy, no extra dependencies). Opt-in: `up`/`add`/dashboard ensure the
 # gateway when enabled, each worktree gains an append-only APP_URL in its

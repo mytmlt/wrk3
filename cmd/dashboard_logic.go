@@ -11,10 +11,13 @@ import (
 
 // dashboardRow is one worktree row for the dashboard worktree pane.
 // Status/Ports mirror `status` cells; Stale is true when the dir is missing.
+// Health holds the per-check summary shown in DETAILS ("no checks" when
+// nothing is configured and no container health is reported).
 type dashboardRow struct {
 	Rec    ports.WorktreeRecord
 	Status string
 	Ports  string
+	Health string
 	Stale  bool
 	IsMain bool
 }

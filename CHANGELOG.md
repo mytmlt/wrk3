@@ -49,6 +49,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   list/refs) log only on error so polling stays quiet; the file rotates
   at 5 MiB. The dashboard log pane stays brief (last 200 in-memory
   lines); `wrk3 log [-n N] [--json]` prints the full persisted history.
+- Health checks (`health.checks`: list of `{name, run, timeout}`): optional
+  display-only Docker-style health for running worktrees. Each `run`
+  executes via `sh -c` with `cwd=worktree`, `env=allocated ports` (like
+  `entry.*`); compose containers with a `healthcheck:` are probed
+  automatically. `status`/`ls`/dashboard show `running (healthy)` (all
+  pass), `running (degraded 1/2)` (some pass), `running (unhealthy)`
+  (none pass), or bare `running` when nothing reports; the dashboard
+  DETAILS preview lists the per-check breakdown. Failures never fail
+  `up`, never block `down`, and never persist to the state file.
 - `podman` runner (`runner.type: podman` with `runner.podman.composeFiles` /
   `runner.podman.projectPrefix`): full parity with the `docker` runner via
   native `podman compose -p <prefix>-<slug>` (`up -d --build`, `down`,
