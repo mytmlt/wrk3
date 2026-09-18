@@ -114,6 +114,12 @@ cp completions/wrk3.fish ~/.config/fish/completions/
 . completions/wrk3.powershell
 ```
 
+The `wrk3 shell-init` wrapper (`eval "$(wrk3 shell-init bash)"` and
+friends, needed so `wrk3 checkout` cds the calling shell) coexists with
+completion: the generated scripts dispatch through the `wrk3` command
+name, so TAB-completing subcommands, branches, and worktree slugs keeps
+working with the wrapper active (bash + zsh verified).
+
 ## Verify
 
 ```bash

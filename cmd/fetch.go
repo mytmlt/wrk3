@@ -34,9 +34,10 @@ var fetchCmd = &cobra.Command{
   wrk3 fetch --myprs                  only branches with an open PR involving
                                       you (GitHub remotes only, via the gh CLI;
                                       like pulls?q=is:pr+state:open+involves:@me)
-  wrk3 fetch --mine --author alice    intersection of both filters
-  wrk3 fetch --myprs --author alice   PR branches also matching the author filter`,
-	Args: cobra.NoArgs,
+   wrk3 fetch --mine --author alice    intersection of both filters
+   wrk3 fetch --myprs --author alice   PR branches also matching the author filter`,
+	Args:              cobra.NoArgs,
+	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		r, err := resolveConfig()
 		if err != nil {

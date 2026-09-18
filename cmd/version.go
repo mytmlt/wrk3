@@ -7,9 +7,10 @@ import (
 )
 
 var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Print version information",
-	Args:  cobra.NoArgs,
+	Use:               "version",
+	Short:             "Print version information",
+	Args:              cobra.NoArgs,
+	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		_, err := fmt.Fprintf(cmd.OutOrStdout(), "wrk3 %s (commit %s built %s)\n", Version, Commit, Date)
 		return err

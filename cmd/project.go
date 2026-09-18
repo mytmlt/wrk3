@@ -12,18 +12,20 @@ import (
 
 // projectCmd groups project registry commands.
 var projectCmd = &cobra.Command{
-	Use:   "project",
-	Short: "List auto-registered projects",
+	Use:               "project",
+	Short:             "List auto-registered projects",
+	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
 }
 
 var projectLsCmd = &cobra.Command{
-	Use:     "ls",
-	Short:   "List known projects (NAME/CONFIG/WORKTREES)",
-	Aliases: []string{"list"},
-	Args:    cobra.NoArgs,
+	Use:               "ls",
+	Short:             "List known projects (NAME/CONFIG/WORKTREES)",
+	Aliases:           []string{"list"},
+	Args:              cobra.NoArgs,
+	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store, err := newProjectStore()
 		if err != nil {

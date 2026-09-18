@@ -95,7 +95,8 @@ alongside — `wrk3 add` in another terminal shows up on the next poll or
   subdirectory. `add` auto-registers the repo for `project ls` /
   `ls --project`.
 - **Shell completion** — `wrk3 completion <bash|zsh|fish|powershell>` plus
-  dynamic branch/worktree/project completion for `add`/`up`/`down`/`pull`/`logs`/`exec`/`env`/`remove`/`checkout`/`ls --project`.
+  dynamic branch/worktree/project completion for `add`/`up`/`down`/`reload`/`pull`/`logs`/`exec`/`env`/`remove`/`checkout`/`proxy open`/`ls --project`
+  (prefix-filtered; works alongside the `shell-init` wrapper).
 - **Worktree switching** — `wrk3 checkout <branch|slug>` cds to the
   worktree (via a `wrk3 shell-init` wrapper eval'd once in your rc file;
   prints the path without it, so `cd "$(wrk3 checkout x)"` always works).

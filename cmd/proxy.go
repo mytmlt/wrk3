@@ -213,14 +213,16 @@ func proxyHostnames(cfg *config.Config, recs []ports.WorktreeRecord) []string {
 }
 
 var proxyCmd = &cobra.Command{
-	Use:   "proxy",
-	Short: "Local gateway: <slug>.localhost URLs for worktrees",
+	Use:               "proxy",
+	Short:             "Local gateway: <slug>.localhost URLs for worktrees",
+	ValidArgsFunction: cobra.NoFileCompletions,
 }
 
 var proxyUpCmd = &cobra.Command{
-	Use:   "up",
-	Short: "Start the local gateway (background)",
-	Args:  cobra.NoArgs,
+	Use:               "up",
+	Short:             "Start the local gateway (background)",
+	Args:              cobra.NoArgs,
+	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		r, err := resolveConfig()
 		if err != nil {
@@ -239,9 +241,10 @@ var proxyUpCmd = &cobra.Command{
 }
 
 var proxyDownCmd = &cobra.Command{
-	Use:   "down",
-	Short: "Stop the local gateway",
-	Args:  cobra.NoArgs,
+	Use:               "down",
+	Short:             "Stop the local gateway",
+	Args:              cobra.NoArgs,
+	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		r, err := resolveConfig()
 		if err != nil {
@@ -256,9 +259,10 @@ var proxyDownCmd = &cobra.Command{
 }
 
 var proxyStatusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "Show gateway state + per-worktree URLs",
-	Args:  cobra.NoArgs,
+	Use:               "status",
+	Short:             "Show gateway state + per-worktree URLs",
+	Args:              cobra.NoArgs,
+	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		r, err := resolveConfig()
 		if err != nil {
@@ -334,9 +338,10 @@ func browserOpener() ([]string, error) {
 }
 
 var proxyHostsSyncCmd = &cobra.Command{
-	Use:   "hosts-sync",
-	Short: "Add 127.0.0.1 entries for worktree hostnames (needs sudo for /etc/hosts)",
-	Args:  cobra.NoArgs,
+	Use:               "hosts-sync",
+	Short:             "Add 127.0.0.1 entries for worktree hostnames (needs sudo for /etc/hosts)",
+	Args:              cobra.NoArgs,
+	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		r, err := resolveConfig()
 		if err != nil {
@@ -371,10 +376,11 @@ func hostsFilePath() string {
 }
 
 var proxyRunCmd = &cobra.Command{
-	Use:    "run",
-	Short:  "Run the gateway in the foreground (used by proxy up)",
-	Hidden: true,
-	Args:   cobra.NoArgs,
+	Use:               "run",
+	Short:             "Run the gateway in the foreground (used by proxy up)",
+	Hidden:            true,
+	Args:              cobra.NoArgs,
+	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		r, err := resolveConfig()
 		if err != nil {
