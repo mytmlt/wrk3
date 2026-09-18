@@ -841,6 +841,27 @@ func dashboardOpenCmd(p *dashboardProject, opID int, rec ports.WorktreeRecord) t
 	})
 }
 
+// dashboardEnvDoneMsg reports the result of editing a worktree .env in
+// an external editor (tea.ExecProcess suspends the TUI while it runs).
+type dashboardEnvDoneMsg struct {
+	branch string
+	path   string
+	err    error
+}
+
+// dashboardEditEnvCmd suspends the TUI and opens path in the user's editor
+// fullscreen, resuming when the editor exits. The .env is ensured before
+// suspending so the file always exists.
+func dashboardEditEnvCmd(path, branch string) tea.Cmd {
+	c, err := editorCmdFor(path)
+	if err != nil {
+		return func() tea.Msg { return dashboardEnvDoneMsg{branch: branch, path: path, err: err} }
+	}
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return dashboardEnvDoneMsg{branch: branch, path: path, err: err}
+	})
+}
+
 // Update.
 func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -990,6 +1011,18 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.appendLog("copied " + msg.url)
 		}
 		return m, nil
+	case dashboardEnvDoneMsg:
+		if msg.err != nil {
+			m.statusMsg = "edit .env: " + msg.err.Error()
+			m = m.appendLog("edit " + msg.branch + " .env (" + msg.path + "): " + msg.err.Error())
+		} else {
+			m.statusMsg = "edited " + msg.branch + " .env"
+			m = m.appendLog("edited " + msg.branch + " .env")
+		}
+		return m, tea.Batch(
+			dashboardRefreshRowsCmd(m.curProject()),
+			dashboardReloadBranchesCmd(m.curProject(), m.mine, m.authors, m.myprs, m.brSel),
+		)
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -1396,6 +1429,39 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.statusMsg = "copying " + target + "…"
 		return m, dashboardCopyCmd(target)
+	case "e":
+		targets := m.selectedWorktrees()
+		if len(targets) == 0 {
+			m.statusMsg = "nothing selected (space to select, or cursor worktree)"
+			return m, nil
+		}
+		rec := targets[0]
+		if len(targets) > 1 {
+			m = m.appendLog(fmt.Sprintf("edit %s .env (first of %d selected)", rec.Branch, len(targets)))
+		} else {
+			m = m.appendLog("edit " + rec.Branch + " .env")
+		}
+		if st, err := os.Stat(rec.AbsPath); err != nil {
+			m.statusMsg = "worktree " + rec.Branch + " is stale (directory missing)"
+			return m, nil
+		} else if !st.IsDir() {
+			m.statusMsg = "worktree " + rec.Branch + " path is not a directory"
+			return m, nil
+		}
+		if p := m.curProject(); p != nil && p.cfg != nil {
+			r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
+			if warns, err := ensureWorktreeEnv(r, rec); err != nil {
+				m.statusMsg = "edit .env: " + err.Error()
+				return m, nil
+			} else {
+				for _, w := range warns {
+					m = m.appendLog("warning: " + w)
+				}
+			}
+		}
+		path := envFilePath(rec.AbsPath)
+		m.statusMsg = "editing " + rec.Branch + " .env…"
+		return m, dashboardEditEnvCmd(path, rec.Branch)
 	case "x", "X":
 		targets := m.selectedWorktrees()
 		if len(targets) == 0 {
@@ -1490,8 +1556,8 @@ func dashboardLogViewportHeight(totalH int) int {
 // bindings are display-only; handleKey still owns dispatch so selection
 // and op semantics stay in one place (and stay unit-testable).
 type dashboardKeys struct {
-	Move, Select, Pane, Project                                                       key.Binding
-	OpUp, OpDown, OpReload, OpPull, OpAdd, OpOpen, OpCopyURL, OpRemove, OpForceRemove key.Binding
+	Move, Select, Pane, Project                                                                       key.Binding
+	OpUp, OpDown, OpReload, OpPull, OpAdd, OpOpen, OpCopyURL, OpEditEnv, OpRemove, OpForceRemove key.Binding
 	Refresh, Fetch, Mine, MyPRS                                                       key.Binding
 	LogScroll                                                                         key.Binding
 	Help, Quit                                                                        key.Binding
@@ -1510,6 +1576,7 @@ func newDashboardKeys() dashboardKeys {
 		OpAdd:         key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
 		OpOpen:        key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open URL")),
 		OpCopyURL:     key.NewBinding(key.WithKeys("O"), key.WithHelp("O", "copy URL")),
+		OpEditEnv:     key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit .env")),
 		OpRemove:      key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "remove")),
 		OpForceRemove: key.NewBinding(key.WithKeys("X"), key.WithHelp("X", "force remove")),
 		Refresh:       key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
@@ -1536,7 +1603,7 @@ func (k dashboardKeys) ShortHelp() []key.Binding {
 // ActHelp is the second sticky-bar line (worktree/branch operations).
 func (k dashboardKeys) ActHelp() []key.Binding {
 	return []key.Binding{
-		k.OpUp, k.OpDown, k.OpReload, k.OpPull, k.OpAdd, k.OpOpen, k.OpCopyURL, k.OpRemove, k.OpForceRemove,
+		k.OpUp, k.OpDown, k.OpReload, k.OpPull, k.OpAdd, k.OpOpen, k.OpCopyURL, k.OpEditEnv, k.OpRemove, k.OpForceRemove,
 		k.Refresh, k.Fetch, k.Mine, k.MyPRS,
 	}
 }
@@ -1547,7 +1614,7 @@ func (k dashboardKeys) ActHelp() []key.Binding {
 func (k dashboardKeys) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Move, k.Select, k.Pane, k.Project},
-		{k.OpUp, k.OpDown, k.OpReload, k.OpPull, k.OpAdd, k.OpOpen, k.OpCopyURL, k.OpRemove, k.OpForceRemove},
+		{k.OpUp, k.OpDown, k.OpReload, k.OpPull, k.OpAdd, k.OpOpen, k.OpCopyURL, k.OpEditEnv, k.OpRemove, k.OpForceRemove},
 		{k.Refresh, k.Fetch, k.Mine, k.MyPRS},
 		{k.LogScroll, k.Help, k.Quit},
 	}

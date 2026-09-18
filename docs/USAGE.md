@@ -19,7 +19,7 @@ wrk3 completion powershell | Out-String | Invoke-Expression
 ```
 
 `add` completes remote branches (for the effective remote — `--remote`
-flag > `source.git.remote` > `origin`); `up`/`down`/`reload`/`pull`/`logs`/`exec`/`remove`/`checkout`
+flag > `source.git.remote` > `origin`); `up`/`down`/`reload`/`pull`/`logs`/`exec`/`env`/`remove`/`checkout`
 complete existing worktrees (branch names and slugs); `ls --project`
 completes registry project names. Completion never
 fetches from the network — it uses the last `fetch` results.
@@ -76,6 +76,8 @@ wrk3 project ls                     # all auto-registered projects (NAME/CONFIG/
 wrk3 logs feature-a [-f]            # entry.logs command
 wrk3 log [-n 50] [--json]           # persistent system log: every command run, state change, warning/error (next to the state file)
 wrk3 exec feature-a -- <cmd...>     # run inside worktree env (cwd=worktree)
+wrk3 env feature-a                 # open the worktree .env in $VISUAL/$EDITOR (ensured first, never overwritten)
+wrk3 env feature-a --print         # print the worktree .env to stdout instead
 wrk3 checkout feature-a             # cd to the worktree (needs shell-init wrapper; else prints path)
 wrk3 down feature-a | wrk3 down     # bare = all including main
 wrk3 remove feature-a feature-b | wrk3 remove --all   # compose down -v + worktree remove + state cleanup (never touches main)
@@ -208,7 +210,10 @@ as the CLI: `space` selects, `u`/`d`/`l`/`p` up/down/reload/pull (cursor worktre
 is selected; `p` runs plain `git pull` like `wrk3 pull` with no flags), `a` adds queued branches, `o` opens the cursor worktree URL
 in a browser (the full URL is logged too), `O` copies that URL to the OS
 clipboard (`pbcopy` on macOS, `wl-copy`/`xclip`/`xsel` on Linux, `clip` on
-Windows), `x` removes (asks `y/n`, refuses
+Windows), `e` edits the cursor worktree `.env` in your editor
+(`$VISUAL`, then `$EDITOR`, then nvim/vim/nano/vi; the TUI suspends
+fullscreen while the editor runs and resumes on quit, the `.env` is
+ensured first like `wrk3 env`), `x` removes (asks `y/n`, refuses
 main like `remove`), `X` force-removes like `remove --force` (asks
 `y/n`, for dirty worktrees with modified/untracked files), `r` refreshes
 state, `R` fetches the remote

@@ -220,6 +220,7 @@ func dashboardMenuItems() []dashboardMenuItem {
 		{Key: "a", Desc: "add queued branches", Run: "a"},
 		{Key: "o", Desc: "open worktree URL in browser", Run: "o"},
 		{Key: "O", Desc: "copy worktree URL", Run: "O"},
+		{Key: "e", Desc: "edit worktree .env in $EDITOR", Run: "e"},
 		{Key: "x", Desc: "remove (asks y/n)", Run: "x"},
 		{Key: "X", Desc: "force remove (asks y/n)", Run: "X"},
 		{Key: "r", Desc: "refresh state", Run: "r"},

@@ -458,7 +458,7 @@ func TestDashboardMenuItems_MatchBindings(t *testing.T) {
 		seen[it.Run] = true
 	}
 	// Every Run value must dispatch through the normal key handler.
-	for _, run := range []string{"u", "d", "l", "p", "a", "o", "O", "x", "X", "r", "R", "m", "P", "1", "2", "3", "tab", "q"} {
+	for _, run := range []string{"u", "d", "l", "p", "a", "o", "O", "e", "x", "X", "r", "R", "m", "P", "1", "2", "3", "tab", "q"} {
 		if !seen[run] {
 			t.Errorf("menu missing run %q (drift from newDashboardKeys)", run)
 		}
