@@ -30,10 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   navigation, selection, refresh, and ops on unrelated worktrees stay
   live while one runs (header shows e.g. `up feature-a +1 more…`).
   Only the same branch as a still-running op is rejected, and background
-  polling keeps refreshing during ops.
+   polling keeps refreshing during ops.
 
 ### Added
 
+- `wrk3 env <branch>` opens the worktree `.env` in your editor (`$VISUAL`,
+  then `$EDITOR` with args, then nvim/vim/nano/vi; `--print` cats to
+  stdout instead). The `.env` is ensured first (managed port keys
+  gap-filled, never overwritten) and branch/slug completion works like
+  `logs`/`exec`. The dashboard edits the same file with `e`: the TUI
+  suspends fullscreen while the editor runs and resumes on quit.
 - Persistent system log (`.wrk3-log.jsonl` next to `.wrk3-state.json`,
   JSONL with timestamp/op/branch/message/command/cwd/duration/error):
   every command run (entry strings via `sh -c`, compose up/down, git
