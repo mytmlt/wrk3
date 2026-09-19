@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 
@@ -1650,9 +1651,12 @@ func dashboardWorkColumns(width int) []table.Column {
 // dashboardWorkColumnsFor sizes the slim slug+status list to fit its
 // content: SLUG flexes between 8 and 48, STATUS fits "setting up" at 11
 // and grows to 32 for health suffixes. Overflow shrinks SLUG first so
-// health status stays visible.
+// health status stays visible. Width is the table width; 6 columns are
+// reserved for bubbles/table cell padding (1 left+right per column) so
+// the rendered rows never overflow the pane border.
 func dashboardWorkColumnsFor(width int, cells []dashboardWorkCells) []table.Column {
 	const checkW = 3
+	avail := max(width-6, 1)
 	statusW := 11
 	slugNeed := len("SLUG")
 	for _, c := range cells {
@@ -1666,8 +1670,8 @@ func dashboardWorkColumnsFor(width int, cells []dashboardWorkCells) []table.Colu
 	statusW = min(max(statusW, 11), 32)
 	slugW := min(max(slugNeed, 8), 48)
 	total := checkW + slugW + statusW
-	if total > width {
-		over := total - width
+	if total > avail {
+		over := total - avail
 		if cut := min(over, slugW-8); cut > 0 {
 			slugW -= cut
 			over -= cut
@@ -1696,15 +1700,18 @@ func dashboardWorkColumnsFor(width int, cells []dashboardWorkCells) []table.Colu
 // dashboardBranchColumns gives everything left after ✓/STATE/padding to
 // the BRANCH column. When the pane is too narrow for all three, STATE
 // shrinks (min 8) instead of pushing BRANCH off — STATE values longer
-// than that truncate, which only happens on tiny terminals.
+// than that truncate, which only happens on tiny terminals. Width is the
+// table width; 6 columns are reserved for bubbles/table cell padding so
+// the rendered rows never overflow the pane border.
 func dashboardBranchColumns(width int) []table.Column {
-	br := width - 3 - 13 - 2
+	avail := max(width-6, 1)
+	br := avail - 3 - 13
 	if br < 10 {
 		br = 10
 	}
 	stateW := 13
-	if total := 3 + br + stateW; total > width {
-		stateW = max(width-3-br, 8)
+	if total := 3 + br + stateW; total > avail {
+		stateW = max(avail-3-br, 8)
 	}
 	return []table.Column{
 		{Title: "✓", Width: 3},
@@ -1833,6 +1840,12 @@ func (m dashboardModel) buildWorkTable(width, height int, focused bool) table.Mo
 	t.SetWidth(max(width, 10))
 	t.SetHeight(max(height, 4))
 	t.SetCursor(m.workCursor)
+	// Fresh tables start with viewport YOffset 0, so a cursor past the
+	// first page renders one row below the visible window (start =
+	// cursor-height, visible = start..start+height-1). Nudging with
+	// MoveDown(0) advances the viewport exactly when needed so the
+	// cursor row stays visible while j-scrolling.
+	t.MoveDown(0)
 	return t
 }
 
@@ -1867,6 +1880,9 @@ func (m dashboardModel) buildBranchTable(width, height int, focused bool) table.
 	t.SetWidth(max(width, 10))
 	t.SetHeight(max(height, 4))
 	t.SetCursor(m.brCursor)
+	// See buildWorkTable: keep the rebuilt viewport pinned to the cursor
+	// so it never slips one row below while j-scrolling long branch lists.
+	t.MoveDown(0)
 	return t
 }
 
@@ -1975,6 +1991,29 @@ func (m dashboardModel) branchPane(width, height int) string {
 	return dashboardPaneStyle(focused).Width(width).Render(title + "\n" + body)
 }
 
+// dashboardFitLines truncates every line to the pane inner width and pads
+// with blanks to exactly height lines, so the box always fills its grid
+// cell. Without the pad, short content (few projects, 8 detail lines)
+// leaves its column shorter than the sibling column and the grid below
+// shows an empty gap; without truncation, long lines (ports/health
+// lists, absolute paths) overflow the border and misalign the column.
+func dashboardFitLines(lines []string, width, height int) []string {
+	inner := max(width-4, 1)
+	out := make([]string, 0, max(height, len(lines)))
+	for _, l := range lines {
+		out = append(out, runewidth.Truncate(l, inner, "…"))
+	}
+	if height > 0 {
+		if len(out) > height {
+			out = out[:height]
+		}
+		for len(out) < height {
+			out = append(out, "")
+		}
+	}
+	return out
+}
+
 // projectPane is the small bottom-left box: project switcher plus the
 // status meta (remote/fetch/poll/proxy). Never focusable; tab switches.
 func (m dashboardModel) projectPane(width, height int) string {
@@ -2025,9 +2064,7 @@ func (m dashboardModel) projectPane(width, height int) string {
 			"poll "+pollInfo+" · "+proxySeg,
 		)
 	}
-	if height > 0 && len(lines) > height {
-		lines = lines[:height]
-	}
+	lines = dashboardFitLines(lines, width, height)
 	return dashboardPaneStyle(false).Width(width).Render(
 		title + "\n" + strings.Join(lines, "\n"))
 }
@@ -2057,8 +2094,12 @@ func (m dashboardModel) detailPane(width, height int) string {
 	title := dashPaneTitleBlurred.Render("Details (preview)")
 	rec := m.detailRecord()
 	if rec == nil {
+		lines := dashboardFitLines([]string{"  (no worktree selected)"}, width, height)
+		if len(lines) > 0 {
+			lines[0] = dashDimStyle.Render(lines[0])
+		}
 		return dashboardPaneStyle(false).Width(width).Render(
-			title + "\n" + dashDimStyle.Render("  (no worktree selected)"))
+			title + "\n" + strings.Join(lines, "\n"))
 	}
 	var urlCfg *config.Config
 	if p := m.curProject(); p != nil {
@@ -2085,9 +2126,7 @@ func (m dashboardModel) detailPane(width, height int) string {
 		"path:    " + rec.Rec.AbsPath,
 		"project: " + rec.Rec.ComposeProject,
 	}
-	if height > 0 && len(lines) > height {
-		lines = lines[:height]
-	}
+	lines = dashboardFitLines(lines, width, height)
 	return dashboardPaneStyle(false).Width(width).Render(
 		title + "\n" + strings.Join(lines, "\n"))
 }

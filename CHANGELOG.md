@@ -76,6 +76,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   live while one runs (header shows e.g. `up feature-a +1 more…`).
   Only the same branch as a still-running op is rejected, and background
    polling keeps refreshing during ops.
+- Dashboard `j`/`k` scrolling no longer loses the cursor below the
+  visible rows in the worktree/branch panes: the rebuilt table viewport
+  now follows the cursor past the first page.
+- Dashboard grid boxes stay aligned: table columns reserve cell padding
+  so rows never overflow their border, and the projects/details panes
+  fill their grid cells (long lines truncate) so both columns end at
+  the same height with no gap below the logs box.
 
 ### Added
 
