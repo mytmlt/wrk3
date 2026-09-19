@@ -8,8 +8,8 @@ import (
 )
 
 func TestRender_Golden(t *testing.T) {
-	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	got, err := Render(a.Allocate(0).Ports)
+	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
+	got, err := Render(a.BaseAllocation())
 	if err != nil {
 		t.Fatalf("Render() = %v", err)
 	}
@@ -23,10 +23,10 @@ func TestRender_Golden(t *testing.T) {
 }
 
 func TestEnsure_FreshMatchesGolden(t *testing.T) {
-	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
+	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
 	dir := t.TempDir()
 	wt := filepath.Join(dir, "feature-foo")
-	added, diverged, err := Ensure(wt, a.Allocate(0).Ports)
+	added, diverged, err := Ensure(wt, a.BaseAllocation())
 	if err != nil {
 		t.Fatalf("Ensure() = %v", err)
 	}
@@ -50,14 +50,13 @@ func TestEnsure_FreshMatchesGolden(t *testing.T) {
 }
 
 func TestRender_OnlyPortVars(t *testing.T) {
-	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	got, err := Render(a.Allocate(2).Ports)
+	got, err := Render(map[string]int{"app": 8002})
 	if err != nil {
 		t.Fatalf("Render() = %v", err)
 	}
-	// index 2: app = 8000 + 200 = 8200. No hardcoded URL vars.
-	if !strings.Contains(got, "APP_PORT=8200\n") {
-		t.Errorf("Render() missing APP_PORT=8200.\n%s", got)
+	// No hardcoded URL vars.
+	if !strings.Contains(got, "APP_PORT=8002\n") {
+		t.Errorf("Render() missing APP_PORT=8002.\n%s", got)
 	}
 	for _, want := range []string{"BASE_URL=", "WEBHOOKS_BASE_URL=", "ALLOWED_WS_ORIGINS="} {
 		if strings.Contains(got, want) {
@@ -128,8 +127,8 @@ func TestEnsure_NeverOverridesExisting(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(wt, EnvFileName), []byte(existing), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	added, diverged, err := Ensure(wt, a.Allocate(0).Ports)
+	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
+	added, diverged, err := Ensure(wt, a.BaseAllocation())
 	if err != nil {
 		t.Fatalf("Ensure() = %v", err)
 	}
@@ -171,8 +170,8 @@ func TestEnsure_AppendsMissingUnderMarker(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(wt, EnvFileName), []byte("SECRET=xyz\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	added, diverged, err := Ensure(wt, a.Allocate(0).Ports)
+	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
+	added, diverged, err := Ensure(wt, a.BaseAllocation())
 	if err != nil {
 		t.Fatalf("Ensure() = %v", err)
 	}
@@ -207,15 +206,15 @@ func TestEnsure_Idempotent(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(wt, EnvFileName), []byte("SECRET=xyz\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	if _, _, err := Ensure(wt, a.Allocate(0).Ports); err != nil {
+	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
+	if _, _, err := Ensure(wt, a.BaseAllocation()); err != nil {
 		t.Fatalf("Ensure() #1 = %v", err)
 	}
 	first, err := os.ReadFile(filepath.Join(wt, EnvFileName))
 	if err != nil {
 		t.Fatal(err)
 	}
-	added, _, err := Ensure(wt, a.Allocate(0).Ports)
+	added, _, err := Ensure(wt, a.BaseAllocation())
 	if err != nil {
 		t.Fatalf("Ensure() #2 = %v", err)
 	}
@@ -246,8 +245,8 @@ func TestEnsure_MatchingFormsAreNotDiverged(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(wt, EnvFileName), []byte(existing), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	added, diverged, err := Ensure(wt, a.Allocate(0).Ports)
+	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
+	added, diverged, err := Ensure(wt, a.BaseAllocation())
 	if err != nil {
 		t.Fatalf("Ensure() = %v", err)
 	}
@@ -283,8 +282,7 @@ func TestEnsureInherited_SeedsSecretsNotPorts(t *testing.T) {
 	if err := os.WriteFile(seedPath, []byte(seedContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	added, diverged, err := EnsureInherited(wt, seedPath, a.Allocate(1).Ports)
+	added, diverged, err := EnsureInherited(wt, seedPath, map[string]int{"app": 8001})
 	if err != nil {
 		t.Fatalf("EnsureInherited() = %v", err)
 	}
@@ -305,7 +303,7 @@ func TestEnsureInherited_SeedsSecretsNotPorts(t *testing.T) {
 	if !strings.Contains(s, "BASE_URL=http://localhost:8000\n") {
 		t.Errorf("user URL not inherited verbatim.\n%s", s)
 	}
-	if !strings.Contains(s, "APP_PORT=8100\n") {
+	if !strings.Contains(s, "APP_PORT=8001\n") {
 		t.Errorf("own allocation missing.\n%s", s)
 	}
 	if strings.Contains(s, "APP_PORT=8000") {
@@ -325,8 +323,7 @@ func TestEnsureInherited_CopiesUserURLs(t *testing.T) {
 	if err := os.WriteFile(seedPath, []byte(seedContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	if _, _, err := EnsureInherited(wt, seedPath, a.Allocate(1).Ports); err != nil {
+	if _, _, err := EnsureInherited(wt, seedPath, map[string]int{"app": 8001}); err != nil {
 		t.Fatalf("EnsureInherited() = %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
@@ -338,7 +335,7 @@ func TestEnsureInherited_CopiesUserURLs(t *testing.T) {
 		"BASE_URL=http://localhost:8000\n",
 		"WEBHOOKS_BASE_URL=http://host.docker.internal:8000\n",
 		"ALLOWED_WS_ORIGINS=http://localhost:8000\n",
-		"APP_PORT=8100\n",
+		"APP_PORT=8001\n",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q.\n%s", want, s)
@@ -349,8 +346,8 @@ func TestEnsureInherited_CopiesUserURLs(t *testing.T) {
 func TestEnsureInherited_MissingSeedBehavesLikeEnsure(t *testing.T) {
 	dir := t.TempDir()
 	wt := filepath.Join(dir, "feature-foo")
-	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	if _, _, err := EnsureInherited(wt, filepath.Join(dir, "nope", EnvFileName), a.Allocate(0).Ports); err != nil {
+	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
+	if _, _, err := EnsureInherited(wt, filepath.Join(dir, "nope", EnvFileName), a.BaseAllocation()); err != nil {
 		t.Fatalf("EnsureInherited() = %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
@@ -379,8 +376,8 @@ func TestEnsureInherited_ExistingFileNotReseeded(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(wt, EnvFileName), []byte("OWN_SECRET=mine\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	if _, _, err := EnsureInherited(wt, seedPath, a.Allocate(0).Ports); err != nil {
+	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
+	if _, _, err := EnsureInherited(wt, seedPath, a.BaseAllocation()); err != nil {
 		t.Fatalf("EnsureInherited() = %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
@@ -403,8 +400,8 @@ func TestStripManaged_PreservesUserKeys(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	deleted, err := StripManaged(path, a.Allocate(0).Ports)
+	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
+	deleted, err := StripManaged(path, a.BaseAllocation())
 	if err != nil {
 		t.Fatalf("StripManaged() = %v", err)
 	}
@@ -423,15 +420,15 @@ func TestStripManaged_PreservesUserKeys(t *testing.T) {
 func TestStripManaged_DeletesWhenOnlyManaged(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, EnvFileName)
-	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
-	content, err := Render(a.Allocate(0).Ports)
+	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
+	content, err := Render(a.BaseAllocation())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	deleted, err := StripManaged(path, a.Allocate(0).Ports)
+	deleted, err := StripManaged(path, a.BaseAllocation())
 	if err != nil {
 		t.Fatalf("StripManaged() = %v", err)
 	}
@@ -446,15 +443,15 @@ func TestStripManaged_DeletesWhenOnlyManaged(t *testing.T) {
 func TestReadPorts_RecoversAllocation(t *testing.T) {
 	dir := t.TempDir()
 	base := map[string]int{"app": 8000, "web": 3000}
-	if _, _, err := Ensure(dir, map[string]int{"app": 8100, "web": 3100}); err != nil {
+	if _, _, err := Ensure(dir, map[string]int{"app": 8001, "web": 3001}); err != nil {
 		t.Fatal(err)
 	}
 	got, ok := ReadPorts(dir, base)
 	if !ok {
 		t.Fatal("expected recovery, got not-ok")
 	}
-	if got["app"] != 8100 || got["web"] != 3100 {
-		t.Errorf("got %v, want app=8100 web=3100", got)
+	if got["app"] != 8001 || got["web"] != 3001 {
+		t.Errorf("got %v, want app=8001 web=3001", got)
 	}
 }
 

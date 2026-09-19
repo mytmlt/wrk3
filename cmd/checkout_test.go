@@ -26,7 +26,7 @@ func checkoutTestRepo(t *testing.T) (repo, wtDir string) {
 		Slug:           "feature-foo",
 		AbsPath:        wtDir,
 		Index:          1,
-		Ports:          map[string]int{"app": 8100},
+		Ports:          map[string]int{"app": 8001},
 		Status:         ports.StatusStopped,
 		ComposeProject: "demo-feature-foo",
 	}}
@@ -112,7 +112,7 @@ func TestCheckout_StaleDirErrors(t *testing.T) {
 		Slug:           "gone",
 		AbsPath:        filepath.Join(repo, ".worktrees", "gone"),
 		Index:          5,
-		Ports:          map[string]int{"app": 8500},
+		Ports:          map[string]int{"app": 8005},
 		Status:         ports.StatusStopped,
 		ComposeProject: "demo-gone",
 	})

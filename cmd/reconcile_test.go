@@ -62,8 +62,8 @@ func TestReconcileAndSave_AdoptsOrphanEmptyState(t *testing.T) {
 	if rec.Branch != "feature-x" || rec.Slug != "feature-x" || rec.AbsPath != filepath.Clean(wantPath) {
 		t.Errorf("rec = %+v, want feature-x at %s", rec, wantPath)
 	}
-	if rec.Index != 1 || rec.Ports["app"] != 8100 {
-		t.Errorf("rec = %+v, want index 1 app 8100 (index 0 is the main checkout)", rec)
+	if rec.Index != 1 || rec.Ports["app"] != 8001 {
+		t.Errorf("rec = %+v, want index 1 app 8001 (index 0 is the main checkout)", rec)
 	}
 	if rec.ComposeProject != "demo-feature-x" {
 		t.Errorf("ComposeProject = %q, want demo-feature-x", rec.ComposeProject)
@@ -93,7 +93,7 @@ func TestReconcileState_RecoversPortsFromEnv(t *testing.T) {
 	r, repo := reconcileFixture(t)
 	wt := filepath.Join(repo, ".worktrees", "feature-y")
 	gitWorktreeAdd(t, repo, wt, "feature-y")
-	env := "APP_PORT=8100\n"
+	env := "APP_PORT=8001\n"
 	if err := os.WriteFile(filepath.Join(wt, ".env"), []byte(env), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -104,8 +104,8 @@ func TestReconcileState_RecoversPortsFromEnv(t *testing.T) {
 	if !dirty || len(updated) != 1 {
 		t.Fatalf("updated = %+v, dirty=%v, want 1 adopted", updated, dirty)
 	}
-	if updated[0].Ports["app"] != 8100 || updated[0].Index != 1 {
-		t.Errorf("rec = %+v, want recovered app 8100 index 1", updated[0])
+	if updated[0].Ports["app"] != 8001 || updated[0].Index != 1 {
+		t.Errorf("rec = %+v, want recovered app 8001 index 1", updated[0])
 	}
 	if len(warns) != 0 {
 		t.Errorf("warns = %v, want none when .env matches", warns)
@@ -124,8 +124,8 @@ func TestReconcileState_DivergedEnvAllocatesFresh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !dirty || updated[0].Ports["app"] != 8100 || updated[0].Index != 1 {
-		t.Errorf("updated = %+v, want fresh app 8100 index 1", updated)
+	if !dirty || updated[0].Ports["app"] != 8001 || updated[0].Index != 1 {
+		t.Errorf("updated = %+v, want fresh app 8001 index 1", updated)
 	}
 	if len(warns) == 0 {
 		t.Error("diverged .env must warn")
@@ -149,8 +149,8 @@ func TestReconcileState_BaseEnvDoesNotAdoptMainSlot(t *testing.T) {
 	if !dirty || len(updated) != 1 {
 		t.Fatalf("updated = %+v, dirty=%v, want 1 adopted", updated, dirty)
 	}
-	if updated[0].Index != 1 || updated[0].Ports["app"] != 8100 {
-		t.Errorf("rec = %+v, want fresh index 1 app 8100, never the main slot", updated[0])
+	if updated[0].Index != 1 || updated[0].Ports["app"] != 8001 {
+		t.Errorf("rec = %+v, want fresh index 1 app 8001, never the main slot", updated[0])
 	}
 	if len(warns) == 0 {
 		t.Error("adopting over base-port .env values must warn")
@@ -186,6 +186,23 @@ func TestReconcileState_ListErrorSkips(t *testing.T) {
 	}
 	if dirty || len(updated) != 0 {
 		t.Errorf("list error must skip: dirty=%v updated=%+v", dirty, updated)
+	}
+}
+
+func TestRecoveredReusable_RejectsSelfCollision(t *testing.T) {
+	alloc := ports.Allocator{
+		Base:   map[string]int{"app": 8000, "web": 3000},
+		Ranges: map[string][2]int{"app": {8000, 8099}, "web": {3000, 3099}},
+	}
+	base := map[string]int{"app": 8000, "web": 3000}
+	mainPorts := alloc.BaseAllocation()
+	// Distinct in-range values reuse.
+	if !recoveredReusable(alloc, base, map[string]int{"app": 8001, "web": 3001}, map[int]struct{}{8000: {}, 3000: {}}, mainPorts) {
+		t.Error("distinct in-range recovered ports should be reusable")
+	}
+	// Same host port across services must not reuse.
+	if recoveredReusable(alloc, base, map[string]int{"app": 8001, "web": 8001}, map[int]struct{}{8000: {}, 3000: {}}, mainPorts) {
+		t.Error("self-colliding recovered ports (app==web) should not be reusable")
 	}
 }
 

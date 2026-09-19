@@ -26,8 +26,8 @@ func TestMigrateLegacyZeroToBasePlusStep(t *testing.T) {
 	if len(moved) != 1 || moved[0] != "legacy" {
 		t.Fatalf("moved = %v, want [legacy]", moved)
 	}
-	if updated[0].Index != 1 || updated[0].Ports["app"] != 8100 {
-		t.Fatalf("rec = %+v, want index 1 app 8100", updated[0])
+	if updated[0].Index != 1 || updated[0].Ports["app"] != 8001 {
+		t.Fatalf("rec = %+v, want index 1 app 8001", updated[0])
 	}
 	all, err := recordsWithMain(r, updated)
 	if err != nil {
@@ -57,7 +57,7 @@ func TestMigrateLegacyZeroChainShift(t *testing.T) {
 	gitWorktreeAdd(t, repo, wt2, "b-healthy")
 	recs := []ports.WorktreeRecord{
 		{Branch: "a-legacy", Slug: "a-legacy", AbsPath: wt1, Index: 0, Ports: map[string]int{"app": 8000}, Status: ports.StatusStopped, ComposeProject: "demo-a-legacy"},
-		{Branch: "b-healthy", Slug: "b-healthy", AbsPath: wt2, Index: 1, Ports: map[string]int{"app": 8100}, Status: ports.StatusStopped, ComposeProject: "demo-b-healthy"},
+		{Branch: "b-healthy", Slug: "b-healthy", AbsPath: wt2, Index: 1, Ports: map[string]int{"app": 8001}, Status: ports.StatusStopped, ComposeProject: "demo-b-healthy"},
 	}
 	updated, moved, _, err := migrateLegacyMainCollisions(r, recs)
 	if err != nil {
@@ -70,11 +70,11 @@ func TestMigrateLegacyZeroChainShift(t *testing.T) {
 	for _, rec := range updated {
 		byBranch[rec.Branch] = rec
 	}
-	if byBranch["b-healthy"].Index != 1 || byBranch["b-healthy"].Ports["app"] != 8100 {
+	if byBranch["b-healthy"].Index != 1 || byBranch["b-healthy"].Ports["app"] != 8001 {
 		t.Errorf("healthy renumbered: %+v", byBranch["b-healthy"])
 	}
-	if byBranch["a-legacy"].Index != 2 || byBranch["a-legacy"].Ports["app"] != 8200 {
-		t.Errorf("legacy = %+v, want index 2 app 8200", byBranch["a-legacy"])
+	if byBranch["a-legacy"].Index != 2 || byBranch["a-legacy"].Ports["app"] != 8002 {
+		t.Errorf("legacy = %+v, want index 2 app 8002", byBranch["a-legacy"])
 	}
 }
 
@@ -91,8 +91,8 @@ func TestReconcileAndSave_MigratesLegacyZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(updated) != 1 || updated[0].Index != 1 || updated[0].Ports["app"] != 8100 {
-		t.Fatalf("updated = %+v, want migrated index 1 app 8100", updated)
+	if len(updated) != 1 || updated[0].Index != 1 || updated[0].Ports["app"] != 8001 {
+		t.Fatalf("updated = %+v, want migrated index 1 app 8001", updated)
 	}
 	if len(warns) == 0 {
 		t.Error("warns empty, want migration note")
@@ -114,7 +114,7 @@ func TestMigrateLegacyNoopWhenHealthy(t *testing.T) {
 	r, _ := reconcileFixture(t)
 	recs := []ports.WorktreeRecord{{
 		Branch: "ok", Slug: "ok", AbsPath: "/tmp/ok",
-		Index: 1, Ports: map[string]int{"app": 8100},
+		Index: 1, Ports: map[string]int{"app": 8001},
 		Status: ports.StatusStopped, ComposeProject: "demo-ok",
 	}}
 	updated, moved, warns, err := migrateLegacyMainCollisions(r, recs)

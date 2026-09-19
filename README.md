@@ -85,8 +85,9 @@ alongside — `wrk3 add` in another terminal shows up on the next poll or
   `-p <prefix>-<slug>` per worktree behind a `Runner` interface
   (`docker` and `podman` ship; `portainer`/`nomad` stubs
   return `not implemented`).
-- **Deterministic ports** — `allocated = base + index * step` per port name,
-  ensured in each worktree's `.env` (missing managed keys appended under a
+- **Range ports with gap reuse** — per-service `ranges` scanned from `base`
+  upward by 1 (lowest free wins, OS-occupied skipped, exhaustion names the
+  service), ensured in each worktree's `.env` (missing managed keys appended under a
   wrk3 section; your existing lines and secrets are never touched, and new
   worktrees inherit non-managed keys from the repo root); `status` reads
   them back from the state file (`?`/`stale` when the directory is missing).
@@ -200,7 +201,8 @@ entry:
   reload: ["docker compose restart app"]
 ports:
   base: {app: 8000}
-  step: 100
+  ranges:
+    app: [8000, 8099]
 ```
 
 Full field reference, port table, `.env` mapping, and multi-project patterns:
@@ -225,9 +227,10 @@ for where the `docker` / `podman` / `portainer` / `nomad` / bare-machine runners
 1. `wrk3 add <branch>` → `git worktree add <base>/<slug>` (tracking
    `<remote>/<branch>` when remote-only; prompts to create from
    `<remote>/<default>` — `--create`/`--no-create` — when the name matches
-   nothing), copies `source.git.copy`
+    nothing), copies `source.git.copy`
     includes (if any), assigns the
-    next index, allocates `base + index*step` ports, ensures managed keys in
+    next index (monotonic id) plus the lowest free range ports (gap reuse,
+    OS-aware), ensures managed keys in
     `.env` (append-only, never overwrites your values), appends
    `{branch, slug, absPath, index, ports, composeProject, status}` to
    `<worktreeBase>/.wrk3-state.json` (absolute paths → cwd-independent).

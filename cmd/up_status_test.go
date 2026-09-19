@@ -65,7 +65,7 @@ func TestProbeDashboardRows_TransitionalStaysWithoutLiveContainers(t *testing.T)
 			Ports: map[string]int{"app": 8000}, Status: ports.StatusSettingUp},
 		{Branch: "gone", Slug: "gone", Index: 1,
 			AbsPath: filepath.Join(t.TempDir(), "missing"),
-			Ports:   map[string]int{"app": 8100}, Status: ports.StatusSettingUp},
+			Ports:   map[string]int{"app": 8001}, Status: ports.StatusSettingUp},
 	}
 	rows := probeDashboardRows(&resolved{cfg: cfg}, recs, "")
 	byBranch := map[string]dashboardRow{}

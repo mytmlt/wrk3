@@ -31,7 +31,8 @@ entry:
   reload: ["docker compose restart app"]
 ports:
   base: {app: 8000}
-  step: 100
+  ranges:
+    app: [8000, 8099]
 # Health checks (optional, display-only): each `run` executes via `sh -c`
 # with cwd=worktree and env=allocated ports (like entry.*). A running
 # worktree shows `running (healthy)` when all pass, `running (degraded 1/2)`

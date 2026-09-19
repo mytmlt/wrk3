@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Range-based port allocation with step 1, gap reuse, and OS availability
+  check: new per-service `ports.ranges` (e.g. `ranges: {app: [8000, 8099]}`;
+  `base` must sit inside its range, `app` required, 1–65535). `ports.step`
+  is removed and now fails with a migration hint. `add`/`adopt`/reconcile
+  take the lowest free port per service (freed ports reused, OS-occupied
+  ports skipped via a `127.0.0.1` bind probe, exhaustion errors name the
+  service and range); `Record.Index` stays a monotonic id decoupled from
+  ports. `status`/dashboard previews stay state-only (no bind checks in
+  renders).
+
 ### Added
 
 - E2E harness (`tests/e2e/`, `//go:build e2e`, case catalog in

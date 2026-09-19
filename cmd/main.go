@@ -13,11 +13,11 @@ import (
 )
 
 // mainWorktreeIndex is the reserved port index for the implicit main
-// worktree (repo root). Allocate(0) is exactly the ports.base allocation,
-// so main always serves the ports written in wrk3.yaml. It is never
-// assigned by nextIndex (which grows from max+1 >= 1), so main ports stay
-// stable as managed worktrees are added/removed. With defaults
-// (8000+index*100) main gets 8000 and the first managed worktree 8100.
+// worktree (repo root). Main always serves exactly the ports.base
+// allocation, so it stays stable as managed worktrees are added/removed.
+// It is never assigned by nextIndex (which grows from max+1 >= 1).
+// With defaults main gets app=8000 and managed worktrees scan
+// 8000..8099 from 8000 upward with gap reuse.
 const mainWorktreeIndex = 0
 
 // sameRepoRoot compares a git-reported worktree path with the repo root,
@@ -80,11 +80,11 @@ func mainRecord(r *resolved, recs []ports.WorktreeRecord) (*ports.WorktreeRecord
 		return nil, fmt.Errorf("main worktree slug %q for branch %q collides with branch %q", slug, branch, existing.Branch)
 	}
 	alloc := r.cfg.Allocator()
-	allocation := alloc.Allocate(mainWorktreeIndex)
+	allocation := alloc.BaseAllocation()
 	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
 	for _, rec := range recs {
-		if alloc.IndexesCollide(mainWorktreeIndex, rec.Index) || ports.AllocationsCollide(allocation.Ports, rec.Ports) {
-			return nil, fmt.Errorf("main worktree ports collide with worktree %q (main reserves index %d, the ports.base allocation)", rec.Branch, mainWorktreeIndex)
+		if ports.AllocationsCollide(allocation, rec.Ports) {
+			return nil, fmt.Errorf("main worktree ports collide with worktree %q (main reserves the ports.base allocation)", rec.Branch)
 		}
 		if rec.ComposeProject == composeProject {
 			return nil, fmt.Errorf("main worktree compose project %q collides with worktree %q", composeProject, rec.Branch)
@@ -95,7 +95,7 @@ func mainRecord(r *resolved, recs []ports.WorktreeRecord) (*ports.WorktreeRecord
 		Slug:           slug,
 		AbsPath:        repoRoot,
 		Index:          mainWorktreeIndex,
-		Ports:          allocation.Ports,
+		Ports:          allocation,
 		ComposeProject: composeProject,
 	}, nil
 }

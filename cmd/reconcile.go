@@ -11,17 +11,13 @@ import (
 	"github.com/mytmlt/wrk3/internal/syslog"
 )
 
-// maxReconcileTries bounds the fresh-index scan when recovered or
-// next-available allocations collide with taken ports (e.g. after a
-// ports.base/step change). Hitting it means the port space is exhausted.
-const maxReconcileTries = 10000
-
 // reconcileState adopts on-disk worktrees missing from state (orphans from
 // a deleted state file or out-of-band `git worktree add`). Orphans are
-// processed in sorted branch order for deterministic indexes. Ports are
-// recovered from the worktree .env when the recovered set is a complete,
-// valid allocation point with no collisions; otherwise a fresh
-// next-available index is assigned. The worktree .env is gap-filled via
+// processed in sorted branch order for deterministic ports. Ports are
+// recovered from the worktree .env when the recovered set matches the
+// configured base keys, sits inside ranges, and collides with neither
+// state nor the OS; otherwise the lowest free range allocation is
+// assigned (gap reuse, OS-aware). The worktree .env is gap-filled via
 // ensureWorktreeEnv (existing values never overwritten; divergences come
 // back as warnings). Records are appended with Status stopped — display
 // overlays the live runner probe. Slug, port, and compose-project
@@ -50,24 +46,10 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 	if base == nil {
 		base = ports.DefaultBase()
 	}
-	mainPorts := alloc.Allocate(mainWorktreeIndex).Ports
-	taken := make([]map[string]int, 0, len(recs)+1)
-	for _, rec := range recs {
-		taken = append(taken, rec.Ports)
-	}
+	mainPorts := alloc.BaseAllocation()
+	taken := takenWithMain(alloc, recs)
 
 	all := append([]ports.WorktreeRecord(nil), recs...)
-	collides := func(p map[string]int) bool {
-		if ports.AllocationsCollide(mainPorts, p) {
-			return true
-		}
-		for _, t := range taken {
-			if ports.AllocationsCollide(t, p) {
-				return true
-			}
-		}
-		return false
-	}
 
 	for _, branch := range branches {
 		if findRecord(all, branch) != nil {
@@ -85,34 +67,19 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 		}
 		path := byBranch[branch]
 
-		// -1 is the unassigned sentinel here (not a port index):
-		// allocationIndex never returns mainWorktreeIndex and
-		// nextIndex floors at 1, so adopted worktrees never take
-		// the main slot.
-		idx := -1
-		var allocation ports.Allocation
+		idx := nextIndex(all)
+		var allocation map[string]int
 		if recovered, ok := ports.ReadPorts(path, base); ok {
-			if k, valid := allocationIndex(alloc, base, recovered); valid {
-				candidate := alloc.Allocate(k)
-				if portsEqual(candidate.Ports, recovered) && !collides(recovered) {
-					idx = k
-					allocation = ports.Allocation{Index: k, Ports: recovered}
-				}
+			if recoveredReusable(alloc, base, recovered, taken, mainPorts) {
+				allocation = recovered
 			}
 		}
-		if idx < 0 {
-			idx = nextIndex(all)
-			for tries := 0; tries < maxReconcileTries; tries++ {
-				candidate := alloc.Allocate(idx)
-				if !collides(candidate.Ports) {
-					allocation = candidate
-					break
-				}
-				idx++
+		if allocation == nil {
+			fresh, err := alloc.FindFreeAllocation(taken, osPortFree)
+			if err != nil {
+				return recs, nil, false, fmt.Errorf("reconcile worktree %q: %w", branch, err)
 			}
-			if allocation.Ports == nil {
-				return recs, nil, false, fmt.Errorf("reconcile worktree %q: no collision-free port index available", branch)
-			}
+			allocation = fresh
 		}
 
 		rec := ports.WorktreeRecord{
@@ -120,7 +87,7 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 			Slug:           slug,
 			AbsPath:        path,
 			Index:          idx,
-			Ports:          allocation.Ports,
+			Ports:          allocation,
 			ComposeProject: composeProject,
 			Status:         ports.StatusStopped,
 		}
@@ -130,7 +97,9 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 		}
 		warns = append(warns, w...)
 		all = append(all, rec)
-		taken = append(taken, allocation.Ports)
+		for _, p := range allocation {
+			taken[p] = struct{}{}
+		}
 	}
 	if len(all) == len(recs) {
 		return recs, nil, false, nil
@@ -138,12 +107,68 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 	return all, warns, true, nil
 }
 
+// collidesTaken reports whether p shares any host port with taken.
+func collidesTaken(taken map[int]struct{}, p map[string]int) bool {
+	for _, v := range p {
+		if _, ok := taken[v]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// recoveredReusable reports whether .env-recovered ports can be reused:
+// same keys as base, each value inside its range, distinct values within
+// the set (no self-collision across services), no collision with main
+// or taken state, and OS-free (bind probe).
+func recoveredReusable(alloc ports.Allocator, base, recovered map[string]int, taken map[int]struct{}, mainPorts map[string]int) bool {
+	if len(recovered) != len(base) {
+		return false
+	}
+	for k := range base {
+		if _, ok := recovered[k]; !ok {
+			return false
+		}
+	}
+	ranges := alloc.Ranges
+	if ranges == nil {
+		ranges = ports.DefaultRanges()
+	}
+	for name, v := range recovered {
+		r, ok := ranges[name]
+		if !ok {
+			return false
+		}
+		if v < r[0] || v > r[1] {
+			return false
+		}
+		if _, ok := base[name]; !ok {
+			return false
+		}
+	}
+	if ports.AllocationsCollide(mainPorts, recovered) || collidesTaken(taken, recovered) {
+		return false
+	}
+	seen := make(map[int]struct{}, len(recovered))
+	for _, v := range recovered {
+		if _, dup := seen[v]; dup {
+			return false
+		}
+		seen[v] = struct{}{}
+	}
+	for _, v := range recovered {
+		if !osPortFree(v) {
+			return false
+		}
+	}
+	return true
+}
+
 // reconcileAndSave adopts orphan worktrees into recs, migrates legacy
-// managed index 0 allocations colliding with main (reserved index 0, the
-// ports.base allocation), and persists when anything changed. It returns
-// the updated records, the adopted branch names, and .env divergence
-// warnings. A missing stateP skips the save and returns display-only
-// records.
+// managed allocations colliding with main (the ports.base allocation),
+// and persists when anything changed. It returns the updated records,
+// the adopted branch names, and .env divergence warnings. A missing
+// stateP skips the save and returns display-only records.
 func reconcileAndSave(r *resolved, recs []ports.WorktreeRecord) (updated []ports.WorktreeRecord, adopted []string, warns []string, err error) {
 	had := make(map[string]struct{}, len(recs))
 	for _, rec := range recs {
@@ -161,7 +186,7 @@ func reconcileAndSave(r *resolved, recs []ports.WorktreeRecord) (updated []ports
 	if len(moved) > 0 {
 		updated = migratedRecs
 		dirty = true
-		warns = append(warns, "migrated legacy index 0 collides with main (ports.base): "+strings.Join(moved, ", "))
+		warns = append(warns, "migrated legacy collides with main (ports.base): "+strings.Join(moved, ", "))
 	}
 	if !dirty {
 		return updated, nil, warns, nil
@@ -190,50 +215,6 @@ func logReconciledCLI(adopted, warns []string) {
 		_, _ = fmt.Fprintf(os.Stderr, "reconciled state: adopted %s\n", strings.Join(adopted, ", "))
 	}
 	warnReconciled(warns)
-}
-
-// allocationIndex resolves recovered .env ports to their allocator index:
-// the app port must sit exactly on the base+index*step grid (effective step
-// honors the allocator default). Callers additionally verify the full map
-// equals Allocate(index) so multi-port bases match on every name.
-func allocationIndex(alloc ports.Allocator, base map[string]int, recovered map[string]int) (int, bool) {
-	baseApp, ok := base[ports.PortApp]
-	if !ok {
-		return 0, false
-	}
-	appValue, ok := recovered[ports.PortApp]
-	if !ok {
-		return 0, false
-	}
-	step := alloc.Step
-	if step == 0 {
-		step = ports.DefaultStep
-	}
-	if step <= 0 {
-		return 0, false
-	}
-	delta := appValue - baseApp
-	if delta < 0 || delta%step != 0 {
-		return 0, false
-	}
-	idx := delta / step
-	if idx == mainWorktreeIndex {
-		return 0, false
-	}
-	return idx, true
-}
-
-// portsEqual reports whether two allocations hold identical name=value pairs.
-func portsEqual(a, b map[string]int) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		if bv, ok := b[k]; !ok || bv != v {
-			return false
-		}
-	}
-	return true
 }
 
 // warnReconciled prints .env divergence warnings from reconciliation.
