@@ -89,13 +89,18 @@ func (a Allocator) BaseAllocation() map[string]int {
 	return a.baseOrDefault()
 }
 
-// FindFreeAllocation scans each service range from base upward by 1 and
-// returns the lowest free port per service. taken holds already-used host
-// ports (union of state records plus the main reservation); isFree probes
-// OS availability (nil means state-only, always free). Ports assigned
-// earlier in the same call count as taken so cross-service collisions
-// within one candidate are avoided. Services scan in sorted name order
-// for determinism. Exhaustion errors name the service and its range.
+// FindFreeAllocation scans each service range from base upward by 1 (per
+// issue #7: scan base, base+1, … ≤ max) and returns the lowest free port
+// per service. taken holds already-used host ports (union of state records
+// plus the main reservation); isFree probes OS availability (nil means
+// state-only, always free). Ports assigned earlier in the same call count
+// as taken so cross-service collisions within one candidate are avoided.
+// Services scan fewest-candidates-first (r[1]-base, name tiebreak) so
+// heterogeneously overlapping ranges resolve when feasible instead of
+// falsely exhausting under plain sorted order; the order is still
+// deterministic. Exhaustion errors name the service and its configured
+// range [min,max] per the acceptance contract (the scan floor is base,
+// which always sits inside [min,max]).
 func (a Allocator) FindFreeAllocation(taken map[int]struct{}, isFree func(int) bool) (map[string]int, error) {
 	base := a.baseOrDefault()
 	ranges := a.rangesOrDefault()
@@ -103,7 +108,14 @@ func (a Allocator) FindFreeAllocation(taken map[int]struct{}, isFree func(int) b
 	for name := range base {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	sort.Slice(names, func(i, j int) bool {
+		bi, bj := base[names[i]], base[names[j]]
+		ci, cj := ranges[names[i]][1]-bi, ranges[names[j]][1]-bj
+		if ci != cj {
+			return ci < cj
+		}
+		return names[i] < names[j]
+	})
 	used := make(map[int]struct{}, len(taken)+len(base))
 	for p := range taken {
 		used[p] = struct{}{}
@@ -151,6 +163,7 @@ func TakenFromRecords(recs []WorktreeRecord) map[int]struct{} {
 // IsPortFree reports whether a TCP bind to 127.0.0.1:port succeeds.
 // Used as the isFree probe at assign time (add/adopt); status display
 // paths use state-only previews (nil isFree) and never call this.
+// The 127.0.0.1 probe is the conflict domain pinned by issue #7.
 func IsPortFree(port int) bool {
 	if port <= 0 || port > 65535 {
 		return false

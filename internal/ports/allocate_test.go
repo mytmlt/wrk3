@@ -64,7 +64,23 @@ func TestFindFreeAllocation_CrossServiceCollisionAvoided(t *testing.T) {
 		t.Errorf("cross-service collision: app=web=%d", got["app"])
 	}
 	if got["app"] != 8000 || got["web"] != 8001 {
-		t.Errorf("got %v, want app=8000 web=8001 (sorted order)", got)
+		t.Errorf("got %v, want app=8000 web=8001 (name tiebreak)", got)
+	}
+}
+
+func TestFindFreeAllocation_NarrowRangeFirst(t *testing.T) {
+	// Heterogeneous overlap: web has only one candidate, so it must go
+	// first; plain sorted order (app first) would falsely exhaust web.
+	a := Allocator{
+		Base:   map[string]int{"app": 8000, "web": 8000},
+		Ranges: map[string][2]int{"app": {8000, 8001}, "web": {8000, 8000}},
+	}
+	got, err := a.FindFreeAllocation(nil, nil)
+	if err != nil {
+		t.Fatalf("FindFreeAllocation = %v", err)
+	}
+	if got["web"] != 8000 || got["app"] != 8001 {
+		t.Errorf("got %v, want web=8000 app=8001", got)
 	}
 }
 
