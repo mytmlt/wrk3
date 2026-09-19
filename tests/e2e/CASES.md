@@ -11,8 +11,8 @@ never touches real checkouts.
 | ID | Scenario | Go test |
 |----|----------|---------|
 | H01 | `fetch` lists the pushed `feature/foo` branch | `TestE2E_FetchListsBranch` |
-| H02 | `add feature/foo --no-create` creates `.worktrees/feature-foo`, state holds the absolute path + `app` 8100, worktree `.env` holds `APP_PORT=8100` | `TestE2E_AddExistingBranch` |
-| H03 | `status` after add shows `feature/foo` with `app=8100` | `TestE2E_StatusShowsWorktree` |
+| H02 | `add feature/foo --no-create` creates `.worktrees/feature-foo`, state holds the absolute path + `app` 8001, worktree `.env` holds `APP_PORT=8001` | `TestE2E_AddExistingBranch` |
+| H03 | `status` after add shows `feature/foo` with `app=8001` | `TestE2E_StatusShowsWorktree` |
 | H04 | `up feature/foo` → `logs feature/foo` → `down feature/foo` each exit 0 (echo entries + minimal alpine compose stack) | `TestE2E_UpLogsDown` |
 | H05 | `remove feature/foo --force` deletes the dir; `status` still exits 0 | `TestE2E_RemoveCleansUp` |
 | H06 | `up feature/foo` after remove errors with `unknown worktree` | `TestE2E_UpAfterRemoveErrors` |
@@ -24,12 +24,12 @@ never touches real checkouts.
 | E01 | `add feat/new --create` creates branch from origin default, state holds it | `TestE2E_CreateWithFlag` |
 | E02 | `add feat/unknown --no-create` fails fast with `--create` hint, creates nothing | `TestE2E_NoCreateFailsFast` |
 | E03 | bare `add feat/new2` with EOF stdin cancels with `cancelled` + `--create` hint | `TestE2E_CreatePromptEOF` |
-| E04 | two adds allocate `app=8100` then `app=8200` (base 8000, step 100) | `TestE2E_PortAllocation` |
+| E04 | two adds allocate `app=8001` then `app=8002` (base 8000, upward by 1) | `TestE2E_PortAllocation` |
 | E05 | `SECRET=topsecret` appended to worktree `.env` survives `up` with `APP_PORT` gap-filled | `TestE2E_EnvPreservesSecrets` |
 | E06 | diverged `APP_PORT=5000` warns on `up` and is left intact | `TestE2E_EnvDivergenceWarns` |
 | E07 | deleting `.wrk3-state.json` then `status` re-adopts the on-disk worktree | `TestE2E_AdoptsOrphanAfterStateLoss` |
 | E09 | fresh `status` lists implicit `main` at `app=8000`; `remove main` refuses | `TestE2E_MainCheckout` |
-| E10 | `exec feature/foo -- sh -c 'test "$APP_PORT" = 8100'` exits 0 | `TestE2E_ExecEnv` |
+| E10 | `exec feature/foo -- sh -c 'test "$APP_PORT" = 8001'` exits 0 | `TestE2E_ExecEnv` |
 | E11 | deleted worktree dir shows `stale`/`?` with exit 0; `remove --force` drops it | `TestE2E_StaleDir` |
 
 ## D — Docker (PR3)

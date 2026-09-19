@@ -192,8 +192,9 @@ func TestE2E_CreatePromptEOF(t *testing.T) {
 	}
 }
 
-// TestE2E_PortAllocation (E04): the first managed worktree gets app=8100,
-// the second app=8200 (base 8000, step 100; index 0 is reserved for main).
+// TestE2E_PortAllocation (E04): the first managed worktree gets app=8001,
+// the second app=8002 (base 8000, upward by 1 with gap reuse;
+// index 0 is reserved for main).
 func TestE2E_PortAllocation(t *testing.T) {
 	repoDir := mkThrowawayRepo(t)
 	cfg := writeE2EConfig(t, repoDir)
@@ -215,11 +216,11 @@ func TestE2E_PortAllocation(t *testing.T) {
 	recs := edgeReadState(t, repoDir)
 	foo := edgeFindRecord(t, recs, "feature/foo")
 	bar := edgeFindRecord(t, recs, "feature/bar")
-	if foo.Ports["app"] != 8100 {
-		t.Errorf("feature/foo app port = %d, want 8100", foo.Ports["app"])
+	if foo.Ports["app"] != 8001 {
+		t.Errorf("feature/foo app port = %d, want 8001", foo.Ports["app"])
 	}
-	if bar.Ports["app"] != 8200 {
-		t.Errorf("feature/bar app port = %d, want 8200", bar.Ports["app"])
+	if bar.Ports["app"] != 8002 {
+		t.Errorf("feature/bar app port = %d, want 8002", bar.Ports["app"])
 	}
 }
 
@@ -335,8 +336,8 @@ func TestE2E_ExecEnv(t *testing.T) {
 	if _, _, err := runWrk3(t, repoDir, cfg, "add", "feature/foo", "--create"); err != nil {
 		t.Fatalf("add feature/foo --create: %v", err)
 	}
-	if _, _, err := runWrk3(t, repoDir, cfg, "exec", "feature/foo", "--", "sh", "-c", `test "$APP_PORT" = 8100`); err != nil {
-		t.Fatalf("exec with APP_PORT=8100: %v", err)
+	if _, _, err := runWrk3(t, repoDir, cfg, "exec", "feature/foo", "--", "sh", "-c", `test "$APP_PORT" = 8001`); err != nil {
+		t.Fatalf("exec with APP_PORT=8001: %v", err)
 	}
 }
 
