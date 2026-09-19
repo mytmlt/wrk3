@@ -1,9 +1,10 @@
 // Package ports allocates per-worktree host ports and ensures managed keys
 // in .env files (append-only: existing lines are never modified).
 //
-// Allocation rule: allocated = base + index*step per port name. Runtime
-// state lives in <worktreeBase>/.wrk3-state.json with absolute paths
-// so every command works from any cwd.
+// Allocation rule: per-service ranges scanned from base upward by 1; the
+// lowest free port wins (gap reuse). Runtime state lives in
+// <worktreeBase>/.wrk3-state.json with absolute paths so every command
+// works from any cwd.
 package ports
 
 // PortApp is the canonical port name. It is required in every allocation:
@@ -11,9 +12,6 @@ package ports
 // column. Any additional names in Allocator.Base are allowed and map to
 // generic <NAME>_PORT .env vars.
 const PortApp = "app"
-
-// DefaultStep is the default index stride (see docs/CONFIGURATION.md).
-const DefaultStep = 100
 
 // DefaultBase returns the default base ports (see docs/CONFIGURATION.md).
 // Only the canonical `app` port ships by default; add more names in
@@ -24,16 +22,26 @@ func DefaultBase() map[string]int {
 	}
 }
 
+// DefaultRanges returns the default per-service port ranges
+// (see docs/CONFIGURATION.md). Each range is [min, max] inclusive.
+func DefaultRanges() map[string][2]int {
+	return map[string][2]int{
+		PortApp: {8000, 8099},
+	}
+}
+
 // Allocation is the resolved host ports for one worktree index.
+// Index is a monotonic id (max+1); Ports are range-allocated and
+// decoupled from it.
 type Allocation struct {
 	Index int
 	Ports map[string]int
 }
 
-// Allocator computes port allocations.
+// Allocator computes port allocations from per-service ranges.
 type Allocator struct {
-	Base map[string]int
-	Step int
+	Base   map[string]int
+	Ranges map[string][2]int
 }
 
 // WorktreeRecord is one entry in <worktreeBase>/.wrk3-state.json.

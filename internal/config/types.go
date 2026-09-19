@@ -2,7 +2,7 @@
 //
 // Config shape mirrors docs/CONFIGURATION.md (project worktreeBase,
 // source git, runner docker/podman, entry setup/run/stop/logs,
-// ports base+step with the required `app` port plus any custom names).
+// ports base+ranges with the required `app` port plus any custom names).
 //
 // Path decision: worktreeBase is resolved relative to the config file
 // directory (the repo root — wrk3.yaml always lives there). Rationale:
@@ -99,8 +99,12 @@ type EntryConfig struct {
 
 // PortsConfig holds the port allocation table.
 type PortsConfig struct {
-	Base map[string]int `yaml:"base"`
-	Step int            `yaml:"step"`
+	Base   map[string]int   `yaml:"base"`
+	Ranges map[string][2]int `yaml:"ranges"`
+	// Step is legacy and always rejected: ports.step was removed in favor
+	// of per-service ranges with step 1. Kept as a pointer only to detect
+	// presence and error with a migration hint.
+	Step *int `yaml:"step"`
 }
 
 // ProxyConfig holds the local-only gateway (<slug>.<domain> -> app port).
@@ -181,7 +185,7 @@ func (c *Config) StatePath() string {
 
 // Allocator returns the port allocator for this config.
 func (c *Config) Allocator() ports.Allocator {
-	return ports.Allocator{Base: c.Ports.Base, Step: c.Ports.Step}
+	return ports.Allocator{Base: c.Ports.Base, Ranges: c.Ports.Ranges}
 }
 
 // ProxyDomain returns the effective gateway domain (default localhost).
@@ -333,10 +337,13 @@ func (c *Config) Validate() error {
 	if c.Ports.Base == nil {
 		c.Ports.Base = ports.DefaultBase()
 	}
-	if c.Ports.Step == 0 {
-		c.Ports.Step = ports.DefaultStep
+	if c.Ports.Ranges == nil {
+		c.Ports.Ranges = ports.DefaultRanges()
 	}
-	if err := (ports.Allocator{Base: c.Ports.Base, Step: c.Ports.Step}).Validate(); err != nil {
+	if c.Ports.Step != nil {
+		return fmt.Errorf("ports.step was removed: delete `ports.step` and add per-service `ports.ranges` (e.g. ranges: {app: [8000, 8099]}); ports now increment by 1 with gap reuse")
+	}
+	if err := (ports.Allocator{Base: c.Ports.Base, Ranges: c.Ports.Ranges}).Validate(); err != nil {
 		return fmt.Errorf("ports: %w", err)
 	}
 	if err := validateGitCopy(c.Source.Git.Copy); err != nil {

@@ -31,7 +31,8 @@ entry:
   stop: "echo stop"
 ports:
   base: {app: 8000}
-  step: 100
+  ranges:
+    app: [8000, 8099]
 `
 
 func TestValidateTable(t *testing.T) {
@@ -84,11 +85,20 @@ func TestValidateTable(t *testing.T) {
 			return strings.Replace(s, `stop: "echo stop"`, `stop: ""`, 1)
 		}, "entry.stop"},
 		{"ports default", func(s string) string {
-			return strings.Replace(s, "ports:\n  base: {app: 8000}\n  step: 100\n", "", 1)
+			return strings.Replace(s, "ports:\n  base: {app: 8000}\n  ranges:\n    app: [8000, 8099]\n", "", 1)
 		}, ""},
 		{"port out of range", func(s string) string {
 			return strings.Replace(s, "base: {app: 8000}", "base: {app: 99999}", 1)
 		}, "ports base"},
+		{"legacy step rejected", func(s string) string {
+			return s + "  step: 100\n"
+		}, "ports.step was removed"},
+		{"missing range", func(s string) string {
+			return strings.Replace(s, "  ranges:\n    app: [8000, 8099]", "  ranges:\n    web: [3000, 3099]", 1)
+		}, "ports ranges"},
+		{"base outside range", func(s string) string {
+			return strings.Replace(s, "app: [8000, 8099]", "app: [8001, 8099]", 1)
+		}, "outside its range"},
 		{"bad proxy addr", func(s string) string {
 			return s + "proxy:\n  enabled: true\n  addr: \"noport\"\n"
 		}, "proxy.addr"},
@@ -105,8 +115,8 @@ func TestValidateTable(t *testing.T) {
 					if cfg.Ports.Base["app"] != 8000 {
 						t.Errorf("default base app = %v, want 8000", cfg.Ports.Base)
 					}
-					if cfg.Ports.Step != 100 {
-						t.Errorf("default step = %d, want 100", cfg.Ports.Step)
+					if cfg.Ports.Ranges["app"] != [2]int{8000, 8099} {
+						t.Errorf("default ranges app = %v, want [8000 8099]", cfg.Ports.Ranges["app"])
 					}
 				}
 				if cfg.EffectiveRemote() != "origin" {
@@ -140,7 +150,8 @@ entry:
   reload: ["echo one", "echo two"]
 ports:
   base: {app: 8000}
-  step: 100
+  ranges:
+    app: [8000, 8099]
 `
 	p := writeConfig(t, full)
 	cfg, err := Load(p)
@@ -186,7 +197,8 @@ entry:
   stop: "echo stop"
 ports:
   base: {app: 8000}
-  step: 100
+  ranges:
+    app: [8000, 8099]
 `
 	cfg, err := Load(writeConfig(t, body))
 	if err != nil {
@@ -218,7 +230,8 @@ runner:
   stop: "echo stop"
 ports:
   base: {app: 8000}
-  step: 100
+  ranges:
+    app: [8000, 8099]
 `
 	cases := []struct {
 		name    string
@@ -257,7 +270,8 @@ runner:
   stop: "echo stop"
 ports:
   base: {app: 8000}
-  step: 100
+  ranges:
+    app: [8000, 8099]
 `
 	for _, c := range cases {
 		t.Run("podman "+c.name, func(t *testing.T) {

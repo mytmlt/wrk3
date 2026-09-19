@@ -103,12 +103,16 @@ func TestCheckedOutSet_SkipsBareAndDetached(t *testing.T) {
 func TestNextAppPort(t *testing.T) {
 	repo := initMainTestRepo(t)
 	cfg := writeTestConfig(t, repo)
-	if got := nextAppPort(cfg, nil); got != 8100 {
-		t.Errorf("empty state: got %d, want 8100 (index 0 is the main checkout)", got)
+	if got := nextAppPort(cfg, nil); got != 8001 {
+		t.Errorf("empty state: got %d, want 8001 (8000 is the main checkout)", got)
 	}
-	recs := []ports.WorktreeRecord{{Branch: "a", Index: 0}, {Branch: "b", Index: 2}}
-	if got := nextAppPort(cfg, recs); got != 8300 {
-		t.Errorf("max index 2: got %d, want 8300", got)
+	// Index is decoupled: only taken ports block, not indexes.
+	recs := []ports.WorktreeRecord{
+		{Branch: "a", Index: 5, Ports: map[string]int{"app": 8001}},
+		{Branch: "b", Index: 2, Ports: map[string]int{"app": 8002}},
+	}
+	if got := nextAppPort(cfg, recs); got != 8003 {
+		t.Errorf("taken 8001-8002: got %d, want gap reuse 8003", got)
 	}
 	if got := nextAppPort(nil, nil); got != -1 {
 		t.Errorf("nil cfg: got %d, want -1", got)
@@ -172,7 +176,7 @@ func testDashboardModel() dashboardModel {
 	}
 	m.rows = []dashboardRow{
 		{Rec: ports.WorktreeRecord{Branch: "feature-a", Slug: "feature-a", Index: 0}, Status: "running", Ports: "app=8000"},
-		{Rec: ports.WorktreeRecord{Branch: "feature-b", Slug: "feature-b", Index: 1}, Status: "stopped", Ports: "app=8100"},
+		{Rec: ports.WorktreeRecord{Branch: "feature-b", Slug: "feature-b", Index: 1}, Status: "stopped", Ports: "app=8001"},
 	}
 	m.branches = []branchEntry{
 		{Name: "pr-1"},
@@ -618,7 +622,7 @@ func TestProbeDashboardRows_StaleWithoutDocker(t *testing.T) {
 	repo := initMainTestRepo(t)
 	cfg := writeTestConfig(t, repo)
 	recs := []ports.WorktreeRecord{
-		{Branch: "gone", Slug: "gone", Index: 3, Ports: map[string]int{"app": 8300}, Status: "running"},
+		{Branch: "gone", Slug: "gone", Index: 3, Ports: map[string]int{"app": 8003}, Status: "running"},
 	}
 	rows := probeDashboardRows(&resolved{cfg: cfg}, recs, "")
 	if len(rows) != 1 {
@@ -836,7 +840,7 @@ func TestDashboardModel_OpenKeyUsesCursorOnly(t *testing.T) {
 	// only the cursor row, never the stale selection.
 	m := dashboardViewModel(t)
 	m.rows[0].Rec.Ports = map[string]int{"app": 8000}
-	m.rows[1].Rec.Ports = map[string]int{"app": 8100}
+	m.rows[1].Rec.Ports = map[string]int{"app": 8001}
 	m.workSel["feature-a"] = true
 	m.workCursor = 1
 	next, cmd := m.handleKey(keyMsg("o"))
@@ -880,7 +884,7 @@ func TestDashboardModel_CopyKeyUsesCursorOnly(t *testing.T) {
 	// only the cursor row URL.
 	m := dashboardViewModel(t)
 	m.rows[0].Rec.Ports = map[string]int{"app": 8000}
-	m.rows[1].Rec.Ports = map[string]int{"app": 8100}
+	m.rows[1].Rec.Ports = map[string]int{"app": 8001}
 	m.workSel["feature-a"] = true
 	m.workCursor = 1
 	_, cmd := m.handleKey(keyMsg("O"))
@@ -894,8 +898,8 @@ func TestDashboardModel_CopyKeyUsesCursorOnly(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("copy cmd: %v", msg.err)
 	}
-	if msg.url != "http://localhost:8100" {
-		t.Errorf("copy url = %q, want the cursor worktree URL http://localhost:8100", msg.url)
+	if msg.url != "http://localhost:8001" {
+		t.Errorf("copy url = %q, want the cursor worktree URL http://localhost:8001", msg.url)
 	}
 }
 
@@ -1001,7 +1005,7 @@ func TestDashboardModel_OpenKeyEmpty(t *testing.T) {
 func TestDashboardView_URLColumnAndProxyMeta(t *testing.T) {
 	m := dashboardViewModel(t)
 	m.rows[0].Rec.Ports = map[string]int{"app": 8000}
-	m.rows[1].Rec.Ports = map[string]int{"app": 8100}
+	m.rows[1].Rec.Ports = map[string]int{"app": 8001}
 	// Narrow default (80 cols): header + proxy state still render
 	// (link cells compact; the `o` key carries the full URL).
 	out := m.View()
@@ -1013,7 +1017,7 @@ func TestDashboardView_URLColumnAndProxyMeta(t *testing.T) {
 	// Wide: full clickable URLs render untruncated.
 	m.width, m.height = 200, 40
 	out = m.View()
-	for _, want := range []string{"http://localhost:8000", "http://localhost:8100"} {
+	for _, want := range []string{"http://localhost:8000", "http://localhost:8001"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("wide view missing %q:\n%s", want, out)
 		}

@@ -9,14 +9,14 @@ import (
 func TestState_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, StateFileName)
-	a := Allocator{Base: DefaultBase(), Step: DefaultStep}
+	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
 	records := []WorktreeRecord{
 		{
 			Branch:         "feature/foo",
 			Slug:           "feature-foo",
 			AbsPath:        filepath.Join(dir, "feature-foo"),
 			Index:          0,
-			Ports:          a.Allocate(0).Ports,
+			Ports:          a.BaseAllocation(),
 			ComposeProject: "demo-feature-foo",
 			Status:         "running",
 		},
@@ -25,7 +25,7 @@ func TestState_RoundTrip(t *testing.T) {
 			Slug:           "feature-bar",
 			AbsPath:        filepath.Join(dir, "feature-bar"),
 			Index:          1,
-			Ports:          a.Allocate(1).Ports,
+			Ports:          map[string]int{"app": 8001},
 			ComposeProject: "demo-feature-bar",
 			Status:         "stopped",
 		},
@@ -68,7 +68,7 @@ func TestState_RejectsRelativePaths(t *testing.T) {
 		Slug:    "feature-foo",
 		AbsPath: "relative/path",
 		Index:   0,
-		Ports:   Allocator{Base: DefaultBase(), Step: DefaultStep}.Allocate(0).Ports,
+		Ports:   Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}.BaseAllocation(),
 	}}
 	if err := Save(path, bad); err == nil {
 		t.Errorf("Save() with relative AbsPath = nil, want error")

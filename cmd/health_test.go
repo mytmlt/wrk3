@@ -20,7 +20,7 @@ func testHealthConfig(checks ...config.HealthCheck) *config.Config {
 			Docker: config.DockerConfig{ComposeFiles: []string{"docker-compose.yml"}},
 		},
 		Entry:  config.EntryConfig{Run: "echo run", Stop: "echo stop"},
-		Ports:  config.PortsConfig{Base: map[string]int{"app": 8000}, Step: 100},
+		Ports:  config.PortsConfig{Base: map[string]int{"app": 8000}, Ranges: map[string][2]int{"app": {8000, 8099}}},
 		Health: config.HealthConfig{Checks: checks},
 	}
 }
@@ -56,7 +56,7 @@ func TestWithHealthSuffix(t *testing.T) {
 	mkRec := func() ports.WorktreeRecord {
 		return ports.WorktreeRecord{
 			Branch: "feature-a", Slug: "test-health-suffix-zzz",
-			AbsPath: dir, Index: 1, Ports: map[string]int{"app": 8100},
+			AbsPath: dir, Index: 1, Ports: map[string]int{"app": 8001},
 			ComposeProject: "demo-test-health-suffix-zzz", Status: "running",
 		}
 	}
@@ -98,7 +98,7 @@ func TestHealthReportSummaryInDashboard(t *testing.T) {
 	)
 	recs := []ports.WorktreeRecord{{
 		Branch: "feature-a", Slug: "test-health-summary-zzz",
-		AbsPath: dir, Index: 1, Ports: map[string]int{"app": 8100},
+		AbsPath: dir, Index: 1, Ports: map[string]int{"app": 8001},
 		ComposeProject: "demo-test-health-summary-zzz", Status: "stopped",
 	}}
 	// Stored stopped + no containers running: probeDashboardRows resolves
@@ -120,8 +120,8 @@ func TestDashboardWorkColumnsFor_HealthSuffix(t *testing.T) {
 	cols := dashboardWorkColumnsFor(200, []dashboardWorkCells{{
 		worktree: "feature-a", branch: "feature-a",
 		status:  "running (degraded 1/2)",
-		ports:   "app=8100",
-		url:     "http://localhost:8100",
+		ports:   "app=8001",
+		url:     "http://localhost:8001",
 		project: "demo-feature-a",
 	}})
 	byTitle := map[string]int{}
@@ -142,8 +142,8 @@ func TestProbeStatusCells(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testHealthConfig()
 	recs := []ports.WorktreeRecord{
-		{Branch: "b", Slug: "b", AbsPath: dir, Index: 1, Ports: map[string]int{"app": 8100}, ComposeProject: "p-b", Status: "stopped"},
-		{Branch: "a", Slug: "a", AbsPath: "/nonexistent-wrk3-health-test", Index: 2, Ports: map[string]int{"app": 8200}, ComposeProject: "p-a", Status: "running"},
+		{Branch: "b", Slug: "b", AbsPath: dir, Index: 1, Ports: map[string]int{"app": 8001}, ComposeProject: "p-b", Status: "stopped"},
+		{Branch: "a", Slug: "a", AbsPath: "/nonexistent-wrk3-health-test", Index: 2, Ports: map[string]int{"app": 8002}, ComposeProject: "p-a", Status: "running"},
 	}
 	cells := probeStatusCells(cfg, recs)
 	if len(cells) != 2 {

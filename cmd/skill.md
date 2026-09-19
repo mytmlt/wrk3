@@ -127,7 +127,8 @@ entry:
   reload: ["docker compose restart app"]       # optional; used by `wrk3 reload` (dashboard `l`)
 ports:
   base: {app: 8000}               # `app` is required; add names per extra host port
-  step: 100                       # allocation: allocated[name] = base[name] + index*step
+  ranges:
+    app: [8000, 8099]             # per-service [min, max]; base must sit inside; step is 1 with gap reuse
 ```
 
 Rules:
@@ -153,7 +154,9 @@ Rules:
   command must mirror a Phase 0 manual step (install →
   migrate/seed → up → run); never hardcode repo-specific commands you
   did not find in onboarding or confirm with the developer.
-- `ports.base` defaults to `{app: 8000}`, `ports.step` defaults to `100`.
+- `ports.base` defaults to `{app: 8000}`, `ports.ranges` defaults to
+  `{app: [8000, 8099]}`. Each base must sit inside its range; legacy
+  `ports.step` is rejected with a migration hint.
   Each port name becomes `<NAME>_PORT` in `.env` (uppercased,
   non-alphanumerics to `_`: `app` -> `APP_PORT`); nothing else is managed.
   App URLs such as `BASE_URL` copy verbatim from the repo-root `.env` seed.

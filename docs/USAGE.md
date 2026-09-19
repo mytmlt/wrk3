@@ -176,13 +176,14 @@ continuous.
 
 On-disk worktrees missing from state (orphans from a deleted state file
 or out-of-band `git worktree add`) are adopted automatically, in sorted
-branch order for deterministic indexes:
+branch order for deterministic ports:
 
-- Ports are recovered from the worktree `.env` only when the set is a
-  complete, valid grid point (`app` on `base + index*step`, full map
-   equals `Allocate(index)`) with no collisions (main index `0` included);
-  otherwise a fresh next-available index is assigned (collision scan, so a
-  `ports.base`/`step` change never reuses a taken port). The worktree
+- Ports are recovered from the worktree `.env` only when the set matches
+  the configured `ports.base` keys, sits inside `ports.ranges`, and
+  collides with neither state (main included) nor the OS (bind probe);
+  otherwise the lowest free range allocation is assigned (gap reuse,
+  OS-aware, so a `ports.base`/`ranges` change never reuses a taken port).
+  The worktree
   `.env` is gap-filled (existing values never overwritten, divergences
   warn). Adopted records start as `stopped` — display overlays the live
   probe.
@@ -294,8 +295,8 @@ wrk3 up
 wrk3 status
 # WORKTREE  BRANCH  STATUS   PORTS       COMPOSE_PROJECT
 # main      main    running  app=8000    demo-main
-# pr-101    pr-101  running  app=8100    demo-pr-101
-# pr-102    pr-102  running  app=8200    demo-pr-102
+# pr-101    pr-101  running  app=8001    demo-pr-101
+# pr-102    pr-102  running  app=8002    demo-pr-102
 
 # Run tests inside one worktree without cd'ing there
 wrk3 exec pr-101 -- go test ./... -count=1
@@ -316,10 +317,12 @@ wrk3 down pr-102 && wrk3 remove pr-102
 | `stale` / `?` in status | Worktree directory deleted out-of-band; `remove --force` to clean state, or re-`add`. |
 | deleted `.wrk3-state.json` | Self-heals: next `status`/`ls`/`up`/`down`/dashboard run re-adopts on-disk worktrees (ports from `.env` when intact). |
 | `already checked out at ... (use add --local ...)` | On-disk worktree missing from state (e.g. state file deleted); `add <branch>` adopts it automatically, or use `add --local`. |
-| `main worktree ports collide with worktree "x" ...` | Legacy guard only: current builds auto-migrate a managed index `0` allocation overlapping main's `ports.base` ports to the next free index (`base+step` onwards) on the next `status`/`pull`/`up`/`down`/dashboard run — no manual `remove`+re-`add` needed. |
+| `main worktree ports collide with worktree "x" ...` | Legacy guard only: current builds auto-migrate a managed allocation overlapping main's `ports.base` ports to the lowest free range allocation on the next `status`/`pull`/`up`/`down`/dashboard run — no manual `remove`+re-`add` needed. |
+| `no free port for "<svc>" in [min,max]` | Range exhausted: `remove` a worktree to free a port or widen `ports.ranges` for that service. |
+| `ports.step was removed ...` | Delete `ports.step` and add per-service `ports.ranges` (e.g. `ranges: {app: [8000, 8099]}`); ports now increment by 1 with gap reuse. |
 | `pass either branch names or --all, not both` | `remove` takes explicit names **or** `--all`. |
 | `--myprs supports GitHub remotes only ...` | The remote URL (`git remote get-url`) is not GitHub — `--myprs` is GitHub-only for now. |
 | `github forge needs the gh CLI ...` / `gh is not authenticated ...` | Install `gh` from https://cli.github.com, then run `gh auth login` (wrk3 reuses your session, stores no tokens). |
-| Port conflicts | Two checkouts sharing `base`+`step` on one host — give each config a distinct `ports.base` offset or `step`. |
+| Port conflicts | Two checkouts sharing `base`+`ranges` on one host — give each config a distinct `ports.base` offset or non-overlapping `ports.ranges`. |
 | `sets container_name for service(s) ...` | Compose file pins `container_name:`, which is global and collides across worktrees — delete it (compose generates `<project>-<service>-1`). |
 | `Conflict. The container name ... is already in use` | Same cause as above on a stack that predates the preflight check — remove `container_name:` and `docker rm -f` the leftover, then `up` again. |

@@ -118,7 +118,7 @@ func TestComplete_WorktreesBranchAndSlug(t *testing.T) {
 	sp := chdirRepo(t)
 	wt := t.TempDir()
 	seedState(t, sp, []ports.WorktreeRecord{
-		managedRec(t, wt, "feat/foo", "feat-foo", 1, 8100),
+		managedRec(t, wt, "feat/foo", "feat-foo", 1, 8001),
 	})
 
 	// Branch prefix suggests the branch name.
@@ -143,8 +143,8 @@ func TestComplete_WorktreesExcludeTyped(t *testing.T) {
 	sp := chdirRepo(t)
 	wt := t.TempDir()
 	seedState(t, sp, []ports.WorktreeRecord{
-		managedRec(t, wt, "aaa", "aaa", 1, 8100),
-		managedRec(t, wt, "aab", "aab", 2, 8200),
+		managedRec(t, wt, "aaa", "aaa", 1, 8001),
+		managedRec(t, wt, "aab", "aab", 2, 8002),
 	})
 	lines, _ := completionValues(t, "__complete", "up", "aaa", "")
 	if hasValue(lines, "aaa") {
@@ -161,7 +161,7 @@ func TestComplete_RemoveExcludesMain(t *testing.T) {
 	sp := chdirRepo(t)
 	wt := t.TempDir()
 	seedState(t, sp, []ports.WorktreeRecord{
-		managedRec(t, wt, "feat/x", "feat-x", 1, 8100),
+		managedRec(t, wt, "feat/x", "feat-x", 1, 8001),
 	})
 	lines, _ := completionValues(t, "__complete", "remove", "")
 	if !hasValue(lines, "feat/x") {
@@ -178,7 +178,7 @@ func TestComplete_ExecFirstOnly(t *testing.T) {
 	sp := chdirRepo(t)
 	wt := t.TempDir()
 	seedState(t, sp, []ports.WorktreeRecord{
-		managedRec(t, wt, "feat/x", "feat-x", 1, 8100),
+		managedRec(t, wt, "feat/x", "feat-x", 1, 8001),
 	})
 	lines, _ := completionValues(t, "__complete", "exec", "")
 	if !hasValue(lines, "feat/x") {

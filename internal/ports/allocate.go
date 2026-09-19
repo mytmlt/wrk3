@@ -1,6 +1,11 @@
 package ports
 
-import "fmt"
+import (
+	"fmt"
+	"net"
+	"sort"
+	"strconv"
+)
 
 // baseOrDefault returns a copy of the allocator base, defaulting to
 // DefaultBase when Base is nil.
@@ -15,22 +20,31 @@ func (a Allocator) baseOrDefault() map[string]int {
 	return DefaultBase()
 }
 
-// stepOrDefault returns the allocator step, defaulting to DefaultStep
-// when Step is zero.
-func (a Allocator) stepOrDefault() int {
-	if a.Step != 0 {
-		return a.Step
+// rangesOrDefault returns a copy of the allocator ranges, defaulting to
+// DefaultRanges when Ranges is nil.
+func (a Allocator) rangesOrDefault() map[string][2]int {
+	if a.Ranges != nil {
+		out := make(map[string][2]int, len(a.Ranges))
+		for k, v := range a.Ranges {
+			out[k] = v
+		}
+		return out
 	}
-	return DefaultStep
+	return DefaultRanges()
 }
 
 // Validate checks that base is non-empty, holds the required `app` port,
-// and has valid values. Extra port names are allowed for stacks that bind
+// and has valid values, and that every base entry has a valid range
+// containing its base. Extra port names are allowed for stacks that bind
 // additional host ports.
 func (a Allocator) Validate() error {
 	base := a.Base
 	if base == nil {
 		base = DefaultBase()
+	}
+	ranges := a.Ranges
+	if ranges == nil {
+		ranges = DefaultRanges()
 	}
 	if len(base) == 0 {
 		return fmt.Errorf("ports base: must list at least one port")
@@ -43,21 +57,110 @@ func (a Allocator) Validate() error {
 			return fmt.Errorf("ports base: port %q out of range: %d", name, v)
 		}
 	}
-	if a.Step < 0 {
-		return fmt.Errorf("ports step must not be negative: %d", a.Step)
+	if _, ok := ranges[PortApp]; !ok {
+		return fmt.Errorf("ports ranges: missing range for %q", PortApp)
+	}
+	for name, r := range ranges {
+		if r[0] <= 0 || r[0] > 65535 || r[1] <= 0 || r[1] > 65535 {
+			return fmt.Errorf("ports ranges: range for %q out of range: [%d,%d]", name, r[0], r[1])
+		}
+		if r[0] > r[1] {
+			return fmt.Errorf("ports ranges: range for %q is inverted: [%d,%d]", name, r[0], r[1])
+		}
+		if _, ok := base[name]; !ok {
+			return fmt.Errorf("ports ranges: range for unknown port %q (no ports.base entry)", name)
+		}
+	}
+	for name, b := range base {
+		r, ok := ranges[name]
+		if !ok {
+			return fmt.Errorf("ports ranges: missing range for %q (every ports.base entry needs a range)", name)
+		}
+		if b < r[0] || b > r[1] {
+			return fmt.Errorf("ports base: port %q=%d outside its range [%d,%d]", name, b, r[0], r[1])
+		}
 	}
 	return nil
 }
 
-// Allocate returns base + index*step per port name.
-func (a Allocator) Allocate(index int) Allocation {
+// BaseAllocation returns a copy of the base ports (the implicit main
+// checkout allocation, reserved index 0).
+func (a Allocator) BaseAllocation() map[string]int {
+	return a.baseOrDefault()
+}
+
+// FindFreeAllocation scans each service range from base upward by 1 and
+// returns the lowest free port per service. taken holds already-used host
+// ports (union of state records plus the main reservation); isFree probes
+// OS availability (nil means state-only, always free). Ports assigned
+// earlier in the same call count as taken so cross-service collisions
+// within one candidate are avoided. Services scan in sorted name order
+// for determinism. Exhaustion errors name the service and its range.
+func (a Allocator) FindFreeAllocation(taken map[int]struct{}, isFree func(int) bool) (map[string]int, error) {
 	base := a.baseOrDefault()
-	step := a.stepOrDefault()
-	ports := make(map[string]int, len(base))
-	for name, b := range base {
-		ports[name] = b + index*step
+	ranges := a.rangesOrDefault()
+	names := make([]string, 0, len(base))
+	for name := range base {
+		names = append(names, name)
 	}
-	return Allocation{Index: index, Ports: ports}
+	sort.Strings(names)
+	used := make(map[int]struct{}, len(taken)+len(base))
+	for p := range taken {
+		used[p] = struct{}{}
+	}
+	out := make(map[string]int, len(base))
+	for _, name := range names {
+		b := base[name]
+		r, ok := ranges[name]
+		if !ok {
+			return nil, fmt.Errorf("ports ranges: missing range for %q (every ports.base entry needs a range)", name)
+		}
+		found := -1
+		for p := b; p <= r[1]; p++ {
+			if _, ok := used[p]; ok {
+				continue
+			}
+			if isFree != nil && !isFree(p) {
+				continue
+			}
+			found = p
+			break
+		}
+		if found < 0 {
+			return nil, fmt.Errorf("no free port for %q in [%d,%d]", name, r[0], r[1])
+		}
+		out[name] = found
+		used[found] = struct{}{}
+	}
+	return out, nil
+}
+
+// TakenFromRecords returns the union of all host port values in recs,
+// including stale rows (dir missing, still in state) which intentionally
+// hold their ports until remove --force.
+func TakenFromRecords(recs []WorktreeRecord) map[int]struct{} {
+	out := make(map[int]struct{})
+	for _, rec := range recs {
+		for _, p := range rec.Ports {
+			out[p] = struct{}{}
+		}
+	}
+	return out
+}
+
+// IsPortFree reports whether a TCP bind to 127.0.0.1:port succeeds.
+// Used as the isFree probe at assign time (add/adopt); status display
+// paths use state-only previews (nil isFree) and never call this.
+func IsPortFree(port int) bool {
+	if port <= 0 || port > 65535 {
+		return false
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
+	if err != nil {
+		return false
+	}
+	_ = ln.Close()
+	return true
 }
 
 // AllocationsCollide reports whether two allocations share any host
@@ -73,10 +176,4 @@ func AllocationsCollide(a, b map[string]int) bool {
 		}
 	}
 	return false
-}
-
-// IndexesCollide reports whether Allocate(i) and Allocate(j) share any
-// host port value.
-func (a Allocator) IndexesCollide(i, j int) bool {
-	return AllocationsCollide(a.Allocate(i).Ports, a.Allocate(j).Ports)
 }

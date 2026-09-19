@@ -35,7 +35,8 @@ entry:
   reload: ["docker compose restart app"]       # optional; used by reload (errors when empty)
 ports:
   base: {app: 8000}
-  step: 100
+  ranges:
+    app: [8000, 8099]
 # proxy: {enabled: false, domain: localhost, addr: 127.0.0.1:8080}  # optional gateway; see below
 # health:  # optional health checks (display-only); see below
 #   checks:
@@ -84,8 +85,8 @@ broader than `--mine`, which matches git commit authorship).
 | `entry.stop` | yes | Run via `sh -c` before `compose down` by `down` (failures warn, never block teardown). |
 | `entry.logs` | no | When set, `logs` runs it via `sh -c` instead of `compose logs`; when empty, `compose logs` is used. |
 | `entry.reload` | no | Ordered list run by `reload` (CLI + dashboard `l`), each via `sh -c` with `cwd=worktree`, `env=allocated ports`. Empty strings skipped. `reload` errors when nothing is set. |
-| `ports.base` | no | Defaults to `{app: 8000}`. `app` is required; add more names when the stack binds extra host ports. |
-| `ports.step` | no | Default `100`. Allocation: `allocated[name] = base[name] + index*step`. |
+| `ports.base` | no | Defaults to `{app: 8000}`. `app` is required; add more names when the stack binds extra host ports. Each base must sit inside its `ports.ranges` entry. |
+| `ports.ranges` | no | Defaults to `{app: [8000, 8099]}`. Per-service `[min, max]` inclusive; `app` required; every `base` key needs a range (1–65535, `min <= max`). Legacy `ports.step` is a hard error: delete it and add `ranges` instead. |
 | `proxy.enabled` | no | Default `false`. When `true`, `up`/`add`/dashboard ensure the local gateway (best-effort, never fails the command) and each worktree gains an append-only `APP_URL` in its `.env`. |
 | `proxy.domain` | no | Default `localhost` → `http://<slug>.localhost:<port>`. Lowercased, hostname chars only. `.localhost` needs no setup in Chrome/Firefox/Edge (RFC 6761); Safari and non-browser clients need `wrk3 proxy hosts-sync`. Avoid `.local` (mDNS/Bonjour conflicts on macOS). |
 | `proxy.addr` | no | Default `127.0.0.1:8080`. Gateway listen addr, must be `host:port` with port 1-65535 (`:80` needs root, so a high port is the default). |
@@ -117,11 +118,16 @@ configs you trust.
 
 ## Ports and `.env`
 
-- Each `add` takes the next index (`max(index)+1`, floored at 1 —
-  index `0` is reserved for the repo-root main checkout, so the first
-  managed worktree allocates index `1`, e.g. `8100` with
-  `base: {app: 8000}, step: 100`) and
-  ensures the allocation in the worktree's `.env` plus the state file.
+- Each `add` keeps a monotonic index (`max(index)+1`, floored at 1 —
+  index `0` is reserved for the repo-root main checkout) but allocates
+  ports from ranges: per service scan `base, base+1, … ≤ max`, lowest
+  port wins (e.g. `8001` with `base: {app: 8000}`,
+  `ranges: {app: [8000, 8099]}` since main holds `8000`). Freed ports
+  are reused (gap reuse); ports occupied by another process are skipped
+  via a `127.0.0.1` bind probe at assign time; exhaustion fails with
+  `no free port for "<svc>" in [min,max]`. Stale rows (dir missing,
+  still in state) hold ports until `remove --force`. The allocation is
+  ensured in the worktree's `.env` plus the state file.
   Ensure means: wrk3 checks the file has its managed port section and
   appends only the managed keys that are missing (under a
   `# Managed by wrk3` marker). Existing lines are never modified,
@@ -143,7 +149,7 @@ configs you trust.
   they copy verbatim from the repo-root `.env` seed into fresh worktrees.
 - The repo-root main checkout is implicit (no state entry) with reserved
   index `0`, i.e. exactly the `ports.base` allocation (e.g. `8000` with
-  `base: {app: 8000}, step: 100`). Its
+  `base: {app: 8000}`). Its
   managed `.env` section is ensured on `up`/`down`/`exec` like any other
   worktree. Port/project collisions with managed worktrees surface as errors.
 - `remove` strips only the managed keys from the worktree `.env` (deleting

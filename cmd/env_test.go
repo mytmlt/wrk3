@@ -18,7 +18,7 @@ func TestEnvPrint_WritesDotEnv(t *testing.T) {
 		Slug:    "feature-foo",
 		AbsPath: dir,
 		Index:   1,
-		Ports:   map[string]int{"app": 8100},
+		Ports:   map[string]int{"app": 8001},
 	}
 	if err := saveState(&resolved{cfg: cfg, stateP: cfg.StatePath()}, []ports.WorktreeRecord{rec}); err != nil {
 		t.Fatalf("saveState = %v", err)
@@ -44,7 +44,7 @@ func TestEnvPrint_WritesDotEnv(t *testing.T) {
 	if !strings.Contains(out, "MY_SECRET=abc") {
 		t.Errorf("output missing user key: %q", out)
 	}
-	if !strings.Contains(out, "APP_PORT=8100") {
+	if !strings.Contains(out, "APP_PORT=8001") {
 		t.Errorf("output missing managed key: %q", out)
 	}
 }

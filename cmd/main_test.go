@@ -44,7 +44,8 @@ entry:
   logs: "echo logs"
 ports:
   base: {app: 8000}
-  step: 100
+  ranges:
+    app: [8000, 8099]
 `
 	path := filepath.Join(repoRoot, "wrk3.yaml")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -127,6 +128,7 @@ func TestMainRecord_CustomBaseEqualsBase(t *testing.T) {
 	repo := initMainTestRepo(t)
 	cfg := writeTestConfig(t, repo)
 	cfg.Ports.Base = map[string]int{"app": 9000, "web": 3000}
+	cfg.Ports.Ranges = map[string][2]int{"app": {9000, 9099}, "web": {3000, 3099}}
 	r := &resolved{cfg: cfg, src: &source.GitSource{}}
 	rec, err := mainRecord(r, nil)
 	if err != nil {
@@ -191,13 +193,14 @@ func TestMainRecord_PortValueCollision(t *testing.T) {
 	cfg := writeTestConfig(t, repo)
 	// Multi-port base where a managed allocation shares a port value
 	// with main's allocation under a different name: main holds
-	// {app:8000, web:7900} and index 1 holds {app:8100, web:8000},
+	// {app:8000, web:7900} and managed holds {app:8001, web:8000},
 	// so managed web == main app == 8000.
 	cfg.Ports.Base = map[string]int{"app": 8000, "web": 7900}
+	cfg.Ports.Ranges = map[string][2]int{"app": {8000, 8099}, "web": {7900, 7999}}
 	r := &resolved{cfg: cfg, src: &source.GitSource{}}
 	recs := []ports.WorktreeRecord{{
 		Branch: "feature", Slug: "feature", AbsPath: "/other",
-		Index: 1, Ports: map[string]int{"app": 8100, "web": 8000},
+		Index: 1, Ports: map[string]int{"app": 8001, "web": 8000},
 	}}
 	if _, err := mainRecord(r, recs); err == nil {
 		t.Fatal("expected port value collision error")
@@ -210,7 +213,7 @@ func TestResolveTargetsWithMain_BareIncludesMain(t *testing.T) {
 	r := &resolved{cfg: cfg, src: &source.GitSource{}}
 	recs := []ports.WorktreeRecord{{
 		Branch: "feature", Slug: "feature", AbsPath: filepath.Join(repo, ".worktrees", "feature"),
-		Index: 1, Ports: map[string]int{"app": 8100},
+		Index: 1, Ports: map[string]int{"app": 8001},
 	}}
 	targets, err := resolveTargetsWithMain(r, recs, nil)
 	if err != nil {

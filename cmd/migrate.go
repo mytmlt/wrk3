@@ -8,52 +8,47 @@ import (
 	"github.com/mytmlt/wrk3/internal/ports"
 )
 
-// nextFreeIndex returns the first managed index >= nextIndex(recs) whose
-// allocation collides with neither main (reserved index 0, ports.base)
-// nor any existing record. It bounds the scan with maxReconcileTries;
-// ok=false means the port space is exhausted.
-func nextFreeIndex(alloc ports.Allocator, recs []ports.WorktreeRecord) (idx int, ok bool) {
-	mainPorts := alloc.Allocate(mainWorktreeIndex).Ports
-	taken := make([]map[string]int, 0, len(recs)+1)
-	taken = append(taken, mainPorts)
-	for _, rec := range recs {
-		taken = append(taken, rec.Ports)
+// osPortFree probes OS availability at assign time (add/adopt/reconcile).
+// It is a variable so unit tests stay hermetic (no bind in tests).
+var osPortFree = ports.IsPortFree
+
+// takenWithMain returns the union of all host ports in recs plus the
+// main (ports.base) reservation. Stale rows intentionally hold ports.
+func takenWithMain(alloc ports.Allocator, recs []ports.WorktreeRecord) map[int]struct{} {
+	taken := ports.TakenFromRecords(recs)
+	for _, p := range alloc.BaseAllocation() {
+		taken[p] = struct{}{}
 	}
-	idx = nextIndex(recs)
-	for tries := 0; tries < maxReconcileTries; tries++ {
-		candidate := alloc.Allocate(idx)
-		collides := false
-		for _, t := range taken {
-			if len(t) == 0 {
-				continue
-			}
-			if ports.AllocationsCollide(candidate.Ports, t) {
-				collides = true
-				break
-			}
-		}
-		if !collides {
-			return idx, true
-		}
-		idx++
-	}
-	return 0, false
+	return taken
+}
+
+// assignPorts returns the lowest free allocation for a new worktree:
+// gap reuse within ranges, skipping state-taken ports and OS-occupied
+// ports (bind probe). Exhaustion errors name the service and its range.
+func assignPorts(alloc ports.Allocator, recs []ports.WorktreeRecord) (map[string]int, error) {
+	return alloc.FindFreeAllocation(takenWithMain(alloc, recs), osPortFree)
+}
+
+// previewPorts is the state-only counterpart of assignPorts for display
+// paths (status/dashboard): no blocking bind checks in renders.
+func previewPorts(alloc ports.Allocator, recs []ports.WorktreeRecord) (map[string]int, error) {
+	return alloc.FindFreeAllocation(takenWithMain(alloc, recs), nil)
 }
 
 // migrateLegacyMainCollisions reassigns managed records that collide with
-// the implicit main checkout (reserved index 0, exactly the ports.base
-// allocation) to the next collision-free managed index (>= 1).
+// the implicit main checkout (exactly the ports.base allocation) to the
+// lowest free range allocation.
 //
-// Pre-main-at-base state files may still hold a managed index 0
-// allocation (e.g. app=8000 with defaults). Since main now owns those
+// Pre-range state files may still hold a managed allocation overlapping
+// main's ports (e.g. app=8000 with defaults). Since main owns those
 // ports, every recordsWithMain call used to hard-error and block
-// status/pull/dashboard. Migration instead bumps the colliding record to
-// base+step onwards, preserving the user's desired layout:
+// status/pull/dashboard. Migration instead reassigns the colliding record
+// via FindFreeAllocation (gap reuse, OS-aware), preserving other records:
 //
-//	main == ports.base, managed == base+step, base+2*step, ...
+//	main == ports.base, managed == lowest free in ranges
 //
-// Records are processed in sorted branch order for deterministic indexes.
-// Existing non-colliding indexes are never renumbered. The worktree .env
+// Records are processed in sorted branch order for determinism.
+// Existing non-colliding ports are never renumbered. The worktree .env
 // is gap-filled (existing values never overwritten); when the on-disk
 // .env still holds the old ports a divergence warning is returned so the
 // caller can report it — the state file (runner env source) is fixed
@@ -63,16 +58,11 @@ func migrateLegacyMainCollisions(r *resolved, recs []ports.WorktreeRecord) (upda
 		return recs, nil, nil, nil
 	}
 	alloc := r.cfg.Allocator()
-	mainPorts := alloc.Allocate(mainWorktreeIndex).Ports
-
-	collidesWithMain := func(rec ports.WorktreeRecord) bool {
-		return alloc.IndexesCollide(mainWorktreeIndex, rec.Index) ||
-			ports.AllocationsCollide(mainPorts, rec.Ports)
-	}
+	mainPorts := alloc.BaseAllocation()
 
 	var colliding []int
 	for i, rec := range recs {
-		if collidesWithMain(rec) {
+		if ports.AllocationsCollide(mainPorts, rec.Ports) {
 			colliding = append(colliding, i)
 		}
 	}
@@ -84,57 +74,34 @@ func migrateLegacyMainCollisions(r *resolved, recs []ports.WorktreeRecord) (upda
 	})
 
 	out := append([]ports.WorktreeRecord(nil), recs...)
-	// taken tracks all allocations that must stay unique: main plus every
-	// managed record (including ones about to move, so two legacy zeros
-	// can never land on the same fresh slot).
-	taken := make([]map[string]int, 0, len(out)+1)
-	taken = append(taken, mainPorts)
-	for _, rec := range out {
-		taken = append(taken, rec.Ports)
-	}
-	collidesTaken := func(p map[string]int, skip map[string]int) bool {
-		if ports.AllocationsCollide(mainPorts, p) {
-			return true
-		}
-		for _, t := range taken {
-			if len(t) == 0 {
-				continue
-			}
-			// Skip the record's own current allocation: it is being
-			// replaced, so it must not block its own fresh slot scan
-			// except via mainPorts (checked above).
-			if skip != nil && portsEqual(t, skip) {
-				continue
-			}
-			if ports.AllocationsCollide(t, p) {
-				return true
-			}
-		}
-		return false
-	}
 
 	for _, ci := range colliding {
 		old := out[ci].Ports
-		idx := nextIndex(out)
-		var allocation ports.Allocation
-		for tries := 0; tries < maxReconcileTries; tries++ {
-			candidate := alloc.Allocate(idx)
-			if !collidesTaken(candidate.Ports, old) {
-				allocation = candidate
-				break
+		// taken excludes the record's own current allocation: it is being
+		// replaced, so it must not block its own fresh slot scan.
+		taken := make(map[int]struct{}, len(out)+len(mainPorts))
+		for _, p := range mainPorts {
+			taken[p] = struct{}{}
+		}
+		for i, rec := range out {
+			if i == ci {
+				continue
 			}
-			idx++
+			for _, p := range rec.Ports {
+				taken[p] = struct{}{}
+			}
 		}
-		if allocation.Ports == nil {
-			return recs, nil, nil, fmt.Errorf("migrate worktree %q: no collision-free port index available", out[ci].Branch)
+		fresh, err := alloc.FindFreeAllocation(taken, osPortFree)
+		if err != nil {
+			return recs, nil, nil, fmt.Errorf("migrate worktree %q: %w", out[ci].Branch, err)
 		}
-		out[ci].Index = allocation.Index
-		out[ci].Ports = allocation.Ports
-		taken = append(taken, allocation.Ports)
+		out[ci].Index = nextIndex(out)
+		out[ci].Ports = fresh
 		migrated = append(migrated, out[ci].Branch)
 		warns = append(warns, fmt.Sprintf(
-			"migrated worktree %q from colliding ports to index %d (main reserves index %d, the ports.base allocation); .env divergence warnings below are advisory",
-			out[ci].Branch, allocation.Index, mainWorktreeIndex))
+			"migrated worktree %q from colliding ports to index %d (main reserves the ports.base allocation); .env divergence warnings below are advisory",
+			out[ci].Branch, out[ci].Index))
+		_ = old
 		// Gap-fill .env only when the worktree dir exists: stale records
 		// (dir missing) still migrate state, but must not create dirs.
 		if st, statErr := os.Stat(out[ci].AbsPath); statErr == nil && st.IsDir() {

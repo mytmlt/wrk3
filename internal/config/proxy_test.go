@@ -34,7 +34,8 @@ entry:
   stop: "echo stop"
 ports:
   base: {app: 8000}
-  step: 100
+  ranges:
+    app: [8000, 8099]
 `
 
 func TestProxyDefaultsWhenAbsent(t *testing.T) {

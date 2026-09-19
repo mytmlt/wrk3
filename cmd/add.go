@@ -529,7 +529,9 @@ func addNewOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator
 
 // createWorktreeRecord allocates slug/path/ports, runs create (git worktree
 // add), then copy includes + .env ensure + state append. Shared by addOne
-// (existing branch) and addNewOne (new branch from a base).
+// (existing branch) and addNewOne (new branch from a base). Index stays a
+// monotonic id (max+1); ports come from the lowest free range allocation
+// (gap reuse, OS-aware).
 func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, branch string, create func(path string) error) ([]string, error) {
 	slug := source.Slugify(branch)
 	path := worktreePath(r.base, slug)
@@ -546,11 +548,11 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 			}
 		}
 	}
-	idx, ok := nextFreeIndex(*alloc, *recs)
-	if !ok {
-		return nil, fmt.Errorf("add worktree %q: no collision-free port index available", branch)
+	idx := nextIndex(*recs)
+	allocation, err := assignPorts(*alloc, *recs)
+	if err != nil {
+		return nil, fmt.Errorf("add worktree %q: %w", branch, err)
 	}
-	allocation := alloc.Allocate(idx)
 	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
 	if err := create(path); err != nil {
 		return nil, fmt.Errorf("add worktree %q: %w", branch, err)
@@ -563,7 +565,7 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 		warns = append(warns, copyWarns...)
 	}
 	envWarns, err := ensureWorktreeEnv(r, ports.WorktreeRecord{
-		Branch: branch, Slug: slug, AbsPath: path, Ports: allocation.Ports,
+		Branch: branch, Slug: slug, AbsPath: path, Ports: allocation,
 	})
 	if err != nil {
 		return nil, err
@@ -574,7 +576,7 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 		Slug:           slug,
 		AbsPath:        path,
 		Index:          idx,
-		Ports:          allocation.Ports,
+		Ports:          allocation,
 		ComposeProject: composeProject,
 		Status:         ports.StatusStopped,
 	})
@@ -590,7 +592,8 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 // .env ensure. A missing .env is seeded with non-managed keys from the
 // repo-root checkout's .env; pre-existing values are never overwritten
 // (divergences are returned as warnings). No git worktree add — the checkout
-// already exists.
+// already exists. Index stays monotonic; ports are the lowest free range
+// allocation (gap reuse, OS-aware).
 func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, branch, path string) ([]string, error) {
 	slug := source.Slugify(branch)
 	if existing := findRecord(*recs, slug); existing != nil && existing.Branch != branch {
@@ -599,14 +602,14 @@ func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator,
 	if st, err := os.Stat(path); err != nil || !st.IsDir() {
 		return nil, fmt.Errorf("adopt worktree %q: path %s missing or not a directory", branch, path)
 	}
-	idx, ok := nextFreeIndex(*alloc, *recs)
-	if !ok {
-		return nil, fmt.Errorf("adopt worktree %q: no collision-free port index available", branch)
+	idx := nextIndex(*recs)
+	allocation, err := assignPorts(*alloc, *recs)
+	if err != nil {
+		return nil, fmt.Errorf("adopt worktree %q: %w", branch, err)
 	}
-	allocation := alloc.Allocate(idx)
 	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
 	warns, err := ensureWorktreeEnv(r, ports.WorktreeRecord{
-		Branch: branch, Slug: slug, AbsPath: path, Ports: allocation.Ports,
+		Branch: branch, Slug: slug, AbsPath: path, Ports: allocation,
 	})
 	if err != nil {
 		return nil, err
@@ -616,7 +619,7 @@ func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator,
 		Slug:           slug,
 		AbsPath:        path,
 		Index:          idx,
-		Ports:          allocation.Ports,
+		Ports:          allocation,
 		ComposeProject: composeProject,
 		Status:         ports.StatusStopped,
 	})

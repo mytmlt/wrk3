@@ -68,7 +68,7 @@ func TestDashboardModel_EditEnvKeyReturnsCmd(t *testing.T) {
 	m := dashboardViewModel(t)
 	dir := t.TempDir()
 	m.rows[0].Rec.AbsPath = dir
-	m.rows[0].Rec.Ports = map[string]int{"app": 8100}
+	m.rows[0].Rec.Ports = map[string]int{"app": 8001}
 	next, cmd := m.handleKey(keyMsg("e"))
 	dm := next.(dashboardModel)
 	if cmd == nil {
