@@ -27,26 +27,28 @@ worktree state and remote branches (default every 15s, `--poll 0`
 disables), and runs the same operations as the CLI without leaving the
 screen.
 
-Layout: **WORKTREES** table on top (full width), **REMOTE BRANCHES** +
-**DETAILS** preview in the middle (side-by-side on terminals ≥132 cols,
-stacked otherwise), **LOG** at the bottom:
+Layout (lazygit-style 5-box grid, two columns on terminals ≥80 cols,
+stacked otherwise) with `[n]` numbers and `x of y` counts on every list:
 
-- **WORKTREES (top)** — `WORKTREE/BRANCH/STATUS/PORTS/URL/PROJECT`, live
-  runner status included (`running`, `stopped`, `setting up`,
-  `stopping`, `failed`, `stale`/`?` when the directory is missing).
-  `URL` is the clickable gateway link when `proxy.enabled`, else
-  `localhost:<appPort>` (`o` opens it in a browser, `O` copies it to the clipboard).
-- **REMOTE BRANCHES (middle-left)** — queueable refs with `STATE`
+- **[1]-Worktrees (top-left)** — slim `SLUG` + health `STATUS` only
+  (`running`, `stopped`, `setting up`, `stopping`, `failed`,
+  `stale`/`?` when the directory is missing, plus the health summary).
+  Full branch/ports/URL details live in DETAILS (`o` opens the URL in a
+  browser, `O` copies it to the clipboard).
+- **[2]-Branches (middle-left)** — queueable refs with `STATE`
   (`new` queueable, `orphan` = on-disk worktree missing from state and
   adoptable, `registered`/`checked out` not queueable). Your branches
   sort first (open involving-me PRs when the forge answers, else
   tip-matching `--mine` branches), then the rest newest-first by tip
   committer date.
-- **DETAILS (middle-right, preview)** — selected/cursor worktree
-  (`branch/slug/status/ports/url/path/project`), follows the worktree
+- **Projects (bottom-left)** — project switcher (`tab` switches) plus
+  `remote`/`fetch`/`poll`/`proxy` status.
+- **Details (top-right, preview)** — selected/cursor worktree
+  (`branch/slug/status/health/ports/url/path/project`), follows the worktree
   cursor and multi-select.
-- **LOG (bottom, focusable)** — operation output; focus it and scroll with
-  `j/k`/`↑/↓` (plus `pgup`/`pgdn`/`home`/`end` from any pane).
+- **[3]-Logs (bottom-right, large, focusable)** — operation output; focus it
+  (arrows/`1`/`2`/`3`) and scroll with `j/k`/`↑`/`↓` (plus
+  `pgup`/`pgdn`/`home`/`end` from any pane).
 
 | Keys | Action |
 | ---- | ------ |

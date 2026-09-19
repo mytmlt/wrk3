@@ -231,9 +231,10 @@ Both `com.docker.compose.project` (docker-compat) and
 
 `wrk3 dashboard` (shorthand `wrk3 db`) opens an interactive view over the current repo plus every
 registered project (`tab` switches projects). It polls worktree state and
-remote branches (default every 15s, `--poll 0` disables), shows the worktree
-table with ports, clickable `URL` links (gateway URL when `proxy.enabled`,
-else `localhost:<appPort>`), gateway state in the meta line, and the next free `app` port,
+remote branches (default every 15s, `--poll 0` disables), shows the slim worktree
+list (SLUG + health STATUS with `x of y` counts), full branch/ports/URL
+details in the DETAILS preview (clickable `URL`: gateway URL when `proxy.enabled`,
+else `localhost:<appPort>`), project switcher + gateway state, and the next free `app` port,
 and runs the same operations
 as the CLI: `space` selects, `u`/`d`/`l`/`p` up/down/reload/pull (cursor worktree when nothing
 is selected; `p` runs plain `git pull` like `wrk3 pull` with no flags), `a` adds queued branches, `o` opens the cursor worktree URL
@@ -262,10 +263,12 @@ else newest-first by tip committer date (git exposes no true branch
 creation date, so tip recency is the proxy; local-only branches without
 a remote ref sort last alphabetically). Filtered views (`--mine`/
 `--author`/`--myprs`, `m`/`P` toggles) already are the priority set, so
-they just sort newest-first. Layout is WORKTREES on top
-(full width), REMOTE BRANCHES + DETAILS preview in the middle
-(side-by-side on terminals ≥132 cols, stacked otherwise), and a focusable
-LOG at the bottom (`j/k`/`↑`/`↓` scroll it when focused;
+they just sort newest-first. Layout is a lazygit-style 5-box grid
+(two columns on terminals ≥80 cols, stacked otherwise) with `[n]` numbers
+and `x of y` counts: [1]-Worktrees (top-left, slim SLUG + health STATUS
+only), [2]-Branches (middle-left), Projects + status (bottom-left),
+Details preview (top-right), and a large focusable [3]-Logs
+(bottom-right, `j/k`/`↑`/`↓` scroll it when focused;
 `pgup`/`pgdn`/`home`/`end` scroll from any pane),
 the shortcut bar is always visible at the bottom.
 Pressing `u` flips the selected rows to `setting up` immediately; the

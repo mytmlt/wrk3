@@ -877,11 +877,13 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Keep the log viewport in sync with the terminal width so the
-		// rewrapped line count (and maxYOffset) stays valid for scrolling.
+		// Keep the log viewport in sync with the rendered grid geometry
+		// so the rewrapped line count (and maxYOffset) stays valid for
+		// scrolling: logPane renders logViewW wide and logViewH tall.
 		wasBottom := m.logView.AtBottom()
-		m.logView.Width = max(max(m.width-4, 10), 10)
-		m.logView.Height = dashboardLogViewportHeight(msg.Height)
+		grid := computeDashboardGrid(msg.Width, msg.Height)
+		m.logView.Width = grid.logViewW
+		m.logView.Height = grid.logViewH
 		m.logView.SetContent(strings.Join(wrapLogLines(m.log, m.logView.Width), "\n"))
 		if wasBottom || len(m.log) == 0 {
 			m.logView.GotoBottom()
@@ -1543,7 +1545,7 @@ func branchNamesOf(recs []ports.WorktreeRecord) []string {
 
 // Layout tuning: side-by-side panes need roughly this many columns;
 // narrower terminals stack the panes vertically instead.
-const dashboardWideLayout = 132
+const dashboardWideLayout = 80
 
 // dashboardLogFallbackHeight is the log viewport height before the first
 // WindowSizeMsg arrives (and in unit tests that never set a size).
@@ -1630,14 +1632,11 @@ func (k dashboardKeys) FullHelp() [][]key.Binding {
 }
 
 // dashboardWorkCells is the visible text of one worktree row, used to
-// size columns to fit content.
+// size columns to fit content. The lazygit-style list shows slug and
+// health status only.
 type dashboardWorkCells struct {
-	worktree string
-	branch   string
-	status   string
-	ports    string
-	url      string
-	project  string
+	slug   string
+	status string
 }
 
 // dashboardWorkColumns sizes columns without content (all flex columns at
@@ -1648,200 +1647,173 @@ func dashboardWorkColumns(width int) []table.Column {
 	return dashboardWorkColumnsFor(width, nil)
 }
 
-// dashboardWorkColumnsFor sizes each text column to fit its content: every
-// flex column starts at its widest cell (or header) clamped to its cap.
-// Leftover width goes to capped columns with truncated content first
-// (URL, PORTS, BRANCH, WORKTREE, PROJECT), then fills the table; overflow
-// shrinks PROJECT first and URL/PORTS last so long port lists and links
-// stay visible (bubbles/table truncates only the remainder — `o` still
-// opens and `O` still copies the full URL). ✓ stays fixed; STATUS starts
-// at 11 ("setting up") and grows to 24 for health suffixes.
+// dashboardWorkColumnsFor sizes the slim slug+status list to fit its
+// content: SLUG flexes between 8 and 48, STATUS fits "setting up" at 11
+// and grows to 32 for health suffixes. Overflow shrinks SLUG first so
+// health status stays visible.
 func dashboardWorkColumnsFor(width int, cells []dashboardWorkCells) []table.Column {
 	const checkW = 3
-	// STATUS fits "setting up" at 11; health suffixes (e.g.
-	// "running (degraded 10/10)") grow it up to 24.
 	statusW := 11
+	slugNeed := len("SLUG")
 	for _, c := range cells {
 		if w := len([]rune(c.status)); w > statusW {
 			statusW = w
 		}
-	}
-	statusW = min(max(statusW, 11), 24)
-	type flex struct {
-		header   int
-		min      int
-		max      int
-		need     int // clamped content width
-		overflow int // content beyond max, wants slack first
-	}
-	cols := []flex{
-		{header: len("WORKTREE"), min: 8, max: 32},
-		{header: len("BRANCH"), min: 12, max: 40},
-		{header: len("PORTS"), min: 8, max: 48},
-		{header: len("URL"), min: 10, max: 48},
-		{header: len("PROJECT"), min: 8, max: 32},
-	}
-	contentMax := make([]int, len(cols))
-	for _, c := range cells {
-		vals := []string{c.worktree, c.branch, c.ports, c.url, c.project}
-		for i, v := range vals {
-			if w := len([]rune(v)); w > contentMax[i] {
-				contentMax[i] = w
-			}
+		if w := len([]rune(c.slug)); w > slugNeed {
+			slugNeed = w
 		}
 	}
-	for i := range cols {
-		want := max(cols[i].header, contentMax[i])
-		if contentMax[i] > cols[i].max {
-			cols[i].overflow = contentMax[i] - cols[i].max
-		}
-		cols[i].need = min(max(want, cols[i].min), cols[i].max)
-	}
-	widths := make([]int, len(cols))
-	for i := range cols {
-		widths[i] = cols[i].need
-	}
-	total := checkW + statusW
-	for _, w := range widths {
-		total += w
-	}
-	if total < width {
-		slack := width - total
-		order := []int{3, 2, 1, 0, 4} // url, ports, branch, worktree, project
-		for _, i := range order {
-			if slack == 0 {
-				break
-			}
-			give := min(slack, cols[i].overflow)
-			widths[i] += give
-			slack -= give
-		}
-		for slack > 0 {
-			progress := false
-			for _, i := range order {
-				if slack == 0 {
-					break
-				}
-				if widths[i] < cols[i].max {
-					widths[i]++
-					slack--
-					progress = true
-				}
-			}
-			if !progress {
-				break
-			}
-		}
-	} else if total > width {
+	statusW = min(max(statusW, 11), 32)
+	slugW := min(max(slugNeed, 8), 48)
+	total := checkW + slugW + statusW
+	if total > width {
 		over := total - width
-		for _, i := range []int{4, 0, 1, 2, 3} { // project first, url/ports last
-			if over <= 0 {
-				break
-			}
-			if cut := min(over, widths[i]-cols[i].min); cut > 0 {
-				widths[i] -= cut
+		if cut := min(over, slugW-8); cut > 0 {
+			slugW -= cut
+			over -= cut
+		}
+		if over > 0 {
+			if cut := min(over, statusW-11); cut > 0 {
+				statusW -= cut
 				over -= cut
 			}
 		}
+		// Absurdly narrow: force-fit STATUS so total <= width.
+		if over > 0 {
+			statusW = max(statusW-over, 1)
+		}
 	}
+	// No slack expansion: the slim list stays compact so STATUS is never
+	// truncated to fill the pane (bubbles/table padding would cut the
+	// last column).
 	return []table.Column{
 		{Title: "✓", Width: checkW},
-		{Title: "WORKTREE", Width: widths[0]},
-		{Title: "BRANCH", Width: widths[1]},
+		{Title: "SLUG", Width: slugW},
 		{Title: "STATUS", Width: statusW},
-		{Title: "PORTS", Width: widths[2]},
-		{Title: "URL", Width: widths[3]},
-		{Title: "PROJECT", Width: widths[4]},
 	}
 }
 
 // dashboardBranchColumns gives everything left after ✓/STATE/padding to
-// the BRANCH column.
+// the BRANCH column. When the pane is too narrow for all three, STATE
+// shrinks (min 8) instead of pushing BRANCH off — STATE values longer
+// than that truncate, which only happens on tiny terminals.
 func dashboardBranchColumns(width int) []table.Column {
-	br := max(width-3-13-6, 20)
+	br := width - 3 - 13 - 2
+	if br < 10 {
+		br = 10
+	}
+	stateW := 13
+	if total := 3 + br + stateW; total > width {
+		stateW = max(width-3-br, 8)
+	}
 	return []table.Column{
 		{Title: "✓", Width: 3},
 		{Title: "BRANCH", Width: br},
-		{Title: "STATE", Width: 13},
+		{Title: "STATE", Width: stateW},
 	}
 }
 
 var (
 	dashTitleStyle = lipgloss.NewStyle().Bold(true).
-			Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).
+			Foreground(lipgloss.Color("230")).Background(lipgloss.Color("33")).
 			Padding(0, 1)
-	dashMetaStyle    = lipgloss.NewStyle().Faint(true)
-	dashDimStyle     = lipgloss.NewStyle().Faint(true)
+	dashMetaStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("247"))
+	dashDimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
 	dashErrStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))
 	dashConfirmStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11"))
 
-	dashPaneTitleFocused = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
-	dashPaneTitleBlurred = lipgloss.NewStyle().Bold(true).Faint(true)
-	dashLogTitleStyle    = lipgloss.NewStyle().Bold(true).Faint(true)
+	// Lazygit-inspired pane titles: focused is bright cyan, blurred is
+	// dim gray. Borders follow the same scheme (blue focus, gray blur).
+	dashPaneTitleFocused = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("51"))
+	dashPaneTitleBlurred = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247"))
+	dashLogTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247"))
 
 	dashMenuTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
 	dashMenuSelectedStyle = lipgloss.NewStyle().Bold(true).
-				Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).
+				Foreground(lipgloss.Color("230")).Background(lipgloss.Color("33")).
 				Padding(0, 1)
-	dashMenuKeyStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
-	dashMenuHintStyle = lipgloss.NewStyle().Faint(true)
+	dashMenuKeyStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("51")).Bold(true)
+	dashMenuHintStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
 )
 
-// dashboardPaneStyle borders a pane; the focused one gets the accent
-// border so the active pane is obvious at a glance.
+// dashboardCountLabel renders lazygit-style "x of y" positions, e.g.
+// "1 of 3". Empty lists report "0 of 0"; out-of-range cursors clamp.
+func dashboardCountLabel(cursor, total int) string {
+	if total <= 0 {
+		return "0 of 0"
+	}
+	if cursor < 0 {
+		cursor = 0
+	}
+	if cursor >= total {
+		cursor = total - 1
+	}
+	return fmt.Sprintf("%d of %d", cursor+1, total)
+}
+
+// dashboardWorkStatusText is the slim-list status cell (slug + health
+// status only). probeDashboardRows already folds the health suffix into
+// Status ("running (healthy)", "running (degraded 1/2)"), while Health
+// carries the per-check breakdown for the DETAILS pane — so Status alone
+// is the health status; appending Health would duplicate it and bloat
+// the column.
+func dashboardWorkStatusText(row dashboardRow) string {
+	if row.Stale {
+		return "stale"
+	}
+	if row.Status == "" {
+		return "?"
+	}
+	return row.Status
+}
+
+// dashboardPaneStyle borders a pane; the focused one gets the lazygit
+// accent border (blue) so the active pane is obvious at a glance.
 func dashboardPaneStyle(focused bool) lipgloss.Style {
 	if focused {
 		return lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("62")).
+			BorderForeground(lipgloss.Color("33")).
 			Padding(0, 1)
 	}
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
+		BorderForeground(lipgloss.Color("238")).
 		Padding(0, 1)
 }
 
 // dashboardTableStyles keeps header/cell padding identical so the cursor
 // row never shifts the columns; only the focused pane gets the bright
-// cursor style.
+// lazygit-blue cursor style.
 func dashboardTableStyles(focused bool) table.Styles {
 	s := table.DefaultStyles()
-	s.Header = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("244")).Padding(0, 1)
-	s.Cell = lipgloss.NewStyle().Padding(0, 1)
+	s.Header = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247")).Padding(0, 1)
+	s.Cell = lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Padding(0, 1)
 	if focused {
 		s.Selected = lipgloss.NewStyle().Bold(true).
-			Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).
+			Foreground(lipgloss.Color("231")).Background(lipgloss.Color("33")).
 			Padding(0, 1)
 	} else {
-		s.Selected = lipgloss.NewStyle().Faint(true).Padding(0, 1)
+		s.Selected = lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Padding(0, 1)
 	}
 	return s
 }
 
-// buildWorkTable renders the worktree pane as a real table: aligned
-// columns, a scrolling viewport around the cursor, and a ✓ marker column
-// for the multi-select set. Cell values stay plain text on purpose —
-// bubbles/table truncates with runewidth (not ANSI-aware), so embedded
-// color codes would break column alignment.
+// buildWorkTable renders the lazygit-style worktree pane: slug plus
+// health status only, with a ✓ marker column for the multi-select set.
+// Cell values stay plain text on purpose — bubbles/table truncates with
+// runewidth (not ANSI-aware), so embedded color codes would break column
+// alignment. Full branch/ports/URL details live in the DETAILS pane.
 func (m dashboardModel) buildWorkTable(width, height int, focused bool) table.Model {
-	var urlCfg *config.Config
-	if len(m.projects) > 0 && m.projects[m.cur] != nil {
-		urlCfg = m.projects[m.cur].cfg
-	}
 	cells := make([]dashboardWorkCells, 0, len(m.rows))
 	for _, row := range m.rows {
-		branch := row.Rec.Branch
+		slug := row.Rec.Slug
 		if row.IsMain {
-			branch += " (main)"
+			slug += " (main)"
 		}
 		cells = append(cells, dashboardWorkCells{
-			worktree: row.Rec.Slug,
-			branch:   branch,
-			status:   row.Status,
-			ports:    row.Ports,
-			url:      dashboardURLFor(urlCfg, row.Rec),
-			project:  row.Rec.ComposeProject,
+			slug:   slug,
+			status: dashboardWorkStatusText(row),
 		})
 	}
 	t := table.New(
@@ -1855,7 +1827,7 @@ func (m dashboardModel) buildWorkTable(width, height int, focused bool) table.Mo
 		if m.workSel[m.rows[i].Rec.Branch] {
 			box = "[x]"
 		}
-		rows = append(rows, table.Row{box, c.worktree, c.branch, c.status, c.ports, c.url, c.project})
+		rows = append(rows, table.Row{box, c.slug, c.status})
 	}
 	t.SetRows(rows)
 	t.SetWidth(max(width, 10))
@@ -1973,13 +1945,14 @@ func stateRecsOf(rows []dashboardRow) []ports.WorktreeRecord {
 
 func (m dashboardModel) worktreePane(width, height int) string {
 	focused := m.pane == 0
+	count := dashboardCountLabel(m.workCursor, len(m.rows))
 	var title string
 	if focused {
-		title = dashPaneTitleFocused.Render("WORKTREES (1) ●")
+		title = dashPaneTitleFocused.Render("[1]-Worktrees (1) - "+count+" ●")
 	} else {
-		title = dashPaneTitleBlurred.Render("WORKTREES (1)")
+		title = dashPaneTitleBlurred.Render("[1]-Worktrees (1) - "+count)
 	}
-	body := m.buildWorkTable(max(width-2, 10), height, focused).View()
+	body := m.buildWorkTable(max(width-4, 10), height, focused).View()
 	if len(m.rows) == 0 {
 		body += "\n" + dashDimStyle.Render("  (no worktrees — queue branches below, press a)")
 	}
@@ -1988,17 +1961,75 @@ func (m dashboardModel) worktreePane(width, height int) string {
 
 func (m dashboardModel) branchPane(width, height int) string {
 	focused := m.pane == 1
+	count := dashboardCountLabel(m.brCursor, len(m.branches))
 	var title string
 	if focused {
-		title = dashPaneTitleFocused.Render("REMOTE BRANCHES (2) ●")
+		title = dashPaneTitleFocused.Render("[2]-Branches (2) - "+count+" ●")
 	} else {
-		title = dashPaneTitleBlurred.Render("REMOTE BRANCHES (2)")
+		title = dashPaneTitleBlurred.Render("[2]-Branches (2) - "+count)
 	}
-	body := m.buildBranchTable(max(width-2, 10), height, focused).View()
+	body := m.buildBranchTable(max(width-4, 10), height, focused).View()
 	if len(m.branches) == 0 {
 		body += "\n" + dashDimStyle.Render("  (no branches — press R to fetch)")
 	}
 	return dashboardPaneStyle(focused).Width(width).Render(title + "\n" + body)
+}
+
+// projectPane is the small bottom-left box: project switcher plus the
+// status meta (remote/fetch/poll/proxy). Never focusable; tab switches.
+func (m dashboardModel) projectPane(width, height int) string {
+	title := dashPaneTitleBlurred.Render("Projects - " + dashboardCountLabel(m.cur, len(m.projects)))
+	lines := make([]string, 0, len(m.projects)+4)
+	for i, p := range m.projects {
+		marker := "  "
+		var name string
+		if p == nil {
+			name = "?"
+		} else {
+			name = p.desc.Name
+			if p.loadErr != nil || p.cfg == nil {
+				name += " (error)"
+			}
+		}
+		if i == m.cur {
+			marker = "* "
+		}
+		lines = append(lines, marker+name)
+	}
+	if len(m.projects) > 1 {
+		lines = append(lines, "tab to switch")
+	}
+	if cur := m.curProject(); cur != nil {
+		fetchInfo := "never"
+		if !m.fetchedAt.IsZero() {
+			fetchInfo = m.fetchedAt.Format("15:04:05")
+		}
+		pollInfo := "off"
+		if m.poll > 0 {
+			pollInfo = m.poll.String()
+		}
+		proxySeg := m.proxyInfo
+		if proxySeg == "" {
+			if cur.cfg != nil && cur.cfg.Proxy.Enabled {
+				proxySeg = "proxy " + cur.cfg.ProxyAddr()
+			} else {
+				proxySeg = "proxy off"
+			}
+		}
+		remote := cur.remote
+		if remote == "" {
+			remote = "origin"
+		}
+		lines = append(lines,
+			"remote "+remote+" · fetch "+fetchInfo,
+			"poll "+pollInfo+" · "+proxySeg,
+		)
+	}
+	if height > 0 && len(lines) > height {
+		lines = lines[:height]
+	}
+	return dashboardPaneStyle(false).Width(width).Render(
+		title + "\n" + strings.Join(lines, "\n"))
 }
 
 // detailRecord follows the worktree selection: first selected row in table
@@ -2023,7 +2054,7 @@ func (m dashboardModel) detailRecord() *dashboardRow {
 }
 
 func (m dashboardModel) detailPane(width, height int) string {
-	title := dashPaneTitleBlurred.Render("DETAILS (preview)")
+	title := dashPaneTitleBlurred.Render("Details (preview)")
 	rec := m.detailRecord()
 	if rec == nil {
 		return dashboardPaneStyle(false).Width(width).Render(
@@ -2106,13 +2137,20 @@ func (m dashboardModel) menuPane(width int) string {
 		Render(body)
 }
 
-func (m dashboardModel) logPane(width int) string {
+func (m dashboardModel) logPane(width, height int) string {
 	focused := m.pane == 2
-	w := max(width-2, 10)
-	vpH := m.logView.Height
-	if vpH <= 0 {
-		vpH = dashboardLogViewportHeight(m.height)
+	// Same chrome as the table panes (border 2 + padding 2): wrapping
+	// wider would let lipgloss clip the tail of every long log line.
+	w := max(width-4, 10)
+	// Outer pane is title (1) + top/bottom borders (2); the rest is viewport.
+	vpH := max(height-3, 3)
+	if height <= 0 {
+		vpH = m.logView.Height
+		if vpH <= 0 {
+			vpH = dashboardLogViewportHeight(m.height)
+		}
 	}
+	vpH = max(vpH, 3)
 	// Wrap to the current pane width so long lines become multiple lines
 	// instead of being cut off horizontally (viewport truncates MaxWidth).
 	wrapped := wrapLogLines(m.log, w)
@@ -2128,7 +2166,7 @@ func (m dashboardModel) logPane(width int) string {
 	} else {
 		lv.SetYOffset(m.logView.YOffset)
 	}
-	title := "LOG (3, j/k scroll)"
+	title := "[3]-Logs (3, j/k scroll) - " + fmt.Sprintf("%d lines", len(wrapped))
 	if focused {
 		title += " ●"
 	}
@@ -2146,6 +2184,56 @@ func (m dashboardModel) logPane(width int) string {
 	}
 	return dashboardPaneStyle(focused).Width(width).Render(
 		titleStyled + "\n" + lv.View())
+}
+
+// dashboardGrid splits the body (header/footer excluded) into the
+// lazygit 5-box grid. Wide terminals (>= dashboardWideLayout) use two
+// columns — left: worktrees/branches/projects, right: details/logs.
+// Narrow terminals stack all five panes in a single bodyH budget so
+// nothing is pushed off-screen. Table/inner heights exclude the 3
+// lines of pane chrome (title + top/bottom borders); logViewH is the
+// matching log viewport height so Update (paging, scroll) and View
+// (render) agree on geometry.
+type dashboardGrid struct {
+	wide                                            bool
+	leftW, rightW                                   int
+	workTableH, branchTableH, projInnerH, detInnerH int
+	logH                                            int
+	logViewW, logViewH                               int
+}
+
+func computeDashboardGrid(w, h int) dashboardGrid {
+	const footerReserve = 4
+	bodyH := max(h-2-1-1-footerReserve, 10)
+	if w >= dashboardWideLayout {
+		leftW := max(w*35/100, 36)
+		leftW = min(leftW, max(w-40, 36))
+		rightW := max(w-3-leftW, 20)
+		workH := max(bodyH*32/100, 5)
+		branchH := max(bodyH*40/100, 5)
+		projH := max(bodyH-workH-branchH, 4)
+		detH := max(bodyH*35/100, 5)
+		logH := max(bodyH-detH, 6)
+		return dashboardGrid{
+			wide: true, leftW: leftW, rightW: rightW,
+			workTableH: max(workH-3, 3), branchTableH: max(branchH-3, 3),
+			projInnerH: max(projH-3, 3), detInnerH: max(detH-3, 3),
+			logH:     logH,
+			logViewW: max(rightW-4, 10), logViewH: max(logH-3, 3),
+		}
+	}
+	workH := max(bodyH*25/100, 4)
+	branchH := max(bodyH*25/100, 4)
+	detH := max(bodyH*15/100, 3)
+	projH := max(bodyH*10/100, 3)
+	logH := max(bodyH-workH-branchH-detH-projH, 4)
+	return dashboardGrid{
+		wide: false, leftW: max(w-2, 10), rightW: max(w-2, 10),
+		workTableH: max(workH-3, 3), branchTableH: max(branchH-3, 3),
+		projInnerH: max(projH-3, 3), detInnerH: max(detH-3, 3),
+		logH:     logH,
+		logViewW: max(w-6, 10), logViewH: max(logH-3, 3),
+	}
 }
 
 func (m dashboardModel) View() string {
@@ -2183,35 +2271,30 @@ func (m dashboardModel) View() string {
 		return b.String()
 	}
 
-	// Vertical budget: header (2) + gap (1) + footer (help 1-2 + status
-	// 0-1 + confirm 0-1, reserve 4) + log box + body split.
-	// Layout: top = wrk3 ls worktree table (full width);
-	// middle = branches left + worktree details preview right (shrinks);
-	// bottom = focusable log pane at 40% of the screen height.
-	const footerReserve = 4
-	logBoxH := dashboardLogViewportHeight(h) + 3 // viewport + title + border
-	bodyH := max(h-2-1-footerReserve-logBoxH-1, 8)
-	topH := max(bodyH*60/100, 4) // worktrees keep priority
-	midH := max(bodyH-topH, 4)   // branches/details take the remainder
-	topTableH := max(topH-3, 4)  // pane title + borders
-	midTableH := max(midH-3, 4)
+	// Lazygit-style 5-box grid (see computeDashboardGrid): left column
+	// [1] worktrees (slug+health only), [2] branches, projects/status;
+	// right column details of the selected worktree, large scrollable
+	// [3] logs (focused pane scrolls with j/k, arrows switch panes).
+	grid := computeDashboardGrid(w, h)
 
-	b.WriteString(m.worktreePane(w-2, topTableH) + "\n")
-	if w >= dashboardWideLayout {
-		brOuter := (w - 3) / 2
-		detOuter := w - 3 - brOuter
-		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top,
-			m.branchPane(brOuter, midTableH),
-			" ",
-			m.detailPane(detOuter, midTableH),
-		) + "\n")
+	if grid.wide {
+		left := lipgloss.JoinVertical(lipgloss.Left,
+			m.worktreePane(grid.leftW, grid.workTableH),
+			m.branchPane(grid.leftW, grid.branchTableH),
+			m.projectPane(grid.leftW, grid.projInnerH),
+		)
+		right := lipgloss.JoinVertical(lipgloss.Left,
+			m.detailPane(grid.rightW, grid.detInnerH),
+			m.logPane(grid.rightW, grid.logH),
+		)
+		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right) + "\n")
 	} else {
-		brH := max(midH/2, 3)
-		detH := max(midH-brH, 3)
-		b.WriteString(m.branchPane(w-2, max(brH-3, 3)) + "\n")
-		b.WriteString(m.detailPane(w-2, max(detH-3, 3)) + "\n")
+		b.WriteString(m.worktreePane(w-2, grid.workTableH) + "\n")
+		b.WriteString(m.detailPane(w-2, grid.detInnerH) + "\n")
+		b.WriteString(m.branchPane(w-2, grid.branchTableH) + "\n")
+		b.WriteString(m.projectPane(w-2, grid.projInnerH) + "\n")
+		b.WriteString(m.logPane(w-2, grid.logH) + "\n")
 	}
-	b.WriteString("\n" + m.logPane(w-2) + "\n")
 	if m.statusMsg != "" {
 		b.WriteString(dashErrStyle.Render(m.statusMsg) + "\n")
 	}

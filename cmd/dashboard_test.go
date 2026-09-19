@@ -403,14 +403,20 @@ func TestDashboardView_TablesAndHelp(t *testing.T) {
 	out := m.View()
 	for _, want := range []string{
 		"wrk3 dashboard", "myapp",
-		"WORKTREES", "REMOTE BRANCHES", "LOG",
-		"WORKTREE", "BRANCH", "STATUS", "PORTS", "PROJECT", "STATE",
+		"Worktrees", "Branches", "Logs", "Details", "Projects",
+		"SLUG", "STATUS", "STATE",
+		"1 of ", "of 2",
 		"feature-a", "feature-b", "pr-1", "pr-2",
 		"running", "stopped", "registered",
 		"space", "select", "quit", "menu", "dashboard started",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("view missing %q:\n%s", want, out)
+		}
+	}
+	for _, gone := range []string{"PORTS", "PROJECT", "REMOTE BRANCHES"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("slim worktree list must not show %q:\n%s", gone, out)
 		}
 	}
 	if strings.Contains(out, "truncated to 20") {
@@ -439,7 +445,7 @@ func TestDashboardView_MenuPopup(t *testing.T) {
 		}
 	}
 	// Panes hide behind the popup.
-	for _, gone := range []string{"WORKTREES", "REMOTE BRANCHES"} {
+	for _, gone := range []string{"Worktrees", "Branches"} {
 		if strings.Contains(out, gone) {
 			t.Errorf("menu popup should replace panes, found %q:\n%s", gone, out)
 		}
@@ -611,7 +617,7 @@ func TestDashboardView_Smoke(t *testing.T) {
 	m.projects[0].cfg = cfg
 	m.projects[0].remote = "origin"
 	out := m.View()
-	for _, want := range []string{"wrk3 dashboard", "myapp", "WORKTREES", "REMOTE BRANCHES", "LOG", "feature-a", "pr-1"} {
+	for _, want := range []string{"wrk3 dashboard", "myapp", "Worktrees", "Branches", "Logs", "feature-a", "pr-1"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("view missing %q:\n%s", want, out)
 		}
@@ -1006,24 +1012,24 @@ func TestDashboardView_URLColumnAndProxyMeta(t *testing.T) {
 	m := dashboardViewModel(t)
 	m.rows[0].Rec.Ports = map[string]int{"app": 8000}
 	m.rows[1].Rec.Ports = map[string]int{"app": 8001}
-	// Narrow default (80 cols): header + proxy state still render
-	// (link cells compact; the `o` key carries the full URL).
+	m.width, m.height = 140, 40
+	// Slim list shows slug+status; full URLs live in the DETAILS pane for
+	// the cursor worktree.
 	out := m.View()
-	for _, want := range []string{"URL", "proxy off", "o opens URL"} {
+	for _, want := range []string{"url:", "http://localhost:8000", "proxy off", "o opens URL"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("narrow view missing %q:\n%s", want, out)
+			t.Errorf("view missing %q:\n%s", want, out)
 		}
 	}
-	// Wide: full clickable URLs render untruncated.
-	m.width, m.height = 200, 40
+	// Cursor on the second row previews its URL instead.
+	m.workCursor = 1
 	out = m.View()
-	for _, want := range []string{"http://localhost:8000", "http://localhost:8001"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("wide view missing %q:\n%s", want, out)
-		}
+	if !strings.Contains(out, "http://localhost:8001") {
+		t.Errorf("cursor row URL missing:\n%s", out)
 	}
 	// Proxy enabled: gateway URLs + configured addr in the meta line.
 	m.projects[0].cfg.Proxy.Enabled = true
+	m.workCursor = 0
 	out = m.View()
 	for _, want := range []string{"http://feature-a.localhost:8080", "proxy 127.0.0.1:8080"} {
 		if !strings.Contains(out, want) {
@@ -1045,16 +1051,11 @@ func TestDashboardWorkColumns_FitsTableWidth(t *testing.T) {
 }
 
 func TestDashboardWorkColumnsFor_FitsContent(t *testing.T) {
-	// Screenshot regression: long multi-port lists and gateway URLs must
-	// not truncate when the terminal is wide enough.
-	portsCell := "app=8002,otel_grpc=4319,otel_http=4320"
-	url := "http://feat-sentry-intake-enrichment.localhost:8080"
+	// Slim slug+status list: long slugs fit when wide, STATUS stays 11
+	// for plain statuses.
 	cells := []dashboardWorkCells{{
-		worktree: "feat-sentry-intake-enrichment",
-		branch:   "feat/sentry-intake-enrichment",
-		ports:    portsCell,
-		url:      url,
-		project:  "sp-feat-sentry-intake-enrichment",
+		slug:   "feat-sentry-intake-enrichment",
+		status: "running",
 	}}
 	cols := dashboardWorkColumnsFor(200, cells)
 	byTitle := map[string]int{}
@@ -1066,42 +1067,43 @@ func TestDashboardWorkColumnsFor_FitsContent(t *testing.T) {
 	if sum > 200 {
 		t.Errorf("columns sum %d overflows width 200", sum)
 	}
-	if byTitle["PORTS"] < len([]rune(portsCell)) {
-		t.Errorf("PORTS width %d truncates %q", byTitle["PORTS"], portsCell)
+	if len(byTitle) != 3 {
+		t.Errorf("slim list must have 3 columns (✓/SLUG/STATUS), got %v", byTitle)
 	}
-	if byTitle["URL"] < len([]rune(url)) {
-		t.Errorf("URL width %d truncates %q", byTitle["URL"], url)
+	if byTitle["SLUG"] < len("feat-sentry-intake-enrichment") {
+		t.Errorf("SLUG width %d truncates content", byTitle["SLUG"])
 	}
 	if byTitle["STATUS"] != 11 {
 		t.Errorf("STATUS width = %d, want fixed 11", byTitle["STATUS"])
 	}
 }
 
-func TestDashboardWorkColumnsFor_ShrinksProjectFirst(t *testing.T) {
+func TestDashboardWorkColumnsFor_ShrinksSlugFirst(t *testing.T) {
 	long := strings.Repeat("x", 40)
+	status := "running (degraded 1/2)"
 	cells := []dashboardWorkCells{{
-		worktree: long, branch: long, ports: long, url: long, project: long,
+		slug: long, status: status,
 	}}
-	cols := dashboardWorkColumnsFor(100, cells)
+	cols := dashboardWorkColumnsFor(30, cells)
 	byTitle := map[string]int{}
 	sum := 0
 	for _, c := range cols {
 		byTitle[c.Title] = c.Width
 		sum += c.Width
 	}
-	if sum > 100 {
-		t.Fatalf("columns sum %d overflows width 100", sum)
+	if sum > 30 {
+		t.Fatalf("columns sum %d overflows width 30", sum)
 	}
-	// Needs total 198 at width 100 (over 98): PROJECT 32->8, WORKTREE
-	// 32->8, BRANCH 40->12, PORTS 40->18, URL untouched at 40.
-	want := map[string]int{
-		"✓": 3, "WORKTREE": 8, "BRANCH": 12, "STATUS": 11,
-		"PORTS": 18, "URL": 40, "PROJECT": 8,
+	// Total need 3+40+22=65 at width 30 (over 35): SLUG 40->8, STATUS
+	// 22->19 (slug shrinks first, remainder comes off STATUS).
+	if byTitle["✓"] != 3 {
+		t.Errorf("✓ width = %d, want 3 (all: %v)", byTitle["✓"], byTitle)
 	}
-	for title, w := range want {
-		if byTitle[title] != w {
-			t.Errorf("%s width = %d, want %d (all: %v)", title, byTitle[title], w, byTitle)
-		}
+	if byTitle["SLUG"] != 8 {
+		t.Errorf("SLUG width = %d, want 8 (all: %v)", byTitle["SLUG"], byTitle)
+	}
+	if byTitle["STATUS"] != 19 {
+		t.Errorf("STATUS width = %d, want %d (all: %v)", byTitle["STATUS"], 19, byTitle)
 	}
 }
 
@@ -1179,7 +1181,7 @@ func TestDashboardModel_LogPaneFocusAndScroll(t *testing.T) {
 func TestDashboardModel_DetailPane(t *testing.T) {
 	m := testDashboardModel()
 	out := m.detailPane(60, 10)
-	for _, want := range []string{"DETAILS", "feature-a", "slug:", "status:", "ports:", "url:", "path:", "project:"} {
+	for _, want := range []string{"Details", "feature-a", "slug:", "status:", "ports:", "url:", "path:", "project:"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("detail pane missing %q:\n%s", want, out)
 		}
@@ -1206,7 +1208,9 @@ func TestDashboardView_RedesignedLayout(t *testing.T) {
 		m.width, m.height = w, 40
 		out := m.View()
 		for _, want := range []string{
-			"WORKTREES", "REMOTE BRANCHES", "DETAILS", "LOG",
+			"Worktrees", "Branches", "Details", "Logs", "Projects",
+			"[1]-Worktrees", "[2]-Branches", "Details", "[3]-Logs", "Projects",
+			"1 of ", "of 2", "of 3",
 			"feature-a", "pr-1", "1/2/3",
 		} {
 			if !strings.Contains(out, want) {
@@ -1218,7 +1222,52 @@ func TestDashboardView_RedesignedLayout(t *testing.T) {
 	m := dashboardViewModel(t)
 	m.width, m.height = 140, 40
 	m.pane = 2
-	if out := m.View(); !strings.Contains(out, "LOG (3") || !strings.Contains(out, "●") {
-		t.Errorf("focused log pane should mark LOG (3) ●:\n%s", out)
+	if out := m.View(); !strings.Contains(out, "[3]-Logs (3") || !strings.Contains(out, "●") {
+		t.Errorf("focused log pane should mark [3]-Logs (3) ●:\n%s", out)
+	}
+}
+
+func TestDashboardCountLabel(t *testing.T) {
+	for _, tc := range []struct {
+		cursor, total int
+		want          string
+	}{
+		{0, 0, "0 of 0"},
+		{0, 1, "1 of 1"},
+		{0, 3, "1 of 3"},
+		{2, 3, "3 of 3"},
+		{9, 3, "3 of 3"},
+		{-1, 3, "1 of 3"},
+	} {
+		if got := dashboardCountLabel(tc.cursor, tc.total); got != tc.want {
+			t.Errorf("count(%d,%d) = %q, want %q", tc.cursor, tc.total, got, tc.want)
+		}
+	}
+}
+
+func TestDashboardWorkStatusText_SlugHealthOnly(t *testing.T) {
+	// Status already carries the health suffix ("running (healthy)");
+	// Health is the per-check breakdown for DETAILS and must not be
+	// appended again.
+	row := dashboardRow{Status: "running (healthy)", Health: "api: pass, db: pass", Ports: "app=8000"}
+	if got := dashboardWorkStatusText(row); got != "running (healthy)" {
+		t.Errorf("status = %q, want passthrough without duplicated health", got)
+	}
+	if got := dashboardWorkStatusText(dashboardRow{Status: "stopped", Stale: true}); got != "stale" {
+		t.Errorf("stale = %q, want stale", got)
+	}
+	if got := dashboardWorkStatusText(dashboardRow{}); got != "?" {
+		t.Errorf("empty = %q, want ?", got)
+	}
+}
+
+func TestDashboardView_ProjectPane(t *testing.T) {
+	m := dashboardViewModel(t)
+	m.width, m.height = 140, 40
+	out := m.View()
+	for _, want := range []string{"Projects", "myapp", "remote origin", "proxy off"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("project pane missing %q:\n%s", want, out)
+		}
 	}
 }

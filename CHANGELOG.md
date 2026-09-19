@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Dashboard is now a lazygit-style 5-box grid (two columns on terminals
+  ≥80 cols, stacked otherwise) with `[n]` numbers and `x of y` counts:
+  [1]-Worktrees (top-left, slim SLUG + health STATUS only),
+  [2]-Branches (middle-left), Projects + status (bottom-left),
+  Details preview (top-right), large focusable [3]-Logs
+  (bottom-right, `j/k` scroll when focused). Lazygit-inspired blue/gray
+  palette with blue focus borders and selection.
+
 - Range-based port allocation with step 1, gap reuse, and OS availability
   check: new per-service `ports.ranges` (e.g. `ranges: {app: [8000, 8099]}`;
   `base` must sit inside its range, `app` required, 1–65535). `ports.step`
