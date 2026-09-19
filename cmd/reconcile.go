@@ -217,19 +217,6 @@ func logReconciledCLI(adopted, warns []string) {
 	warnReconciled(warns)
 }
 
-// portsEqual reports whether two allocations hold identical name=value pairs.
-func portsEqual(a, b map[string]int) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		if bv, ok := b[k]; !ok || bv != v {
-			return false
-		}
-	}
-	return true
-}
-
 // warnReconciled prints .env divergence warnings from reconciliation.
 // Adopted allocations keep existing .env values intact; the warnings tell
 // the user which keys differ from the adopted allocation.

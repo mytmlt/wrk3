@@ -99,7 +99,7 @@ type EntryConfig struct {
 
 // PortsConfig holds the port allocation table.
 type PortsConfig struct {
-	Base   map[string]int   `yaml:"base"`
+	Base   map[string]int    `yaml:"base"`
 	Ranges map[string][2]int `yaml:"ranges"`
 	// Step is legacy and always rejected: ports.step was removed in favor
 	// of per-service ranges with step 1. Kept as a pointer only to detect
