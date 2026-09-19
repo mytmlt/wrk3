@@ -102,10 +102,10 @@ func (a Allocator) BaseAllocation() map[string]int {
 // plus the main reservation); isFree probes OS availability (nil means
 // state-only, always free). Ports assigned earlier in the same call count
 // as taken so cross-service collisions within one candidate are avoided.
-// Services scan fewest-candidates-first (r[1]-base, name tiebreak) so
-// heterogeneously overlapping ranges resolve when feasible instead of
-// falsely exhausting under plain sorted order; the order is still
-// deterministic. Exhaustion errors name the service and its configured
+// Services scan earliest-deadline-first (upper bound, then base, then
+// name) so heterogeneously overlapping ranges reduce false exhaustion
+// instead of greedily exhausting under plain sorted order; the order is
+// still deterministic. Exhaustion errors name the service and its configured
 // range [min,max] per the acceptance contract (the scan floor is base,
 // which always sits inside [min,max]).
 func (a Allocator) FindFreeAllocation(taken map[int]struct{}, isFree func(int) bool) (map[string]int, error) {
@@ -116,10 +116,12 @@ func (a Allocator) FindFreeAllocation(taken map[int]struct{}, isFree func(int) b
 		names = append(names, name)
 	}
 	sort.Slice(names, func(i, j int) bool {
-		bi, bj := base[names[i]], base[names[j]]
-		ci, cj := ranges[names[i]][1]-bi, ranges[names[j]][1]-bj
-		if ci != cj {
-			return ci < cj
+		mi, mj := ranges[names[i]][1], ranges[names[j]][1]
+		if mi != mj {
+			return mi < mj
+		}
+		if base[names[i]] != base[names[j]] {
+			return base[names[i]] < base[names[j]]
 		}
 		return names[i] < names[j]
 	})

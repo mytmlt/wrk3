@@ -69,7 +69,7 @@ func TestFindFreeAllocation_CrossServiceCollisionAvoided(t *testing.T) {
 }
 
 func TestFindFreeAllocation_NarrowRangeFirst(t *testing.T) {
-	// Heterogeneous overlap: web has only one candidate, so it must go
+	// Heterogeneous overlap: web has the earlier deadline, so it goes
 	// first; plain sorted order (app first) would falsely exhaust web.
 	a := Allocator{
 		Base:   map[string]int{"app": 8000, "web": 8000},
@@ -81,6 +81,26 @@ func TestFindFreeAllocation_NarrowRangeFirst(t *testing.T) {
 	}
 	if got["web"] != 8000 || got["app"] != 8001 {
 		t.Errorf("got %v, want web=8000 app=8001", got)
+	}
+}
+
+func TestFindFreeAllocation_EarliestDeadlineFirst(t *testing.T) {
+	// app has fewer candidates but the later deadline; db must go first.
+	// taken blocks db's low ports, leaving only 8000 for db and 8001 for app.
+	a := Allocator{
+		Base:   map[string]int{"app": 8000, "db": 7990},
+		Ranges: map[string][2]int{"app": {8000, 8001}, "db": {7990, 8000}},
+	}
+	taken := map[int]struct{}{}
+	for p := 7990; p <= 7999; p++ {
+		taken[p] = struct{}{}
+	}
+	got, err := a.FindFreeAllocation(taken, nil)
+	if err != nil {
+		t.Fatalf("FindFreeAllocation = %v", err)
+	}
+	if got["db"] != 8000 || got["app"] != 8001 {
+		t.Errorf("got %v, want db=8000 app=8001", got)
 	}
 }
 
