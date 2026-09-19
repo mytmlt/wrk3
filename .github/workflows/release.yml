@@ -1,5 +1,9 @@
 name: Release
 
+# Manual-tag fallback: pushing a v*.*.* tag runs GoReleaser.
+# (Automatic releases run in `.github/workflows/tag.yml`, whose
+# GITHUB_TOKEN tag push intentionally does not re-trigger this.)
+
 on:
   push:
     tags:

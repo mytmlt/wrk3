@@ -1,7 +1,8 @@
 # GoReleaser config for wrk3 (github.com/mytmlt/wrk3).
-# Releases are automatic: every merge to main tags vX.Y.Z+1
-# (.github/workflows/tag.yml), which triggers this build.
-# (or `make release` with GITHUB_TOKEN set for a manual cut).
+# Releases are automatic: every merge to main tags vX.Y.Z+1 and runs
+# this build in the same workflow run (.github/workflows/tag.yml).
+# Manual fallback: push a v*.*.* tag (or `make release` with
+# GITHUB_TOKEN set) to run the tag-triggered Release workflow.
 # Docs: https://goreleaser.com/intro/
 
 version: 2

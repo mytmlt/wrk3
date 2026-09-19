@@ -10,8 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Automatic releases: every merge to `main` tags a patch bump
-  (`vX.Y.Z` → `vX.Y.Z+1` via `.github/workflows/tag.yml`), which
-  triggers the GoReleaser `Release` workflow. No manual tagging needed.
+  (`vX.Y.Z` → `vX.Y.Z+1`) and publishes the GoReleaser release in the
+  same workflow run (`.github/workflows/tag.yml`). No manual tagging
+  needed.
 
 ### Changed
 
