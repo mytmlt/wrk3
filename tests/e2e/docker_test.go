@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // requireDockerE2E applies the standard conservative gates for docker E2E:
@@ -67,19 +68,15 @@ func TestE2E_DockerUpDown(t *testing.T) {
 	cfg := writeE2EConfig(t, repoDir)
 	writeComposeFile(t, repoDir)
 
-	// NOTE: runWrk3 currently uses a 60s default timeout. `up` pulls
-	// alpine:3.19 on cold CI runners and can exceed that; if this test
-	// flakes with timeout on first pull, extend runWrk3 (or add a
-	// runWrk3Timeout variant) to ~3 minutes for the up invocation.
 	if out, errOut, err := runWrk3(t, repoDir, cfg, "add", "feature/foo", "--no-create"); err != nil {
 		t.Fatalf("add feature/foo: %v\nstdout: %s\nstderr: %s", err, out, errOut)
 	}
 
 	t.Cleanup(func() {
-		_, _, _ = runWrk3(t, repoDir, cfg, "down", "feature/foo")
+		_, _, _ = runWrk3Timeout(t, repoDir, cfg, 3*time.Minute, "down", "feature/foo")
 	})
 
-	if out, errOut, err := runWrk3(t, repoDir, cfg, "up", "feature/foo"); err != nil {
+	if out, errOut, err := runWrk3Timeout(t, repoDir, cfg, 3*time.Minute, "up", "feature/foo"); err != nil {
 		t.Fatalf("up feature/foo: %v\nstdout: %s\nstderr: %s", err, out, errOut)
 	}
 
@@ -88,7 +85,7 @@ func TestE2E_DockerUpDown(t *testing.T) {
 		t.Fatalf("status: %v\nstdout: %s\nstderr: %s", err, out, errOut)
 	}
 
-	if out, errOut, err := runWrk3(t, repoDir, cfg, "down", "feature/foo"); err != nil {
+	if out, errOut, err := runWrk3Timeout(t, repoDir, cfg, 3*time.Minute, "down", "feature/foo"); err != nil {
 		t.Fatalf("down feature/foo: %v\nstdout: %s\nstderr: %s", err, out, errOut)
 	}
 }
@@ -118,10 +115,10 @@ func TestE2E_DockerParallel(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		_, _, _ = runWrk3(t, repoDir, cfg, "down", "feature/foo", "feature/bar")
+		_, _, _ = runWrk3Timeout(t, repoDir, cfg, 3*time.Minute, "down", "feature/foo", "feature/bar")
 	})
 
-	if out, errOut, err := runWrk3(t, repoDir, cfg, "up", "feature/foo", "feature/bar"); err != nil {
+	if out, errOut, err := runWrk3Timeout(t, repoDir, cfg, 3*time.Minute, "up", "feature/foo", "feature/bar"); err != nil {
 		t.Fatalf("up both: %v\nstdout: %s\nstderr: %s", err, out, errOut)
 	}
 
@@ -138,7 +135,7 @@ func TestE2E_DockerParallel(t *testing.T) {
 		}
 	}
 
-	if out, errOut, err := runWrk3(t, repoDir, cfg, "down", "feature/foo", "feature/bar"); err != nil {
+	if out, errOut, err := runWrk3Timeout(t, repoDir, cfg, 3*time.Minute, "down", "feature/foo", "feature/bar"); err != nil {
 		t.Fatalf("down both: %v\nstdout: %s\nstderr: %s", err, out, errOut)
 	}
 }

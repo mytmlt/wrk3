@@ -328,6 +328,7 @@ func TestE2E_MainCheckout(t *testing.T) {
 // TestE2E_ExecEnv (E10): exec runs with the worktree's allocated ports in
 // the environment.
 func TestE2E_ExecEnv(t *testing.T) {
+	requireSh(t)
 	repoDir := mkThrowawayRepo(t)
 	cfg := writeE2EConfig(t, repoDir)
 

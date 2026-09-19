@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // Happy-path e2e tests for issue #16 (PR1: H01-H06). Each test is hermetic:
@@ -116,23 +117,28 @@ func TestE2E_StatusShowsWorktree(t *testing.T) {
 }
 
 // TestE2E_UpLogsDown (H04): up, logs, and down each exit 0 with echo entries.
+// Skips without a daemon (compose up needs one even for the echo-entry
+// alpine stack); up/down get a 3m timeout for cold image pulls.
 func TestE2E_UpLogsDown(t *testing.T) {
+	if !haveDockerDaemon() {
+		t.Skip("skip up/logs/down e2e without a docker daemon")
+	}
 	repoDir := mkThrowawayRepo(t)
 	cfg := writeE2EConfig(t, repoDir)
 
 	happyAddFoo(t, repoDir, cfg)
 
 	t.Cleanup(func() {
-		_, _, _ = runWrk3(t, repoDir, cfg, "down", "feature/foo")
+		_, _, _ = runWrk3Timeout(t, repoDir, cfg, 3*time.Minute, "down", "feature/foo")
 	})
 
-	if out, errOut, err := runWrk3(t, repoDir, cfg, "up", "feature/foo"); err != nil {
+	if out, errOut, err := runWrk3Timeout(t, repoDir, cfg, 3*time.Minute, "up", "feature/foo"); err != nil {
 		t.Fatalf("up feature/foo: %v\nstdout: %s\nstderr: %s", err, out, errOut)
 	}
 	if out, errOut, err := runWrk3(t, repoDir, cfg, "logs", "feature/foo"); err != nil {
 		t.Fatalf("logs feature/foo: %v\nstdout: %s\nstderr: %s", err, out, errOut)
 	}
-	if out, errOut, err := runWrk3(t, repoDir, cfg, "down", "feature/foo"); err != nil {
+	if out, errOut, err := runWrk3Timeout(t, repoDir, cfg, 3*time.Minute, "down", "feature/foo"); err != nil {
 		t.Fatalf("down feature/foo: %v\nstdout: %s\nstderr: %s", err, out, errOut)
 	}
 }

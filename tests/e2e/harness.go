@@ -163,11 +163,19 @@ ports:
 // with a 60s timeout, capturing stdout and stderr separately.
 func runWrk3(t *testing.T, repoDir, cfg string, args ...string) (string, string, error) {
 	t.Helper()
+	return runWrk3Timeout(t, repoDir, cfg, 60*time.Second, args...)
+}
+
+// runWrk3Timeout is runWrk3 with an explicit timeout. Use ~3m for `up`/`down`
+// (cold CI runners pull alpine:3.19 on first use; DockerRunner itself allows
+// 5m), 60s default elsewhere.
+func runWrk3Timeout(t *testing.T, repoDir, cfg string, timeout time.Duration, args ...string) (string, string, error) {
+	t.Helper()
 
 	if strings.TrimSpace(binWrk3) == "" {
 		t.Fatalf("binWrk3 not set (TestMain build failed?)")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	full := append([]string{"-f", cfg}, args...)
@@ -178,9 +186,26 @@ func runWrk3(t *testing.T, repoDir, cfg string, args ...string) (string, string,
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
-		return stdout.String(), stderr.String(), fmt.Errorf("wrk3 %s: timeout after 60s: %w", strings.Join(full, " "), ctx.Err())
+		return stdout.String(), stderr.String(), fmt.Errorf("wrk3 %s: timeout after %s: %w", strings.Join(full, " "), timeout, ctx.Err())
 	}
 	return stdout.String(), stderr.String(), err
+}
+
+// haveDockerDaemon reports whether a container daemon is reachable for the
+// compose-based `up`/`down` paths (echo entries still need `compose up` for
+// the committed alpine stack).
+func haveDockerDaemon() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, "docker", "info").Run() == nil
+}
+
+// requireSh skips the test when `sh` is missing (Windows without git-bash).
+func requireSh(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skipf("sh not found: %v", err)
+	}
 }
 
 // mustContain fails the test when out does not contain sub.
