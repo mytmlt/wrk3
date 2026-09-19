@@ -57,6 +57,13 @@ func (a Allocator) Validate() error {
 			return fmt.Errorf("ports base: port %q out of range: %d", name, v)
 		}
 	}
+	seenBase := make(map[int]string, len(base))
+	for name, v := range base {
+		if prev, dup := seenBase[v]; dup {
+			return fmt.Errorf("ports base: ports %q and %q share value %d", prev, name, v)
+		}
+		seenBase[v] = name
+	}
 	if _, ok := ranges[PortApp]; !ok {
 		return fmt.Errorf("ports ranges: missing range for %q", PortApp)
 	}

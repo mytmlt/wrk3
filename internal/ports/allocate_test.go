@@ -162,6 +162,15 @@ func TestAllocator_Validate(t *testing.T) {
 	if err := unknownRange.Validate(); err == nil {
 		t.Errorf("Validate() with unknown range = nil, want error")
 	}
+	dupBase := Allocator{
+		Base:   map[string]int{"app": 8000, "web": 8000},
+		Ranges: map[string][2]int{"app": {8000, 8099}, "web": {8000, 8099}},
+	}
+	if err := dupBase.Validate(); err == nil {
+		t.Errorf("Validate() with duplicate base values = nil, want error")
+	} else if !strings.Contains(err.Error(), "share value 8000") {
+		t.Errorf("duplicate-base error %q should name the shared value", err.Error())
+	}
 }
 
 func TestTakenFromRecords_Union(t *testing.T) {
