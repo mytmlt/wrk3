@@ -50,9 +50,6 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 	taken := takenWithMain(alloc, recs)
 
 	all := append([]ports.WorktreeRecord(nil), recs...)
-	collides := func(p map[string]int) bool {
-		return ports.AllocationsCollide(mainPorts, p) || collidesTaken(taken, p)
-	}
 
 	for _, branch := range branches {
 		if findRecord(all, branch) != nil {
@@ -103,7 +100,6 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 		for _, p := range allocation {
 			taken[p] = struct{}{}
 		}
-		_ = collides
 	}
 	if len(all) == len(recs) {
 		return recs, nil, false, nil
@@ -122,7 +118,8 @@ func collidesTaken(taken map[int]struct{}, p map[string]int) bool {
 }
 
 // recoveredReusable reports whether .env-recovered ports can be reused:
-// same keys as base, each value inside its range, no collision with main
+// same keys as base, each value inside its range, distinct values within
+// the set (no self-collision across services), no collision with main
 // or taken state, and OS-free (bind probe).
 func recoveredReusable(alloc ports.Allocator, base, recovered map[string]int, taken map[int]struct{}, mainPorts map[string]int) bool {
 	if len(recovered) != len(base) {
@@ -151,6 +148,13 @@ func recoveredReusable(alloc ports.Allocator, base, recovered map[string]int, ta
 	}
 	if ports.AllocationsCollide(mainPorts, recovered) || collidesTaken(taken, recovered) {
 		return false
+	}
+	seen := make(map[int]struct{}, len(recovered))
+	for _, v := range recovered {
+		if _, dup := seen[v]; dup {
+			return false
+		}
+		seen[v] = struct{}{}
 	}
 	for _, v := range recovered {
 		if !osPortFree(v) {

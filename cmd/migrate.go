@@ -76,7 +76,6 @@ func migrateLegacyMainCollisions(r *resolved, recs []ports.WorktreeRecord) (upda
 	out := append([]ports.WorktreeRecord(nil), recs...)
 
 	for _, ci := range colliding {
-		old := out[ci].Ports
 		// taken excludes the record's own current allocation: it is being
 		// replaced, so it must not block its own fresh slot scan.
 		taken := make(map[int]struct{}, len(out)+len(mainPorts))
@@ -101,7 +100,6 @@ func migrateLegacyMainCollisions(r *resolved, recs []ports.WorktreeRecord) (upda
 		warns = append(warns, fmt.Sprintf(
 			"migrated worktree %q from colliding ports to index %d (main reserves the ports.base allocation); .env divergence warnings below are advisory",
 			out[ci].Branch, out[ci].Index))
-		_ = old
 		// Gap-fill .env only when the worktree dir exists: stale records
 		// (dir missing) still migrate state, but must not create dirs.
 		if st, statErr := os.Stat(out[ci].AbsPath); statErr == nil && st.IsDir() {

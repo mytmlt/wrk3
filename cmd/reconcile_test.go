@@ -189,6 +189,23 @@ func TestReconcileState_ListErrorSkips(t *testing.T) {
 	}
 }
 
+func TestRecoveredReusable_RejectsSelfCollision(t *testing.T) {
+	alloc := ports.Allocator{
+		Base:   map[string]int{"app": 8000, "web": 3000},
+		Ranges: map[string][2]int{"app": {8000, 8099}, "web": {3000, 3099}},
+	}
+	base := map[string]int{"app": 8000, "web": 3000}
+	mainPorts := alloc.BaseAllocation()
+	// Distinct in-range values reuse.
+	if !recoveredReusable(alloc, base, map[string]int{"app": 8001, "web": 3001}, map[int]struct{}{8000: {}, 3000: {}}, mainPorts) {
+		t.Error("distinct in-range recovered ports should be reusable")
+	}
+	// Same host port across services must not reuse.
+	if recoveredReusable(alloc, base, map[string]int{"app": 8001, "web": 8001}, map[int]struct{}{8000: {}, 3000: {}}, mainPorts) {
+		t.Error("self-colliding recovered ports (app==web) should not be reusable")
+	}
+}
+
 func TestUnionBranches(t *testing.T) {
 	got := unionBranches([]string{"b", "a"}, []string{"c", "a"})
 	if len(got) != 3 || got[0] != "a" || got[1] != "b" || got[2] != "c" {
