@@ -1948,9 +1948,9 @@ func (m dashboardModel) worktreePane(width, height int) string {
 	count := dashboardCountLabel(m.workCursor, len(m.rows))
 	var title string
 	if focused {
-		title = dashPaneTitleFocused.Render("[1]-Worktrees (1) - "+count+" ●")
+		title = dashPaneTitleFocused.Render("[1]-Worktrees (1) - " + count + " ●")
 	} else {
-		title = dashPaneTitleBlurred.Render("[1]-Worktrees (1) - "+count)
+		title = dashPaneTitleBlurred.Render("[1]-Worktrees (1) - " + count)
 	}
 	body := m.buildWorkTable(max(width-4, 10), height, focused).View()
 	if len(m.rows) == 0 {
@@ -1964,9 +1964,9 @@ func (m dashboardModel) branchPane(width, height int) string {
 	count := dashboardCountLabel(m.brCursor, len(m.branches))
 	var title string
 	if focused {
-		title = dashPaneTitleFocused.Render("[2]-Branches (2) - "+count+" ●")
+		title = dashPaneTitleFocused.Render("[2]-Branches (2) - " + count + " ●")
 	} else {
-		title = dashPaneTitleBlurred.Render("[2]-Branches (2) - "+count)
+		title = dashPaneTitleBlurred.Render("[2]-Branches (2) - " + count)
 	}
 	body := m.buildBranchTable(max(width-4, 10), height, focused).View()
 	if len(m.branches) == 0 {
@@ -2199,7 +2199,7 @@ type dashboardGrid struct {
 	leftW, rightW                                   int
 	workTableH, branchTableH, projInnerH, detInnerH int
 	logH                                            int
-	logViewW, logViewH                               int
+	logViewW, logViewH                              int
 }
 
 func computeDashboardGrid(w, h int) dashboardGrid {
