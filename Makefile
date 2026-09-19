@@ -6,6 +6,8 @@
 #   make uninstall  remove installed binary + completions
 #   machine-wide instead: sudo make install PREFIX=/usr/local
 #   make test       go vet + go test
+#   make e2e         e2e harness, no docker (tests/e2e, -short)
+#   make e2e-docker  e2e with real docker (WRK3_E2E_DOCKER=1)
 #   make lint       golangci-lint (if installed)
 #   make completion generate shell completions into ./completions
 #   make snapshot   goreleaser dry-run (no publish)
@@ -32,7 +34,7 @@ LDFLAGS := -s -w \
 GO      ?= go
 GORELEASER ?= goreleaser
 
-.PHONY: all build install install-user uninstall test vet lint completion snapshot release clean help
+.PHONY: all build install install-user uninstall test e2e e2e-docker vet lint completion snapshot release clean help
 
 all: build
 
@@ -57,6 +59,12 @@ test: ## go build + vet + full test suite
 	$(GO) build ./...
 	$(GO) vet ./...
 	$(GO) test ./... -count=1
+
+e2e: ## e2e harness, no docker (short mode)
+	$(GO) test -tags e2e ./tests/e2e/ -short -count=1
+
+e2e-docker: ## e2e with real docker (needs daemon)
+	WRK3_E2E_DOCKER=1 $(GO) test -tags e2e ./tests/e2e/ -count=1 -v
 
 vet: ## go vet only
 	$(GO) vet ./...

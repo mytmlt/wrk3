@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- E2E harness (`tests/e2e/`, `//go:build e2e`, case catalog in
+  `tests/e2e/CASES.md`): scripted CLI scenarios against throwaway repos
+  (`fetch` → `add` → `status` → `up` → `logs` → `down` → `remove`,
+  plus `--create`/`--no-create`, port allocation, `.env` preservation,
+  orphan adoption, main guard, `exec` env, stale dirs). `make e2e` runs
+  without docker; `WRK3_E2E_DOCKER=1 make e2e-docker` covers real-docker
+  `up`/`down` + parallel projects (`alpine:3.19` stack). CI runs the
+  short suite in `build-test` and the docker suite in `integration`.
+
 - Shell completion now covers every command: subcommand names complete
   by prefix (including `proxy`/`project` subgroups), branch positions
   suggest branch names and worktree positions suggest branch names +
@@ -30,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `wrk3 logs` no longer panics on startup: the local `-f/--follow`
+  shorthand collided with the persistent global `-f/--file` config flag
+  (cobra panics on shorthand collisions). `logs` now uses `--follow`
+  long form only.
 - Dashboard `o`/`O` (open/copy URL) now use only the worktree under the
   cursor, ignoring `space` selections on other rows, matching the
   documented "cursor worktree URL" behavior.

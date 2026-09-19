@@ -48,6 +48,23 @@ Project layout:
 7. Open a PR against `main` using the PR template. Link issues and describe
    verification evidence (command logs).
 
+## E2E tests
+
+`tests/e2e/` (`//go:build e2e`, case catalog in `tests/e2e/CASES.md`)
+drives the built binary through throwaway repos (temp dir + `git init` +
+`wrk3.yaml`, isolated `HOME`/`XDG_CONFIG_HOME` — never your real
+checkouts):
+
+```bash
+make e2e            # short mode: no docker needed
+WRK3_E2E_DOCKER=1 make e2e-docker  # real-docker up/down (needs daemon)
+go test -tags e2e ./tests/e2e/ -short -count=1
+```
+
+Docker E2E is opt-in (`WRK3_E2E_DOCKER=1`) and self-skipping when
+`docker info` fails. Recipe per test: `mkThrowawayRepo` →
+`writeE2EConfig` → `runWrk3` with explicit `--create`/`--no-create`.
+
 ## Commit style
 
 Conventional, imperative, lowercase type:
