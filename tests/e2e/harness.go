@@ -126,8 +126,8 @@ func mkThrowawayRepo(t *testing.T) (repoDir string) {
 }
 
 // writeE2EConfig writes a minimal no-op wrk3.yaml into repoDir and returns
-// its path. Entry commands are echo-only; ports allocate app from 8000
-// with step 100 so the first managed worktree gets 8100.
+// its path. Entry commands are echo-only; ports allocate app from base 8000
+// upward by 1 (gap reuse) so the first managed worktree gets 8001.
 func writeE2EConfig(t *testing.T, repoDir string) string {
 	t.Helper()
 
@@ -150,7 +150,8 @@ entry:
   logs: "echo logs"
 ports:
   base: {app: 8000}
-  step: 100
+  ranges:
+    app: [8000, 8099]
 `
 	p := filepath.Join(repoDir, "wrk3.yaml")
 	if err := os.WriteFile(p, []byte(cfg), 0o644); err != nil {

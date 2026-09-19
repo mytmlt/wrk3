@@ -118,11 +118,8 @@ func TestHealthReportSummaryInDashboard(t *testing.T) {
 
 func TestDashboardWorkColumnsFor_HealthSuffix(t *testing.T) {
 	cols := dashboardWorkColumnsFor(200, []dashboardWorkCells{{
-		worktree: "feature-a", branch: "feature-a",
-		status:  "running (degraded 1/2)",
-		ports:   "app=8001",
-		url:     "http://localhost:8001",
-		project: "demo-feature-a",
+		slug:   "feature-a",
+		status: "running (degraded 1/2)",
 	}})
 	byTitle := map[string]int{}
 	sum := 0

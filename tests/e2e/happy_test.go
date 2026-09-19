@@ -63,7 +63,7 @@ func TestE2E_FetchListsBranch(t *testing.T) {
 }
 
 // TestE2E_AddExistingBranch (H02): add registers the worktree dir, state
-// entry (absolute path + app 8100), and .env APP_PORT.
+// entry (absolute path + app 8001), and .env APP_PORT.
 func TestE2E_AddExistingBranch(t *testing.T) {
 	repoDir := mkThrowawayRepo(t)
 	cfg := writeE2EConfig(t, repoDir)
@@ -80,24 +80,24 @@ func TestE2E_AddExistingBranch(t *testing.T) {
 		t.Fatalf("read state file: %v", err)
 	}
 	mustContain(t, string(raw), wt)
-	mustContain(t, string(raw), "8100")
+	mustContain(t, string(raw), "8001")
 
 	recs := happyReadState(t, repoDir)
 	found := false
 	for _, r := range recs {
-		if r.Branch == "feature/foo" && r.Ports["app"] == 8100 {
+		if r.Branch == "feature/foo" && r.Ports["app"] == 8001 {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("state has no feature/foo record with app=8100: %s", string(raw))
+		t.Fatalf("state has no feature/foo record with app=8001: %s", string(raw))
 	}
 
 	env, err := os.ReadFile(filepath.Join(wt, ".env"))
 	if err != nil {
 		t.Fatalf("read worktree .env: %v", err)
 	}
-	mustContain(t, string(env), "APP_PORT=8100")
+	mustContain(t, string(env), "APP_PORT=8001")
 }
 
 // TestE2E_StatusShowsWorktree (H03): status lists the added worktree with
@@ -113,7 +113,7 @@ func TestE2E_StatusShowsWorktree(t *testing.T) {
 		t.Fatalf("status: %v\nstdout: %s\nstderr: %s", err, stdout, errOut)
 	}
 	mustContain(t, stdout, "feature/foo")
-	mustContain(t, stdout, "app=8100")
+	mustContain(t, stdout, "app=8001")
 }
 
 // TestE2E_UpLogsDown (H04): up, logs, and down each exit 0 with echo entries.
