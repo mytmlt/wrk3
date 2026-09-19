@@ -1044,8 +1044,10 @@ func TestDashboardWorkColumns_FitsTableWidth(t *testing.T) {
 		for _, c := range dashboardWorkColumns(w) {
 			sum += c.Width
 		}
-		if sum > w {
-			t.Errorf("width %d: columns sum %d overflows the table", w, sum)
+		// Rendered rows add 1 cell padding on each side per column
+		// (bubbles/table), so the column widths must leave 6 spare.
+		if sum+6 > w {
+			t.Errorf("width %d: columns sum %d (+6 padding) overflows the table", w, sum)
 		}
 	}
 }
@@ -1064,8 +1066,8 @@ func TestDashboardWorkColumnsFor_FitsContent(t *testing.T) {
 		byTitle[c.Title] = c.Width
 		sum += c.Width
 	}
-	if sum > 200 {
-		t.Errorf("columns sum %d overflows width 200", sum)
+	if sum+6 > 200 {
+		t.Errorf("columns sum %d (+6 padding) overflows width 200", sum)
 	}
 	if len(byTitle) != 3 {
 		t.Errorf("slim list must have 3 columns (✓/SLUG/STATUS), got %v", byTitle)
@@ -1091,19 +1093,19 @@ func TestDashboardWorkColumnsFor_ShrinksSlugFirst(t *testing.T) {
 		byTitle[c.Title] = c.Width
 		sum += c.Width
 	}
-	if sum > 30 {
-		t.Fatalf("columns sum %d overflows width 30", sum)
+	if sum+6 > 30 {
+		t.Fatalf("columns sum %d (+6 padding) overflows width 30", sum)
 	}
-	// Total need 3+40+22=65 at width 30 (over 35): SLUG 40->8, STATUS
-	// 22->19 (slug shrinks first, remainder comes off STATUS).
+	// Total need 3+40+22=65 in avail 30-6=24 (over 41): SLUG 40->8,
+	// STATUS 22->13 (slug shrinks first, remainder comes off STATUS).
 	if byTitle["✓"] != 3 {
 		t.Errorf("✓ width = %d, want 3 (all: %v)", byTitle["✓"], byTitle)
 	}
 	if byTitle["SLUG"] != 8 {
 		t.Errorf("SLUG width = %d, want 8 (all: %v)", byTitle["SLUG"], byTitle)
 	}
-	if byTitle["STATUS"] != 19 {
-		t.Errorf("STATUS width = %d, want %d (all: %v)", byTitle["STATUS"], 19, byTitle)
+	if byTitle["STATUS"] != 13 {
+		t.Errorf("STATUS width = %d, want %d (all: %v)", byTitle["STATUS"], 13, byTitle)
 	}
 }
 
