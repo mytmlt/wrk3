@@ -25,6 +25,11 @@ jobs:
       - run: go build ./...
       - run: go vet ./...
       - run: go test ./... -short -count=1
+      # Ubuntu-only: the e2e happy path runs `up`/`down` (docker compose)
+      # and `exec ... sh -c`, which need a daemon + sh. macOS/Windows
+      # runners have neither by default; the tests also self-skip there.
+      - run: go test -tags e2e ./tests/e2e/ -short -count=1
+        if: matrix.os == 'ubuntu-latest'
       - run: go run . --help
       - run: go run . version
 
@@ -37,6 +42,7 @@ jobs:
           go-version: "1.26"
           cache: true
       - run: go test ./internal/runner/ -count=1 -run 'Integration|Parallel' -v
+      - run: WRK3_E2E_DOCKER=1 go test -tags e2e ./tests/e2e/ -count=1 -v
 
   lint:
     runs-on: ubuntu-latest

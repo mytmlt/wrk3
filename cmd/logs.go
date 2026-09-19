@@ -9,7 +9,7 @@ import (
 var logsFollow bool
 
 var logsCmd = &cobra.Command{
-	Use:               "logs <branch> [-f]",
+	Use:               "logs <branch> [--follow]",
 	Short:             "show worktree logs",
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completeWorktrees,
@@ -51,6 +51,9 @@ var logsCmd = &cobra.Command{
 }
 
 func init() {
-	logsCmd.Flags().BoolVarP(&logsFollow, "follow", "f", false, "follow logs")
+	// NOTE: no -f shorthand for --follow: the global -f/--file config flag
+	// is persistent on every command and cobra panics on shorthand
+	// collisions (e2e H04 caught `wrk3 logs` panicking). Use --follow long form.
+	logsCmd.Flags().BoolVar(&logsFollow, "follow", false, "follow logs")
 	rootCmd.AddCommand(logsCmd)
 }

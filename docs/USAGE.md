@@ -81,7 +81,7 @@ wrk3 status                         # this config (full table, includes main)
 wrk3 ls                             # this config (minimal WORKTREE/BRANCH/STATUS/PORTS, includes main)
 wrk3 ls --project myapp             # worktrees in a registered project, from anywhere
 wrk3 project ls                     # all auto-registered projects (NAME/CONFIG/WORKTREES)
-wrk3 logs feature-a [-f]            # entry.logs command
+wrk3 logs feature-a [--follow]     # entry.logs command
 wrk3 log [-n 50] [--json]           # persistent system log: every command run, state change, warning/error (next to the state file)
 wrk3 exec feature-a -- <cmd...>     # run inside worktree env (cwd=worktree)
 wrk3 env feature-a                 # open the worktree .env in $VISUAL/$EDITOR (ensured first, never overwritten)
@@ -303,6 +303,22 @@ wrk3 exec pr-101 -- go test ./... -count=1
 # Clean up a single stack (volumes included via compose down -v)
 wrk3 down pr-102 && wrk3 remove pr-102
 ```
+
+## E2E
+
+End-to-end coverage lives in `tests/e2e/` (`//go:build e2e`, case
+catalog in `tests/e2e/CASES.md`):
+
+```bash
+make e2e            # no docker needed
+WRK3_E2E_DOCKER=1 make e2e-docker  # real-docker add/up/status/down on throwaway repos
+```
+
+Each test builds a throwaway git repo in a temp dir, writes a minimal
+`wrk3.yaml`, then drives `fetch`/`add`/`status`/`up`/`logs`/`down`/
+`remove`/`exec` through the built binary. Docker tests use an
+`alpine:3.19` `sleep infinity` stack and skip unless
+`WRK3_E2E_DOCKER=1` with a reachable daemon.
 
 ## Troubleshooting
 
