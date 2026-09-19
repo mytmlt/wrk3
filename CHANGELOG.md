@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Automatic releases: every merge to `main` tags a patch bump
+  (`vX.Y.Z` → `vX.Y.Z+1`) and publishes the GoReleaser release in the
+  same workflow run (`.github/workflows/tag.yml`). No manual tagging
+  needed.
+
 ### Changed
 
 - Dashboard is now a lazygit-style 5-box grid (two columns on terminals

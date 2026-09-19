@@ -1,5 +1,9 @@
 name: Release
 
+# Manual-tag fallback: pushing a v*.*.* tag runs GoReleaser.
+# (Automatic releases run in `.github/workflows/tag.yml`, whose
+# GITHUB_TOKEN tag push intentionally does not re-trigger this.)
+
 on:
   push:
     tags:
@@ -19,7 +23,7 @@ jobs:
         with:
           go-version: "1.26"
           cache: true
-      - uses: goreleaser/goreleaser-action@v7
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
         with:
           distribution: goreleaser
           version: latest

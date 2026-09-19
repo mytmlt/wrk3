@@ -66,7 +66,8 @@ Denied there on purpose: pushes to `main`/`master`, tag pushes,
   `test:`).
 - Push the feature branch (`git push -u origin <branch>`). Never push to
   `main`, never `--force-push` (rebase + re-run the gate instead),
-  never push tags (maintainers cut releases).
+  never push tags (every merge to `main` auto-tags a patch release via
+  `.github/workflows/tag.yml`).
 - Open the PR with `gh pr create` against `main`, following
   `.github/PULL_REQUEST_TEMPLATE.md` with Verification evidence
   (gate logs, `status` output).

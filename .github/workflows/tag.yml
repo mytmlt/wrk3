@@ -1,0 +1,103 @@
+name: Auto tag and release
+
+# Every merge to main gets a patch tag (vX.Y.Z+1) plus a GoReleaser
+# GitHub release in this same job. The tag push uses GITHUB_TOKEN on
+# purpose: such pushes do not re-trigger workflows, so the
+# tag-triggered `Release` workflow stays a manual-tag fallback without
+# double-releasing.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-tag-main
+  cancel-in-progress: false
+
+jobs:
+  tag-and-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Create and push patch tag
+        id: tag
+        run: |
+          set -euo pipefail
+          git fetch --tags origin
+
+          # Skip tagging if HEAD already carries a version tag (e.g. re-run);
+          # the release check below still ensures the release exists.
+          if git tag --points-at HEAD | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            version="$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)"
+            echo "HEAD already tagged ${version}, skipping tag push."
+            echo "version=${version}" >> "$GITHUB_OUTPUT"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          latest="$(git tag --list 'v*.*.*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
+          latest="${latest:-v0.0.0}"
+          ver="${latest#v}"
+          IFS='.' read -r major minor patch <<< "$ver"
+          major="${major:-0}"
+          minor="${minor:-0}"
+          patch="${patch:-0}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Bump past existing tags; retry the push (a concurrently
+          # created tag fails the push) up to 5 times.
+          next=""
+          for attempt in 1 2 3 4 5; do
+            patch="$((patch + 1))"
+            next="v${major}.${minor}.${patch}"
+            while git rev-parse -q --verify "refs/tags/${next}" >/dev/null \
+              || git ls-remote --exit-code --tags origin "refs/tags/${next}" >/dev/null 2>&1; do
+              patch="$((patch + 1))"
+              next="v${major}.${minor}.${patch}"
+            done
+            git tag -a "${next}" -m "Release ${next}"
+            if git push origin "${next}"; then
+              break
+            fi
+            git tag -d "${next}"
+            next=""
+            sleep "$attempt"
+          done
+          if [ -z "${next}" ]; then
+            echo "Failed to push a new tag after 5 attempts." >&2
+            exit 1
+          fi
+
+          echo "Tagged and pushed ${next} (previous ${latest})"
+          echo "version=${next}" >> "$GITHUB_OUTPUT"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+          cache: true
+      - name: Check whether the release already exists
+        id: release-check
+        run: |
+          if gh release view "${{ steps.tag.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
+        if: steps.release-check.outputs.exists == 'false'
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
