@@ -11,7 +11,8 @@
 #   make lint       golangci-lint (if installed)
 #   make completion generate shell completions into ./completions
 #   make snapshot   goreleaser dry-run (no publish)
-#   make release    goreleaser publish (needs GITHUB_TOKEN + git tag)
+#   make release    goreleaser publish (needs GITHUB_TOKEN + git tag;
+#                  normally automatic: every merge to main tags vX.Y.Z+1)
 #   make clean      remove build artifacts
 
 MODULE      := github.com/mytmlt/wrk3
@@ -86,7 +87,7 @@ completion: build ## Generate bash/zsh/fish/powershell completions
 snapshot: ## goreleaser --snapshot (local artifact test, no publish)
 	$(GORELEASER) release --snapshot --clean
 
-release: ## goreleaser publish (requires GITHUB_TOKEN and a git tag like v0.1.0)
+release: ## goreleaser publish (requires GITHUB_TOKEN and a git tag; normally automatic on merge to main)
 	$(GORELEASER) release --clean
 
 clean: ## Remove build artifacts

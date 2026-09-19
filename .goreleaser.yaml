@@ -1,6 +1,7 @@
 # GoReleaser config for wrk3 (github.com/mytmlt/wrk3).
-# Release with: git tag v0.1.0 && git push origin v0.1.0
-# (or `make release` with GITHUB_TOKEN set).
+# Releases are automatic: every merge to main tags vX.Y.Z+1
+# (.github/workflows/tag.yml), which triggers this build.
+# (or `make release` with GITHUB_TOKEN set for a manual cut).
 # Docs: https://goreleaser.com/intro/
 
 version: 2

@@ -79,9 +79,10 @@ One logical change per commit; each commit should build and pass tests.
 
 ## Versioning and releases
 
-- Semantic Versioning. Maintainers cut releases by tagging:
-  `git tag v0.2.0 && git push origin v0.2.0` — GoReleaser builds archives,
-  checksums, and GitHub release notes automatically.
+- Semantic Versioning. Every merge to `main` auto-tags a patch release
+  (`.github/workflows/tag.yml` bumps `vX.Y.Z` → `vX.Y.Z+1` and pushes the
+  tag) — GoReleaser builds archives, checksums, and GitHub release notes
+  automatically. No manual tagging needed.
 - `CHANGELOG.md` follows Keep a Changelog; move `[Unreleased]` entries under
   the new version on release.
 

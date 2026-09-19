@@ -1,0 +1,52 @@
+name: Auto tag
+
+# Every merge to main gets a patch tag (vX.Y.Z+1), which then triggers
+# the GoReleaser `Release` workflow via the tag push.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-tag-main
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Create patch tag and push it
+        run: |
+          set -euo pipefail
+          git fetch --tags origin
+
+          # Skip if HEAD already carries a version tag (e.g. re-run).
+          if git tag --points-at HEAD | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "HEAD already tagged, skipping."
+            exit 0
+          fi
+
+          latest="$(git describe --tags --abbrev=0 --match 'v*.*.*' 2>/dev/null || echo 'v0.0.0')"
+          ver="${latest#v}"
+          IFS='.' read -r major minor patch <<< "$ver"
+          major="${major:-0}"
+          minor="${minor:-0}"
+          patch="${patch:-0}"
+
+          next="v${major}.${minor}.$((patch + 1))"
+          # Guard against races: keep bumping while the tag exists locally or remotely.
+          while git rev-parse -q --verify "refs/tags/${next}" >/dev/null \
+            || git ls-remote --exit-code --tags origin "refs/tags/${next}" >/dev/null 2>&1; do
+            patch="$((patch + 1))"
+            next="v${major}.${minor}.$((patch + 1))"
+          done
+
+          echo "Tagging ${next} (previous ${latest})"
+          git tag -a "${next}" -m "Release ${next}"
+          git push origin "${next}"
