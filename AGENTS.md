@@ -13,6 +13,13 @@ autonomously without asking (standing pre-authorization); the human
 merges when green. See the full
 checklist in `skills/wrk3-dev-flow/SKILL.md`.
 
+> **Factory override (SuperPlane/canvas — wins).** If `$SUPERPLANE_TASK_DIR` /
+> `$SUPERPLANE_RESULT_FILE` / `$TASK_BROKER_*` is set, cwd ends in `/repo` with a
+> `.superplane` parent, or the prompt says "Do not create or open the pull request":
+> skip `wrk3 fetch/add/up`, work in the current checkout (`git checkout -b
+> <type/short-slug> origin/$BASE`, push `git push -u origin HEAD`), never create
+> worktrees/PRs or watch checks — canvas opens the PR. See `skills/wrk3-dev-flow/SKILL.md` "Factory override".
+
 1. **Isolate.** Always start new work from the latest `origin/main`:
    `git fetch origin`, then `wrk3 fetch` → `wrk3 add <branch> --create`
    (creates `type/short-slug` + worktree from `origin/<default>`;
