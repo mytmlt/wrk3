@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Portable task definition: `wrk3 task render [--to compose|swarm|portainer|machine]`
+  analyzes the configured compose files (or repeatable `--compose`) into an
+  environment-agnostic `internal/task.Definition` and renders it for another
+  environment without editing the source. `swarm` emits a `docker stack deploy`
+  file, `portainer` a stack-create JSON payload, `machine` a dependency-ordered
+  `docker run` up/down shell script. `--from machine` ingests a `docker run`
+  script so the reverse `docker run` -> definition -> compose path is exposed
+  too. Compose short/long syntax (ports, mounts, environment, depends_on,
+  healthcheck, deploy, build) and multi-file merge are covered by tests.
+
 - Automatic releases: every merge to `main` tags a patch bump
   (`vX.Y.Z` → `vX.Y.Z+1`) and publishes the GoReleaser release in the
   same automation run (auto-tagging). No manual tagging

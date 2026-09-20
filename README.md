@@ -85,6 +85,11 @@ alongside — `wrk3 add` in another terminal shows up on the next poll or
   `-p <prefix>-<slug>` per worktree behind a `Runner` interface
   (`docker` and `podman` ship; `portainer`/`nomad` stubs
   return `not implemented`).
+- **Portable task definition** — `wrk3 task render` analyzes the compose
+  stack into an environment-agnostic task graph and renders it for
+  `compose`, `swarm`, `portainer` or bare `machine` (a `docker run`
+  script), and `machine` scripts parse back into compose — all without
+  editing the source.
 - **Range ports with gap reuse** — per-service `ranges` scanned from `base`
   upward by 1 (lowest free wins, OS-occupied skipped, exhaustion names the
   service), ensured in each worktree's `.env` (missing managed keys appended under a
@@ -174,6 +179,8 @@ wrk3 logs feature-a -f
 wrk3 exec feature-a -- make test
 wrk3 env feature-a   # open the worktree .env in $VISUAL/$EDITOR (--print to cat instead)
 wrk3 checkout feature-a   # cd to the worktree (after eval "$(wrk3 shell-init bash)" in your rc file)
+wrk3 task render --to swarm > stack.yml       # analyze compose -> swarm stack (also: compose|portainer|machine)
+wrk3 task render --to machine > run.sh        # bare-machine `docker run` script (up/down subcommands)
 
 # 5. Tear down
 wrk3 down

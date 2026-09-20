@@ -226,6 +226,41 @@ then label-based `podman ps` fallbacks over the same project candidates.
 Both `com.docker.compose.project` (docker-compat) and
 `io.podman.compose.project` (native) label keys are probed.
 
+## Task definitions
+
+`wrk3 task render` reads the project's compose stack (the selected
+runner's `composeFiles`, or `--compose <file>` repeatable) into an
+internal, environment-agnostic task definition and renders it for a
+target environment — the source compose files are never modified:
+
+```bash
+wrk3 task render                              # compose (default): normalized compose YAML
+wrk3 task render --to swarm > stack.yml       # docker stack deploy file
+wrk3 task render --to portainer > stack.json  # Portainer stack-create payload
+wrk3 task render --to machine > run.sh        # bare-machine script: ./run.sh up|down
+wrk3 task render --compose base.yml --compose override.yml --to swarm
+wrk3 task render --name my-stack --to swarm
+wrk3 task render --from machine --compose run.sh --to compose   # reverse: docker run -> compose
+```
+
+- `compose` is the lossless round trip of the fields wrk3 models
+  (`compose -> definition -> compose`).
+- `swarm` emits a `docker stack deploy` file: build-only services are
+  rejected (swarm pulls prebuilt images) and every service gets an
+  explicit `deploy` block.
+- `portainer` emits the JSON body of a Portainer stack-create call
+  (`Name`, `StackFileContent`, `Env`); `StackFileContent` is the same
+  compose document.
+- `machine` emits a POSIX shell script of dependency-ordered
+  `docker run` / `docker rm -f` commands (`up`/`down` subcommands). Build
+  contexts are not supported on this target.
+- `--from` selects the input format (`compose` by default, `machine` for
+  a `docker run` script; `machine` requires `--compose <script>`). The
+  reverse direction `machine -> definition -> compose` means a
+  `docker run` script can be analyzed and re-rendered as compose. Lines
+  that are not run commands are ignored, but `docker network create
+  <name>` lines are honored so internal vs external networks survive.
+
 ## Dashboard (TUI)
 
 `wrk3 dashboard` (shorthand `wrk3 db`) opens an interactive view over the current repo plus every
@@ -329,6 +364,8 @@ Each test builds a throwaway git repo in a temp dir, writes a minimal
 | ------- | ------------------ |
 | `unknown source type "x" (available sources: [git])` | Typo in `source.type`; only `git` ships in v1. |
 | `unknown runner type "x" (available runners: [docker podman ...])` | Only `docker` and `podman` are implemented; stubs return `not implemented`. |
+| `unknown task target "x" (available targets: [compose machine portainer swarm])` | `wrk3 task render --to` takes one of the listed targets. |
+| `swarm target: service "x" has no image ...` / `machine target: service "x" has no image ...` | The service only has a `build:` context; build and push the image first (or use the `compose` target). |
 | `project.worktreeBase must not be empty` | `project.worktreeBase` is required. |
 | `no wrk3.yaml found ...` | Not inside a repo checkout, or config named differently — `cd` in or pass `-f <path>`. |
 | `unknown worktree "foo"` | Name/slug not in state — check `wrk3 status`. |
