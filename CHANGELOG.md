@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Dashboard remove confirmation is now a centered blocking popup (like
+  the `?` menu): `x`/`X` opens `Confirm remove[- --force]` naming the
+  targets with a `y/n` hint, hiding the grid panes until `y` confirms or
+  `n`/`esc` cancels. Key bindings and remove execution are unchanged.
+
 - Dashboard is now a lazygit-style 5-box grid (two columns on terminals
   ≥80 cols, stacked otherwise) with `[n]` numbers and `x of y` counts:
   [1]-Worktrees (top-left, slim SLUG + health STATUS only),

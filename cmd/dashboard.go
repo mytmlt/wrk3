@@ -2136,6 +2136,33 @@ func (m dashboardModel) detailPane(width, height int) string {
 // highlighted. Plain-text rows keep column alignment (no embedded ANSI
 // in the measured widths except the selected-row style, which pads
 // identically).
+// confirmPane renders the centered remove-confirm popup: a bordered box
+// naming the pending action (remove / remove --force) and its targets,
+// with a y/n hint. Plain-text rows keep column alignment; the title uses
+// the dashConfirmStyle accent like the old bottom-line prompt.
+func (m dashboardModel) confirmPane(width int) string {
+	label := m.confirm
+	if label == "" {
+		label = "remove"
+	}
+	title := dashConfirmStyle.Render("Confirm " + label)
+	targets := strings.Join(m.pendingX, ", ")
+	if strings.TrimSpace(targets) == "" {
+		targets = "(nothing selected)"
+	}
+	question := "Remove " + targets + "?"
+	inner := max(width-4, 10)
+	question = runewidth.Truncate(question, inner, "…")
+	hint := dashMenuHintStyle.Render("y confirm · n/esc cancel (y/n)")
+	body := title + "\n" + question + "\n" + hint
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("11")).
+		Padding(0, 1).
+		Width(width).
+		Render(body)
+}
+
 func (m dashboardModel) menuPane(width int) string {
 	items := dashboardMenuItems()
 	if m.menuCursor < 0 || m.menuCursor >= len(items) {
@@ -2298,6 +2325,18 @@ func (m dashboardModel) View() string {
 	}
 	b.WriteString(dashMetaStyle.Render(m.dashboardMeta()) + "\n\n")
 
+	// Centered remove-confirm popup: replaces the panes while open.
+	// Pending confirm wins over the menu (handleKey blocks ? while set).
+	if m.confirm != "" {
+		confirmW := min(max(w-4, 40), 64)
+		b.WriteString(lipgloss.Place(max(w-2, 10), max(h-10, 7), lipgloss.Center, lipgloss.Center, m.confirmPane(confirmW)) + "\n")
+		if m.statusMsg != "" {
+			b.WriteString(dashErrStyle.Render(m.statusMsg) + "\n")
+		}
+		b.WriteString(m.helpBar(w) + "\n")
+		return b.String()
+	}
+
 	// Lazydocker-style Menu popup: replaces the panes while open.
 	if m.showMenu {
 		menuW := min(max(w-4, 40), 64)
@@ -2336,10 +2375,6 @@ func (m dashboardModel) View() string {
 	}
 	if m.statusMsg != "" {
 		b.WriteString(dashErrStyle.Render(m.statusMsg) + "\n")
-	}
-	if m.confirm != "" {
-		fmt.Fprintf(&b, "%s\n", dashConfirmStyle.Render(
-			fmt.Sprintf("confirm %s %s? press y/n", m.confirm, strings.Join(m.pendingX, ", "))))
 	}
 	b.WriteString(m.helpBar(w) + "\n")
 	return b.String()

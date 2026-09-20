@@ -583,6 +583,97 @@ func TestDashboardModel_MenuBlockedByConfirm(t *testing.T) {
 	}
 }
 
+func TestDashboardView_ConfirmPopup(t *testing.T) {
+	m := dashboardViewModel(t)
+	m.width, m.height = 100, 40
+	// No pending confirm: grid panes render, no popup.
+	out := m.View()
+	for _, gone := range []string{"Confirm remove", "y confirm"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("idle view must not show popup %q:\n%s", gone, out)
+		}
+	}
+	// x stages the popup: title, target, y/n hint visible; grid panes hidden.
+	m.workSel["feature-a"] = true
+	m = applyKey(t, m, "x")
+	out = m.View()
+	for _, want := range []string{"Confirm remove", "feature-a", "y", "n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("confirm popup missing %q:\n%s", want, out)
+		}
+	}
+	for _, gone := range []string{"Worktrees", "Branches"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("confirm popup should replace panes, found %q:\n%s", gone, out)
+		}
+	}
+	// Popup text uses the hint wording.
+	if !strings.Contains(out, "cancel") {
+		t.Errorf("confirm popup should hint cancel:\n%s", out)
+	}
+	// n cancels: popup closes, panes return.
+	m = applyKey(t, m, "n")
+	out = m.View()
+	if strings.Contains(out, "Confirm remove") {
+		t.Errorf("cancelled view must not show popup:\n%s", out)
+	}
+	if !strings.Contains(out, "Worktrees") {
+		t.Errorf("cancelled view should restore panes:\n%s", out)
+	}
+}
+
+func TestDashboardView_ForceConfirmPopup(t *testing.T) {
+	m := dashboardViewModel(t)
+	m.width, m.height = 100, 40
+	m.workSel["feature-a"] = true
+	m = applyKey(t, m, "X")
+	out := m.View()
+	for _, want := range []string{"Confirm remove --force", "feature-a", "y", "n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("force confirm popup missing %q:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(m.confirmPane(60), "remove --force") {
+		t.Errorf("force confirm pane should name remove --force:\n%s", m.confirmPane(60))
+	}
+	// y starts the busy force remove and clears the popup.
+	next, cmd := m.handleKey(keyMsg("y"))
+	dm := next.(dashboardModel)
+	if cmd == nil {
+		t.Fatal("y should return the force remove command")
+	}
+	if strings.Contains(dm.View(), "Confirm remove") {
+		t.Error("y should close the popup")
+	}
+}
+
+func TestDashboardModel_ConfirmPopupBlocksMenuOpen(t *testing.T) {
+	m := dashboardViewModel(t)
+	m.width, m.height = 100, 40
+	m.workSel["feature-a"] = true
+	m = applyKey(t, m, "x")
+	// ? is swallowed while the popup is open; the menu never renders.
+	m = applyKey(t, m, "?")
+	if m.showMenu {
+		t.Error("? must not open the menu while the confirm popup is open")
+	}
+	out := m.View()
+	if strings.Contains(out, "enter run") {
+		t.Errorf("menu must stay hidden behind the confirm popup:\n%s", out)
+	}
+	if !strings.Contains(out, "Confirm remove") {
+		t.Errorf("confirm popup must stay on top:\n%s", out)
+	}
+	// esc cancels the popup and clears the status prompt.
+	m = applyKey(t, m, "esc")
+	if m.confirm != "" || m.pendingX != nil {
+		t.Errorf("esc should cancel the popup: %+v", m)
+	}
+	if m.statusMsg == "" {
+		t.Error("esc cancel should leave a status message")
+	}
+}
+
 func TestDashboardView_WideAndNarrow(t *testing.T) {
 	for _, w := range []int{80, 140, 200} {
 		m := dashboardViewModel(t)
