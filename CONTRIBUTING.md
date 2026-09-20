@@ -1,6 +1,6 @@
 # Contributing to wrk3
 
-Thanks for contributing! This guide covers the workflow, standards, and
+Thanks for contributing! This guide covers the process, standards, and
 checks every PR must pass.
 
 ## Code of Conduct
@@ -23,11 +23,11 @@ Project layout:
 - `cmd/` — thin cobra commands; depend on `internal/*` **interfaces only**
   (one compose-options exception in `cmd/common.go`, see `docs/PLUGINS.md`)
 - `internal/project|source|runner|ports|config|forge|proxy` — registry + implementations
-- `cmd/skill.md` — bundled `wrk3 skill` guide; `docs/` — user docs
+- `docs/` — user docs
 
 `opencode.json` is an optional editor integration (prompt templates) — safe to ignore.
 
-## Workflow
+## Process
 
 1. Start from the latest `origin/main`, then create a topic branch +
    worktree for it: `git fetch origin`, then
@@ -80,10 +80,10 @@ One logical change per commit; each commit should build and pass tests.
 ## Versioning and releases
 
 - Semantic Versioning. Every merge to `main` auto-tags a patch release
-  and publishes it (`.github/workflows/tag.yml` bumps `vX.Y.Z` →
+  and publishes it (auto-tagging bumps `vX.Y.Z` →
   `vX.Y.Z+1` and runs GoReleaser: archives, checksums, and GitHub
   release notes). No manual tagging needed; pushing a `v*.*.*` tag
-  manually still releases via the `Release` workflow.
+  manually still releases via the `Release` automation.
 - `CHANGELOG.md` follows Keep a Changelog; move `[Unreleased]` entries under
   the new version on release.
 

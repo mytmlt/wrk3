@@ -51,10 +51,6 @@
       "description": "Run the full Go verification gate (build, vet, test).",
       "template": "Run `go build ./... && go vet ./... && go test ./... -count=1` in the worktree root and report the result. On failure, cite file:line evidence."
     },
-    "wrk3-skill": {
-      "description": "Preview the bundled wrk3 agent setup guide.",
-      "template": "Run `go run . skill` in the wrk3 repo and show the output."
-    },
     "wrk3-status": {
       "description": "Validate the example wrk3 config with status.",
       "template": "Run `go run . -f ./wrk3.yaml.example status` in the wrk3 repo and report the worktree table."

@@ -32,7 +32,7 @@ hermetic (temp git repos, temp dirs — no network).
 - `internal/forge/` — `gh`-based PR filtering (`--myprs`).
 - `internal/proxy/` — stdlib local gateway (`<slug>.<domain>` → app port).
 - `internal/project/` — `~/.config/wrk3/projects.yaml` registry.
-- `cmd/dashboard*.go` — bubbletea TUI; `cmd/skill.md` — bundled `wrk3 skill` guide.
+- `cmd/dashboard*.go` — bubbletea TUI.
 
 ## Rules
 
@@ -54,12 +54,7 @@ hermetic (temp git repos, temp dirs — no network).
   `-f/--file <path>` > upward scan from cwd for `wrk3.yaml`, then `wrk3.yml`
   (nearest directory wins). No registry, no env var — like `docker compose`.
 - For config-authoring questions (new stack, broken config, port mapping),
-  run `wrk3 skill` first (bundled guide in `cmd/skill.md`). Extended skills
-  live in the standalone `wrk3-skills` repo
-  (`https://github.com/mytmlt/wrk3-skills` — `skills/wrk3-compat/SKILL.md`
-  for the read-only compose/local-setup compatibility triage, then
-  `skills/wrk3-setup/SKILL.md` to author the config).
-  See `skills/README.md`.
+  start from `wrk3.yaml.example` and `docs/CONFIGURATION.md`.
 
 ## Verifying behavior changes
 

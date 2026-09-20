@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Automatic releases: every merge to `main` tags a patch bump
   (`vX.Y.Z` → `vX.Y.Z+1`) and publishes the GoReleaser release in the
-  same workflow run (`.github/workflows/tag.yml`). No manual tagging
+  same automation run (auto-tagging). No manual tagging
   needed.
 
 ### Changed
@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   slugs (prefix-filtered, already-typed names skipped). `remove` skips
   the implicit main checkout, `exec` keeps file completion after the
   worktree arg, and no-arg commands (`status`, `fetch`, `log`, `ls`,
-  `dashboard`, `skill`, `version`, `update`, `project`, `proxy
+  `dashboard`, `version`, `update`, `project`, `proxy
   up/down/status/hosts-sync`) no longer complete files. Completion
   coexists with the `shell-init` wrapper (bash + zsh verified).
 
@@ -134,14 +134,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keys, plus the same `container_name:` preflight on `up`). `entry.*`
   strings stay verbatim — podman configs call `podman compose ...` there.
 
-### Removed
-
-- The `wrk3-dev-flow` agent skill no longer ships in this repo
-  (`skills/wrk3-dev-flow/SKILL.md` deleted, `skills.paths` dropped from
-  `opencode.json`, binding workflow stripped from `AGENTS.md`). It now
-  lives globally at `~/.config/opencode/skills/wrk3-dev-flow/SKILL.md`
-  (auto-discovered by opencode, no config change needed).
-
 ## [0.10.0] - 2026-09-16
 
 ### Added
@@ -189,13 +181,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Always-on proxy: `add` (all modes) and the dashboard (refresh plus TUI
   `up`/`add`) now ensure the gateway when `proxy.enabled`, best-effort
   like `up` (spawn errors warn, commands never fail).
-- Standing agent autonomy: new `skills/wrk3-dev-flow/SKILL.md` checklist
-  (isolate → gate → autonomous commit/push/PR → `gh pr checks --watch`;
-  never merge), `AGENTS.md` pre-authorizes the flow without asking, and
-  project `opencode.json` gains `skills.paths` plus `permission.bash`
-  for the workflow (`wrk3`/`make`/rebase/`gh pr create|edit`/topic-branch
+- Standing autonomy: `AGENTS.md` pre-authorizes the isolate → gate →
+  autonomous commit/push/PR → `gh pr checks --watch` loop (never merge),
+  and project `opencode.json` gains `permission.bash`
+  for those commands (`wrk3`/`make`/rebase/`gh pr create|edit`/topic-branch
   pushes allowed; `main`/tag pushes and any merge denied). Also adds the
-  `wrk3-test` slash command (`go vet ./cmd/ && go test ./cmd/ -run
+  `wrk3-test` command (`go vet ./cmd/ && go test ./cmd/ -run
   '<pattern>' -count=1`, empty args = full gate).
 - `wrk3 checkout <branch|slug>` (`co`/`switch` aliases) jumps to a
   worktree folder: with shell integration (`eval "$(wrk3 shell-init
@@ -212,7 +203,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   agents (and humans) run `wrk3 fetch` / `wrk3 add` here per the
   `AGENTS.md` isolate step. No docker stack exists, so `up`/`down` are
   not meaningful (Go gate instead) and `status` shows `unknown`.
-- `AGENTS.md` gains the binding agent development workflow (isolate on
+- `AGENTS.md` gains binding development notes (isolate on
   branch + worktree, test with the full gate, autonomous
   commit/push/PR/checks-watching with `gh pr checks --watch`; human
   merges when green).
@@ -316,15 +307,14 @@ Initial public release.
   `remove`, `--myprs`/`--mine`/`--author` filters, `--poll`, multi-project).
 - `--myprs` on `fetch`/`add`/`dashboard`: branches with an open PR
   involving you (`gh`-based, GitHub only, no stored tokens).
-- `wrk3 skill` bundled agent guide (onboarding-first discovery → compat
-  triage → author + validate `wrk3.yaml`); extended skills in
-  `mytmlt/wrk3-skills`. Plugin guide in `docs/PLUGINS.md`.
+- Onboarding-first setup guide (discovery → compat
+  triage → author + validate `wrk3.yaml`). Plugin guide in `docs/PLUGINS.md`.
 - Distribution: `scripts/install.sh` (prebuilt assets + sha256, user-local
   `~/.local/bin` default), `wrk3 update [--version] [--check]` self-update
   with daily cached notice, shell completions
   (`bash`/`zsh`/`fish`/`powershell`), version-stamped builds.
 - CI: `build + vet + test (-short)` matrix (`ubuntu`/`macos`/`windows`,
-  Go 1.26), docker integration job, `Security` workflow (`govulncheck`,
+  Go 1.26), docker integration job, `Security` checks (`govulncheck`,
   `gitleaks`, `dependency-review`), `CodeQL`, `golangci-lint` with `gosec`.
 
 ### Fixed

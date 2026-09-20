@@ -2,8 +2,8 @@ name: Auto tag and release
 
 # Every merge to main gets a patch tag (vX.Y.Z+1) plus a GoReleaser
 # GitHub release in this same job. The tag push uses GITHUB_TOKEN on
-# purpose: such pushes do not re-trigger workflows, so the
-# tag-triggered `Release` workflow stays a manual-tag fallback without
+# purpose: such pushes do not re-trigger automation, so the
+# tag-triggered `Release` automation stays a manual-tag fallback without
 # double-releasing.
 on:
   push:

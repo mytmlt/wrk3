@@ -198,7 +198,7 @@ func TestComplete_ExecFirstOnly(t *testing.T) {
 // Commands taking no positional args must suppress file completion.
 func TestComplete_NoArgsSuppressFiles(t *testing.T) {
 	cmds := map[string]*cobra.Command{
-		"status": statusCmd, "fetch": fetchCmd, "skill": skillCmd,
+		"status": statusCmd, "fetch": fetchCmd,
 		"version": versionCmd, "update": updateCmd, "ls": lsCmd,
 		"log": logCmd, "dashboard": dashboardCmd,
 		"project": projectCmd, "project ls": projectLsCmd,
