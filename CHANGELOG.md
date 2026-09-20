@@ -134,6 +134,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keys, plus the same `container_name:` preflight on `up`). `entry.*`
   strings stay verbatim — podman configs call `podman compose ...` there.
 
+### Removed
+
+- The `wrk3-dev-flow` agent skill no longer ships in this repo
+  (`skills/wrk3-dev-flow/SKILL.md` deleted, `skills.paths` dropped from
+  `opencode.json`, binding workflow stripped from `AGENTS.md`). It now
+  lives globally at `~/.config/opencode/skills/wrk3-dev-flow/SKILL.md`
+  (auto-discovered by opencode, no config change needed).
+
 ## [0.10.0] - 2026-09-16
 
 ### Added

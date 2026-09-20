@@ -1,10 +1,9 @@
 # Skills
 
-Agent skills in this repo (loaded via `skills.paths` in `opencode.json`):
-
-- `skills/wrk3-dev-flow/SKILL.md` — binding workflow for code/docs tasks
-  in this repo: isolate on branch + worktree, full Go gate, autonomous
-  commit/push/PR/checks-watching. Standing autonomy, never asks.
+This repo ships no opencode skills (`opencode.json` sets no
+`skills.paths`). The `wrk3-dev-flow` agent workflow now lives globally
+at `~/.config/opencode/skills/wrk3-dev-flow/SKILL.md` instead of
+`skills/wrk3-dev-flow/SKILL.md`.
 
 The bundled source of truth is `wrk3 skill` (`cmd/skill.md` in this
 repo): onboarding-first discovery (learn the manual setup, ask the
