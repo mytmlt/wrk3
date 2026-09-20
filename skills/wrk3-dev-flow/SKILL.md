@@ -8,6 +8,16 @@ description: Use ONLY when implementing a code or docs task in the wrk3 repo its
 Binding workflow for every code or docs task in this repo. The human
 merges when green; everything before that is the agent's job.
 
+## Factory override (SuperPlane / canvas — wins over everything below)
+
+If ANY is true: `$SUPERPLANE_TASK_DIR` or `$SUPERPLANE_RESULT_FILE` is set,
+`$TASK_BROKER_*` is set, cwd ends in `/repo` with a `.superplane` parent,
+or the task prompt says "Do not create or open the pull request":
+- Skip Phase 1 `wrk3 fetch / wrk3 add / wrk3 up` entirely. Work in the current checkout only.
+- Create branch with `git checkout -b <type/short-slug> origin/$BASE` (`BASE` env or `main`). Never nested worktrees, never `git worktree add`, never `.worktrees/`.
+- Commit + push with `git push -u origin HEAD`. Never `gh pr create`, never `gh pr checks --watch`, never `wrk3 up/down/remove`. Canvas opens the PR after you.
+- All other phases (gate, `ocr review`, conventional commits, docs) still apply.
+
 ## Standing autonomy (never ask)
 
 Committing, pushing the feature branch, opening the PR, and watching
