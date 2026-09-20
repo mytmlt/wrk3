@@ -2131,6 +2131,37 @@ func (m dashboardModel) detailPane(width, height int) string {
 		title + "\n" + strings.Join(lines, "\n"))
 }
 
+// confirmPane renders the centered blocking remove-confirm popup: a
+// bordered box naming the pending action (remove / remove --force),
+// listing the target branches, and hinting y/n. It mirrors the menuPane
+// pattern (rounded lipgloss border, clamped width, dashConfirmStyle
+// accents) so the destructive prompt is impossible to miss.
+func (m dashboardModel) confirmPane(width int) string {
+	label := m.confirm
+	if label == "" {
+		label = "remove"
+	}
+	title := dashConfirmStyle.Render("Confirm " + label)
+	question := "Remove these worktrees?"
+	if m.pendingForce {
+		question = "Force remove these worktrees?"
+	}
+	targets := strings.Join(m.pendingX, ", ")
+	if strings.TrimSpace(targets) == "" {
+		targets = "(nothing selected)"
+	}
+	innerW := max(width-4, 20)
+	targets = runewidth.Truncate(targets, innerW, "…")
+	hint := dashMenuHintStyle.Render("y/n: y confirms, n or esc cancels")
+	body := title + "\n" + question + "\n" + targets + "\n" + hint
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("11")).
+		Padding(0, 1).
+		Width(width).
+		Render(body)
+}
+
 // menuPane renders the lazydocker-style Menu popup: a bordered box with
 // one "key  description" row per dashboard action, the cursor row
 // highlighted. Plain-text rows keep column alignment (no embedded ANSI
@@ -2310,6 +2341,19 @@ func (m dashboardModel) View() string {
 		return b.String()
 	}
 
+	// Centered blocking remove-confirm popup: replaces the grid panes
+	// while open, following the showMenu branch above. Pending confirm
+	// wins over the menu in handleKey, so the menu can never open on top.
+	if m.confirm != "" {
+		confirmW := min(max(w-4, 40), 64)
+		b.WriteString(lipgloss.Place(w-2, 8, lipgloss.Center, lipgloss.Center, m.confirmPane(confirmW)) + "\n")
+		if m.statusMsg != "" {
+			b.WriteString(dashErrStyle.Render(m.statusMsg) + "\n")
+		}
+		b.WriteString(m.helpBar(w) + "\n")
+		return b.String()
+	}
+
 	// Lazygit-style 5-box grid (see computeDashboardGrid): left column
 	// [1] worktrees (slug+health only), [2] branches, projects/status;
 	// right column details of the selected worktree, large scrollable
@@ -2336,10 +2380,6 @@ func (m dashboardModel) View() string {
 	}
 	if m.statusMsg != "" {
 		b.WriteString(dashErrStyle.Render(m.statusMsg) + "\n")
-	}
-	if m.confirm != "" {
-		fmt.Fprintf(&b, "%s\n", dashConfirmStyle.Render(
-			fmt.Sprintf("confirm %s %s? press y/n", m.confirm, strings.Join(m.pendingX, ", "))))
 	}
 	b.WriteString(m.helpBar(w) + "\n")
 	return b.String()

@@ -583,6 +583,75 @@ func TestDashboardModel_MenuBlockedByConfirm(t *testing.T) {
 	}
 }
 
+func TestDashboardView_ConfirmPopup(t *testing.T) {
+	m := dashboardViewModel(t)
+	m.width, m.height = 100, 40
+	m.workSel["feature-a"] = true
+	m = applyKey(t, m, "x")
+	out := m.View()
+	for _, want := range []string{
+		"Confirm remove",
+		"feature-a",
+		"y/n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("confirm popup missing %q:\n%s", want, out)
+		}
+	}
+	// Grid panes hide behind the centered popup.
+	for _, gone := range []string{"Worktrees", "Branches", "Details", "Projects", "Logs"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("confirm popup should replace panes, found %q:\n%s", gone, out)
+		}
+	}
+}
+
+func TestDashboardView_ConfirmPopupForce(t *testing.T) {
+	m := dashboardViewModel(t)
+	m.width, m.height = 100, 40
+	m.workSel["feature-a"] = true
+	m = applyKey(t, m, "X")
+	out := m.View()
+	for _, want := range []string{
+		"Confirm remove --force",
+		"Force remove",
+		"feature-a",
+		"y/n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("force confirm popup missing %q:\n%s", want, out)
+		}
+	}
+	for _, gone := range []string{"Worktrees", "Branches"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("force confirm popup should replace panes, found %q:\n%s", gone, out)
+		}
+	}
+}
+
+func TestDashboardModel_ConfirmPopupCentering(t *testing.T) {
+	m := dashboardViewModel(t)
+	m.width, m.height = 100, 40
+	m.workSel["feature-a"] = true
+	m = applyKey(t, m, "x")
+	pane := m.confirmPane(56)
+	if !strings.Contains(pane, "Confirm remove") {
+		t.Errorf("confirmPane should title the pending action:\n%s", pane)
+	}
+	out := m.View()
+	idxPane := strings.Index(out, "Confirm remove")
+	if idxPane < 0 {
+		t.Fatalf("view should contain the confirm popup:\n%s", out)
+	}
+	// Centered via lipgloss.Place: the popup border line carries left
+	// padding instead of starting at column 0.
+	lineStart := strings.LastIndex(out[:idxPane], "\n")
+	line := out[lineStart+1 : idxPane]
+	if len(line) == 0 || line[0] != ' ' {
+		t.Errorf("popup should be centered with left padding, got %q", line)
+	}
+}
+
 func TestDashboardView_WideAndNarrow(t *testing.T) {
 	for _, w := range []int{80, 140, 200} {
 		m := dashboardViewModel(t)
