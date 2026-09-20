@@ -5,53 +5,6 @@ each isolated with its own ports and container project. Single static Go
 binary (`Go ≥ 1.26`); runtime deps are `git` and a container engine
 (`docker` for the `docker` runner, `podman` for the `podman` runner).
 
-## Agent development workflow (binding)
-
-Every code or docs task runs on an isolated branch + worktree, with
-tests. The agent commits, pushes, opens PRs, and watches checks
-autonomously without asking (standing pre-authorization); the human
-merges when green. See the full
-checklist in `skills/wrk3-dev-flow/SKILL.md`.
-
-> **Factory override (SuperPlane/canvas — wins).** If `$SUPERPLANE_TASK_DIR` /
-> `$SUPERPLANE_RESULT_FILE` / `$TASK_BROKER_*` is set, cwd ends in `/repo` with a
-> `.superplane` parent, or the prompt says "Do not create or open the pull request":
-> skip `wrk3 fetch/add/up`, work in the current checkout (`git checkout -b
-> <type/short-slug> origin/$BASE`, push `git push -u origin HEAD`), never create
-> worktrees/PRs or watch checks — canvas opens the PR. See `skills/wrk3-dev-flow/SKILL.md` "Factory override".
-
-1. **Isolate.** Always start new work from the latest `origin/main`:
-   `git fetch origin`, then `wrk3 fetch` → `wrk3 add <branch> --create`
-   (creates `type/short-slug` + worktree from `origin/<default>`;
-   `feat/`, `fix/`, `docs:`, `chore:`, `test:` per `CONTRIBUTING.md`).
-   `git worktree add` fallback only when no `wrk3.yaml` resolves — log
-   why — and it must also start from latest main:
-   `git worktree add -b <branch> <path> origin/main`.
-   Never implement in the user's checkout or on `main`. Run `wrk3 up`
-   only when the repo has a runnable `docker` stack; otherwise work
-   directly in the worktree (Go gate below).
-2. **Test.** New functionality → new co-located `*_test.go` covering it.
-   Behavior change → update the existing tests for those paths.
-   Finish with the full gate green (Essential commands above), then always
-   run `ocr review --from origin/main --to $(git branch --show-current)`
-   and clear every finding (fix → gate → re-review) before committing.
-3. **Autonomy (standing pre-authorization — never ask).** Committing,
-   pushing the feature branch, opening the PR, and watching checks are
-   pre-authorized once and for all: never ask the human whether to
-   commit, push, open the PR, or keep waiting on checks — just do it
-   and report the PR URL plus check results. PR title/body
-   follows `.github/PULL_REQUEST_TEMPLATE.md` with Verification
-   evidence. Standing bash permissions for this flow live in project
-   `opencode.json` (`permission.bash`); pushes to `main`/`master`, tag
-   pushes, and any merge are denied there. Never push to `main`, never `--force-push` (rebase +
-   re-run the gate instead), never merge anything — merging is the
-   human's job.
-4. **After PR open.** Watch checks with `gh pr checks <number> --watch`
-   until they finish; fix failures with new commits on the same branch
-   (commit, push, re-watch). When everything is green, the agent is
-   done — the human merges. The agent never merges: no `gh pr merge`,
-   no GitHub UI merges, no local merges, never on red.
-
 ## Essential commands
 
 ```bash
@@ -65,7 +18,7 @@ Run the full gate before finishing any code change. `internal/runner` tests
 take ~10s (they exercise real `docker`); everything else is fast and
 hermetic (temp git repos, temp dirs — no network).
 
-## Layout and architecture (binding)
+## Layout and architecture
 
 - `main.go` → `cmd/` (thin cobra commands) → `internal/*` **interfaces only**
   (see `docs/PLUGINS.md` for the one compose-options exception in `cmd/common.go`).
