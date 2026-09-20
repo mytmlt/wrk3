@@ -1,7 +1,5 @@
 # wrk3
 
-[![CI](https://github.com/mytmlt/wrk3/actions/workflows/ci.yml/badge.svg)](https://github.com/mytmlt/wrk3/actions/workflows/ci.yml)
-[![Release](https://github.com/mytmlt/wrk3/actions/workflows/release.yml/badge.svg)](https://github.com/mytmlt/wrk3/actions/workflows/release.yml)
 [![Go](https://img.shields.io/badge/go-1.26-blue)](go.mod)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -215,15 +213,6 @@ Project goal: turn **any codebase** into a `wrk3.yaml` that runs the app
 the way its developers run it locally — see [ROADMAP.md](ROADMAP.md)
 for where the `docker` / `podman` / `portainer` / `nomad` / bare-machine runners stand.
 
-> **Agents / automation:** run `wrk3 skill` to print the bundled setup
-> guide (local-setup discovery + compat triage + `wrk3.yaml` template +
-> validation) to stdout —
-> no config needed. The [`wrk3-compat`](https://github.com/mytmlt/wrk3-skills/tree/main/skills/wrk3-compat)
-> and [`wrk3-setup`](https://github.com/mytmlt/wrk3-skills/tree/main/skills/wrk3-setup)
-> skills (standalone [`mytmlt/wrk3-skills`](https://github.com/mytmlt/wrk3-skills) repo —
-> `git clone https://github.com/mytmlt/wrk3-skills.git`) analyze a project's compose/local setup
-> for wrk3 compatibility and author + validate a `wrk3.yaml` for any repo.
-
 ## How it works
 
 1. `wrk3 add <branch>` → `git worktree add <base>/<slug>` (tracking
@@ -279,7 +268,7 @@ go build ./... && go vet ./... && go test ./... -count=1
 make test
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for workflow and commit style, and
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution process and commit style, and
 [docs/INSTALL.md](docs/INSTALL.md) / [docs/CONFIGURATION.md](docs/CONFIGURATION.md) /
 [docs/USAGE.md](docs/USAGE.md) for setup and usage. [ROADMAP.md](ROADMAP.md)
 tracks the any-codebase project goal and runner coverage. To add a new `Source` or

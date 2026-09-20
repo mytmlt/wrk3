@@ -1,9 +1,9 @@
 # Configuration reference (`wrk3.yaml`)
 
 Start from [`wrk3.yaml.example`](../wrk3.yaml.example). Setting up a new
-repo? Run `wrk3 skill` first: the agent guide learns the developer
-onboarding (manual setup flow, env files, install → migrate/seed → run),
-asks the developer when unsure, and encodes it as `wrk3.yaml`. Validate any
+repo? Learn the developer onboarding first (manual setup flow, env files,
+install → migrate/seed → run), ask the developer when unsure, and encode
+it as `wrk3.yaml`. Validate any
 config with `wrk3 -f <path> status` — config errors fail fast and
 list the available `source.type` / `runner.type` options. The any-codebase
 project goal and runner coverage live in [`ROADMAP.md`](../ROADMAP.md).

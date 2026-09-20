@@ -26,7 +26,7 @@ what you typed — already-typed names are not re-suggested);
 `remove` refuses); `ls --project` completes registry project names.
 `exec` completes the worktree only in first position — after that the
 inner command keeps normal file/command completion. Commands taking no
-positional args (`status`, `fetch`, `log`, `ls`, `dashboard`, `skill`,
+positional args (`status`, `fetch`, `log`, `ls`, `dashboard`,
 `version`, `update`, `project`, `proxy up/down/status/hosts-sync`)
 suppress file completion so TAB only offers flags. Completion never
 fetches from the network — it uses the last `fetch` results.
@@ -98,7 +98,6 @@ wrk3 proxy status                   # gateway state + per-worktree http://<slug>
 wrk3 proxy up | wrk3 proxy down     # start/stop the gateway (auto-started by up/add/dashboard when proxy.enabled)
 wrk3 proxy open feature-a           # open the worktree URL in a browser
 sudo wrk3 proxy hosts-sync          # 127.0.0.1 entries for Safari/curl (Chrome/FF/Edge need nothing)
-wrk3 skill                          # print the bundled agent setup guide (local-setup discovery + compat triage + wrk3.yaml template) to stdout; needs no config
 ```
 
 Copy includes: `source.git.copy` lists repo-relative files/dirs (globs,
