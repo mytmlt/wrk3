@@ -207,48 +207,17 @@ func recordsForDisplay(cfg *config.Config) ([]ports.WorktreeRecord, error) {
 // port section, seeding non-managed keys (secrets) from the repo-root
 // checkout's .env when the file is missing. It applies to every worktree —
 // managed worktrees as well as the implicit main checkout (for which the
-// seed is itself, so only gap-filling happens). Existing values are never
-// overwritten; managed keys already set to a different value come back as
-// warnings for the caller to report.
-func ensureWorktreeEnv(r *resolved, rec ports.WorktreeRecord) ([]string, error) {
+// seed is itself, so only ensure happens). Managed <NAME>_PORT keys are
+// always rewritten to rec's allocation; user-owned keys stay intact.
+func ensureWorktreeEnv(r *resolved, rec ports.WorktreeRecord) error {
 	seed := filepath.Join(r.cfg.RepoPath(), ports.EnvFileName)
-	_, diverged, err := ports.EnsureInherited(rec.AbsPath, seed, rec.Ports)
-	if err != nil {
-		return nil, fmt.Errorf("write .env for worktree %q: %w", rec.Branch, err)
+	if _, err := ports.EnsureInherited(rec.AbsPath, seed, rec.Ports); err != nil {
+		return fmt.Errorf("write .env for worktree %q: %w", rec.Branch, err)
 	}
-	// Gateway URL: append-only APP_URL when proxy.enabled (never overwrite).
-	if extra := proxyEnvForSlug(r.cfg, rec.Slug); len(extra) > 0 {
-		if _, err := ports.EnsureKeys(rec.AbsPath, extra); err != nil {
-			return nil, fmt.Errorf("write .env for worktree %q: %w", rec.Branch, err)
-		}
-	}
-	if len(diverged) == 0 {
-		return nil, nil
-	}
-	desired, err := ports.ManagedValues(rec.Ports)
-	if err != nil {
-		return nil, fmt.Errorf("write .env for worktree %q: %w", rec.Branch, err)
-	}
-	var warns []string
-	for _, k := range sortedKeys(diverged) {
-		warns = append(warns, fmt.Sprintf(
-			".env for %q already sets %s=%s (wrk3 allocation %s); leaving intact",
-			rec.Branch, k, diverged[k], desired[k]))
-	}
-	return warns, nil
+	return nil
 }
 
-// sortedKeys returns the map keys in sorted order for stable output.
-func sortedKeys(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
-// warnEnv prints .env divergence warnings to stderr.
+// warnEnv prints warnings to stderr.
 func warnEnv(cmd *cobra.Command, warns []string) {
 	for _, w := range warns {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)

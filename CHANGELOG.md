@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Managed port variables (`APP_PORT` and other `<NAME>_PORT` keys) are
+  always overwritten to the worktree allocation on ensure, so a tracked
+  `.env`, a git copy, or gap-fill can no longer leak the main checkout's
+  ports into a new worktree. User-owned keys and secrets stay intact.
+  `source.git.copy` rejects `.env` (`.env.local` still allowed) and copy
+  skips that file even when a glob matches it. Gateway `APP_URL` is no
+  longer written into `.env` (still injected into runner env when the
+  gateway is enabled); `remove` leaves a user-set `APP_URL`.
+
 ### Added
 
 - Automatic releases: every merge to `main` tags a patch bump

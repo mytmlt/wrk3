@@ -225,7 +225,7 @@ func TestE2E_PortAllocation(t *testing.T) {
 }
 
 // TestE2E_EnvPreservesSecrets (E05): user-owned .env keys survive `up`
-// (managed keys are gap-filled, never overwritten).
+// (managed keys are ensured; secrets stay).
 func TestE2E_EnvPreservesSecrets(t *testing.T) {
 	repoDir := mkThrowawayRepo(t)
 	cfg := writeE2EConfig(t, repoDir)
@@ -256,9 +256,9 @@ func TestE2E_EnvPreservesSecrets(t *testing.T) {
 	mustContain(t, content, "APP_PORT=")
 }
 
-// TestE2E_EnvDivergenceWarns (E06): a pre-existing managed key with a
-// different value is left intact and reported as a warning on `up`.
-func TestE2E_EnvDivergenceWarns(t *testing.T) {
+// TestE2E_EnvOverwritesManagedPorts (E06): a pre-existing managed key with a
+// different value is overwritten to the worktree allocation on `up`.
+func TestE2E_EnvOverwritesManagedPorts(t *testing.T) {
 	repoDir := mkThrowawayRepo(t)
 	cfg := writeE2EConfig(t, repoDir)
 
@@ -268,16 +268,19 @@ func TestE2E_EnvDivergenceWarns(t *testing.T) {
 	rec := edgeFindRecord(t, edgeReadState(t, repoDir), "feat/diverged")
 
 	if err := os.WriteFile(filepath.Join(rec.AbsPath, ".env"), []byte("APP_PORT=5000\n"), 0o644); err != nil {
-		t.Fatalf("write diverged worktree .env: %v", err)
+		t.Fatalf("write leaked worktree .env: %v", err)
 	}
 
-	stdout, stderr, _ := runWrk3(t, repoDir, cfg, "up", "feat/diverged")
-	combined := edgeCombined(stdout, stderr)
-	mustContain(t, combined, "APP_PORT")
-	mustContain(t, strings.ToLower(combined), "warning")
+	_, stderr, _ := runWrk3(t, repoDir, cfg, "up", "feat/diverged")
+	if strings.Contains(stderr, "leaving intact") {
+		t.Errorf("did not expect intact-port warning:\n%s", stderr)
+	}
 
 	content := edgeReadDotEnv(t, rec.AbsPath)
-	mustContain(t, content, "APP_PORT=5000")
+	mustContain(t, content, fmt.Sprintf("APP_PORT=%d", rec.Ports["app"]))
+	if strings.Contains(content, "APP_PORT=5000") {
+		t.Errorf("stale APP_PORT=5000 left in worktree .env:\n%s", content)
+	}
 }
 
 // TestE2E_AdoptsOrphanAfterStateLoss (E07): deleting the state file does not

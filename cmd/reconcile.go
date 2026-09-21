@@ -17,9 +17,9 @@ import (
 // recovered from the worktree .env when the recovered set matches the
 // configured base keys, sits inside ranges, and collides with neither
 // state nor the OS; otherwise the lowest free range allocation is
-// assigned (gap reuse, OS-aware). The worktree .env is gap-filled via
-// ensureWorktreeEnv (existing values never overwritten; divergences come
-// back as warnings). Records are appended with Status stopped — display
+// assigned (gap reuse, OS-aware). The worktree .env is ensured via
+// ensureWorktreeEnv (managed port keys overwritten to the allocation).
+// Records are appended with Status stopped — display
 // overlays the live runner probe. Slug, port, and compose-project
 // collisions are hard errors: state is never half-written (callers save
 // only on success).
@@ -72,6 +72,8 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 		if recovered, ok := ports.ReadPorts(path, base); ok {
 			if recoveredReusable(alloc, base, recovered, taken, mainPorts) {
 				allocation = recovered
+			} else {
+				warns = append(warns, fmt.Sprintf("worktree %q .env ports cannot be adopted; allocating a free set", branch))
 			}
 		}
 		if allocation == nil {
@@ -91,11 +93,9 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 			ComposeProject: composeProject,
 			Status:         ports.StatusStopped,
 		}
-		w, err := ensureWorktreeEnv(r, rec)
-		if err != nil {
+		if err := ensureWorktreeEnv(r, rec); err != nil {
 			return recs, nil, false, err
 		}
-		warns = append(warns, w...)
 		all = append(all, rec)
 		for _, p := range allocation {
 			taken[p] = struct{}{}
@@ -167,7 +167,8 @@ func recoveredReusable(alloc ports.Allocator, base, recovered map[string]int, ta
 // reconcileAndSave adopts orphan worktrees into recs, migrates legacy
 // managed allocations colliding with main (the ports.base allocation),
 // and persists when anything changed. It returns the updated records,
-// the adopted branch names, and .env divergence warnings. A missing
+// the adopted branch names, and warnings (including recovered .env
+// allocations that cannot be adopted). A missing
 // stateP skips the save and returns display-only records.
 func reconcileAndSave(r *resolved, recs []ports.WorktreeRecord) (updated []ports.WorktreeRecord, adopted []string, warns []string, err error) {
 	had := make(map[string]struct{}, len(recs))
@@ -208,7 +209,7 @@ func reconcileAndSave(r *resolved, recs []ports.WorktreeRecord) (updated []ports
 	return updated, adopted, warns, nil
 }
 
-// logReconciledCLI reports adoptions and .env divergence warnings on
+// logReconciledCLI reports adoptions and reconcile warnings on
 // stderr for CLI reads (status/ls/up/down) that auto-reconcile state.
 func logReconciledCLI(adopted, warns []string) {
 	if len(adopted) > 0 {
@@ -217,9 +218,9 @@ func logReconciledCLI(adopted, warns []string) {
 	warnReconciled(warns)
 }
 
-// warnReconciled prints .env divergence warnings from reconciliation.
-// Adopted allocations keep existing .env values intact; the warnings tell
-// the user which keys differ from the adopted allocation.
+// warnReconciled prints reconcile warnings (including recovered .env
+// allocations that cannot be adopted). After a fresh allocation, ensure
+// overwrites managed port keys to match.
 func warnReconciled(warns []string) {
 	for _, w := range warns {
 		_, _ = fmt.Fprintf(os.Stderr, "warning: %s\n", w)

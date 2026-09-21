@@ -77,6 +77,10 @@ func CopyIncluded(repoRoot, worktreePath string, patterns []string) ([]string, e
 				warns = append(warns, fmt.Sprintf("copy %q: refusing to copy .git metadata, skipping", pattern))
 				continue
 			}
+			if isEnvFileRel(rel) {
+				warns = append(warns, fmt.Sprintf("copy %q: refusing to copy .env, skipping", pattern))
+				continue
+			}
 			if err := copyTree(repoAbs, src, rel, wtAbs, pattern, &warns); err != nil {
 				return warns, err
 			}
@@ -216,6 +220,13 @@ func copyTree(repoAbs, src, rel, wtAbs, pattern string, warns *[]string) error {
 			}
 			return nil
 		}
+		if err == nil && isEnvFileRel(repoRel) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			*warns = append(*warns, fmt.Sprintf("copy %q: refusing to copy .env, skipping", pattern))
+			return nil
+		}
 		dstInner := filepath.Join(dst, inner)
 		if !withinDir(wtAbs, dstInner) {
 			return fmt.Errorf("copy %q: destination escapes worktree", pattern)
@@ -277,4 +288,10 @@ func withinDir(parent, child string) bool {
 		return false
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// isEnvFileRel reports whether rel is the env file wrk3 manages
+// (".env" or any path whose final element is ".env").
+func isEnvFileRel(rel string) bool {
+	return rel == ".env" || filepath.Base(rel) == ".env"
 }

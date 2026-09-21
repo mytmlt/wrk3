@@ -57,12 +57,8 @@ func effectiveReload(r *resolved) []string {
 
 // reloadOne runs the entry.reload commands inside one worktree.
 func reloadOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func(string, ...any)) error {
-	if warns, err := ensureWorktreeEnv(r, rec); err != nil {
+	if err := ensureWorktreeEnv(r, rec); err != nil {
 		return err
-	} else {
-		for _, w := range warns {
-			logf("[%s] warning: %s", rec.Slug, w)
-		}
 	}
 	cmds := effectiveReload(r)
 	if len(cmds) == 0 {

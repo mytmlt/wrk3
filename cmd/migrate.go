@@ -49,10 +49,7 @@ func previewPorts(alloc ports.Allocator, recs []ports.WorktreeRecord) (map[strin
 //
 // Records are processed in sorted branch order for determinism.
 // Existing non-colliding ports are never renumbered. The worktree .env
-// is gap-filled (existing values never overwritten); when the on-disk
-// .env still holds the old ports a divergence warning is returned so the
-// caller can report it — the state file (runner env source) is fixed
-// regardless and takes effect on next up/reload.
+// is ensured (managed port keys overwritten to the new allocation).
 func migrateLegacyMainCollisions(r *resolved, recs []ports.WorktreeRecord) (updated []ports.WorktreeRecord, migrated []string, warns []string, err error) {
 	if r == nil || r.cfg == nil {
 		return recs, nil, nil, nil
@@ -98,15 +95,13 @@ func migrateLegacyMainCollisions(r *resolved, recs []ports.WorktreeRecord) (upda
 		out[ci].Ports = fresh
 		migrated = append(migrated, out[ci].Branch)
 		warns = append(warns, fmt.Sprintf(
-			"migrated worktree %q from colliding ports to index %d (main reserves the ports.base allocation); .env divergence warnings below are advisory",
+			"migrated worktree %q from colliding ports to index %d (main reserves the ports.base allocation)",
 			out[ci].Branch, out[ci].Index))
-		// Gap-fill .env only when the worktree dir exists: stale records
+		// Ensure .env only when the worktree dir exists: stale records
 		// (dir missing) still migrate state, but must not create dirs.
 		if st, statErr := os.Stat(out[ci].AbsPath); statErr == nil && st.IsDir() {
-			if w, err := ensureWorktreeEnv(r, out[ci]); err != nil {
+			if err := ensureWorktreeEnv(r, out[ci]); err != nil {
 				return recs, nil, nil, err
-			} else {
-				warns = append(warns, w...)
 			}
 		}
 	}

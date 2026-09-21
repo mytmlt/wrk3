@@ -1462,13 +1462,9 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if p := m.curProject(); p != nil && p.cfg != nil {
 			r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
-			if warns, err := ensureWorktreeEnv(r, rec); err != nil {
+			if err := ensureWorktreeEnv(r, rec); err != nil {
 				m.statusMsg = "edit .env: " + err.Error()
 				return m, nil
-			} else {
-				for _, w := range warns {
-					m = m.appendLog("warning: " + w)
-				}
 			}
 		}
 		path := envFilePath(rec.AbsPath)

@@ -16,8 +16,9 @@ var envCmd = &cobra.Command{
 
 Uses $VISUAL, then $EDITOR (with args supported, e.g. "code --wait"),
 then nvim/vim/nano/vi. The .env is ensured first (managed port keys
-gap-filled, never overwritten) so the file always exists. With --print
-the file is written to stdout instead of opening an editor.`,
+overwritten to the allocation; user-owned keys left intact) so the
+file always exists. With --print the file is written to stdout instead
+of opening an editor.`,
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completeWorktrees,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -44,10 +45,8 @@ the file is written to stdout instead of opening an editor.`,
 		} else if !st.IsDir() {
 			return fmt.Errorf("worktree %q path %q is not a directory", rec.Branch, rec.AbsPath)
 		}
-		if warns, err := ensureWorktreeEnv(r, *rec); err != nil {
+		if err := ensureWorktreeEnv(r, *rec); err != nil {
 			return err
-		} else {
-			warnEnv(cmd, warns)
 		}
 		path := envFilePath(rec.AbsPath)
 		if envPrint {

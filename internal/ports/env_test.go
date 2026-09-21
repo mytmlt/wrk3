@@ -26,12 +26,9 @@ func TestEnsure_FreshMatchesGolden(t *testing.T) {
 	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
 	dir := t.TempDir()
 	wt := filepath.Join(dir, "feature-foo")
-	added, diverged, err := Ensure(wt, a.BaseAllocation())
+	added, err := Ensure(wt, a.BaseAllocation())
 	if err != nil {
 		t.Fatalf("Ensure() = %v", err)
-	}
-	if len(diverged) != 0 {
-		t.Errorf("Ensure() diverged = %v, want none for fresh file", diverged)
 	}
 	if len(added) == 0 {
 		t.Errorf("Ensure() added nothing for fresh file")
@@ -110,30 +107,27 @@ func TestRender_WithoutAppPort(t *testing.T) {
 }
 
 func TestEnsure_EmptyPath(t *testing.T) {
-	if _, _, err := Ensure("", DefaultBase()); err == nil {
+	if _, err := Ensure("", DefaultBase()); err == nil {
 		t.Errorf("Ensure() with empty path = nil, want error")
 	}
 }
 
-func TestEnsure_NeverOverridesExisting(t *testing.T) {
+func TestEnsure_OverwritesManagedKeepsSecrets(t *testing.T) {
 	dir := t.TempDir()
 	wt := filepath.Join(dir, "feature-foo")
 	if err := os.MkdirAll(wt, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Stale managed values plus user secrets: nothing may be modified,
-	// only missing managed keys are appended; divergences are reported.
+	// Stale managed values plus user secrets: APP_PORT is rewritten to
+	// the allocation; secrets stay; no extra APP_PORT is appended.
 	existing := "# my project\nSECRET=topsecret\nDATABASE_URL=postgres://u:p@db/x\nAPP_PORT=9999\n"
 	if err := os.WriteFile(filepath.Join(wt, EnvFileName), []byte(existing), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
-	added, diverged, err := Ensure(wt, a.BaseAllocation())
+	added, err := Ensure(wt, a.BaseAllocation())
 	if err != nil {
 		t.Fatalf("Ensure() = %v", err)
-	}
-	if got, ok := diverged["APP_PORT"]; !ok || got != "9999" {
-		t.Errorf("Ensure() diverged = %v, want APP_PORT=9999", diverged)
 	}
 	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
 	if err != nil {
@@ -144,20 +138,52 @@ func TestEnsure_NeverOverridesExisting(t *testing.T) {
 		"# my project\n",
 		"SECRET=topsecret\n",
 		"DATABASE_URL=postgres://u:p@db/x\n",
-		"APP_PORT=9999\n", // left intact, never overwritten
+		"APP_PORT=8000\n",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("merged .env missing %q.\n%s", want, s)
 		}
 	}
-	if strings.Contains(s, "APP_PORT=8000") {
-		t.Errorf("existing APP_PORT was overwritten.\n%s", s)
+	if strings.Contains(s, "APP_PORT=9999") {
+		t.Errorf("stale APP_PORT was left intact.\n%s", s)
 	}
 	if strings.Contains(s, "\nBASE_URL=") || strings.HasPrefix(s, "BASE_URL=") {
 		t.Errorf("wrk3 must not manage BASE_URL.\n%s", s)
 	}
 	if len(added) != 0 {
-		t.Errorf("Ensure() added = %v, want none (only diverged APP_PORT)", added)
+		t.Errorf("Ensure() added = %v, want none (APP_PORT rewritten in place)", added)
+	}
+	if got, want := strings.Count(s, "APP_PORT="), 1; got != want {
+		t.Errorf("APP_PORT= count = %d, want %d.\n%s", got, want, s)
+	}
+}
+
+func TestEnsure_OverwritesLeakedMainPorts(t *testing.T) {
+	dir := t.TempDir()
+	wt := filepath.Join(dir, "feature-foo")
+	if err := os.MkdirAll(wt, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Worktree .env seeded with the main checkout's ports plus a secret.
+	if err := os.WriteFile(filepath.Join(wt, EnvFileName), []byte("SECRET=topsecret\nAPP_PORT=8000\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Ensure(wt, map[string]int{"app": 8001}); err != nil {
+		t.Fatalf("Ensure() = %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(got)
+	if !strings.Contains(s, "SECRET=topsecret\n") {
+		t.Errorf("secret lost.\n%s", s)
+	}
+	if !strings.Contains(s, "APP_PORT=8001\n") {
+		t.Errorf("allocation missing.\n%s", s)
+	}
+	if strings.Contains(s, "APP_PORT=8000") {
+		t.Errorf("main checkout ports leaked.\n%s", s)
 	}
 }
 
@@ -171,12 +197,9 @@ func TestEnsure_AppendsMissingUnderMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
-	added, diverged, err := Ensure(wt, a.BaseAllocation())
+	added, err := Ensure(wt, a.BaseAllocation())
 	if err != nil {
 		t.Fatalf("Ensure() = %v", err)
-	}
-	if len(diverged) != 0 {
-		t.Errorf("Ensure() diverged = %v, want none", diverged)
 	}
 	if len(added) == 0 {
 		t.Errorf("Ensure() added nothing, want missing managed keys")
@@ -207,14 +230,14 @@ func TestEnsure_Idempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
-	if _, _, err := Ensure(wt, a.BaseAllocation()); err != nil {
+	if _, err := Ensure(wt, a.BaseAllocation()); err != nil {
 		t.Fatalf("Ensure() #1 = %v", err)
 	}
 	first, err := os.ReadFile(filepath.Join(wt, EnvFileName))
 	if err != nil {
 		t.Fatal(err)
 	}
-	added, _, err := Ensure(wt, a.BaseAllocation())
+	added, err := Ensure(wt, a.BaseAllocation())
 	if err != nil {
 		t.Fatalf("Ensure() #2 = %v", err)
 	}
@@ -233,28 +256,22 @@ func TestEnsure_Idempotent(t *testing.T) {
 	}
 }
 
-func TestEnsure_MatchingFormsAreNotDiverged(t *testing.T) {
+func TestEnsure_MatchingFormsLeftIntact(t *testing.T) {
 	dir := t.TempDir()
 	wt := filepath.Join(dir, "feature-foo")
 	if err := os.MkdirAll(wt, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Same values in export form: present, not diverged, left intact.
-	// BASE_URL is user-owned: never managed, never diverged.
+	// Same values in export form: present and left intact.
+	// BASE_URL is user-owned: never managed.
 	existing := "export APP_PORT=8000\nBASE_URL = \"http://localhost:8000\" # ours\n"
 	if err := os.WriteFile(filepath.Join(wt, EnvFileName), []byte(existing), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
-	added, diverged, err := Ensure(wt, a.BaseAllocation())
+	added, err := Ensure(wt, a.BaseAllocation())
 	if err != nil {
 		t.Fatalf("Ensure() = %v", err)
-	}
-	if _, ok := diverged["APP_PORT"]; ok {
-		t.Errorf("export form falsely diverged: %v", diverged)
-	}
-	if _, ok := diverged["BASE_URL"]; ok {
-		t.Errorf("BASE_URL must not be managed: %v", diverged)
 	}
 	if len(added) != 0 {
 		t.Errorf("Ensure() added = %v, want none", added)
@@ -282,12 +299,9 @@ func TestEnsureInherited_SeedsSecretsNotPorts(t *testing.T) {
 	if err := os.WriteFile(seedPath, []byte(seedContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	added, diverged, err := EnsureInherited(wt, seedPath, map[string]int{"app": 8001})
+	added, err := EnsureInherited(wt, seedPath, map[string]int{"app": 8001})
 	if err != nil {
 		t.Fatalf("EnsureInherited() = %v", err)
-	}
-	if len(diverged) != 0 {
-		t.Errorf("EnsureInherited() diverged = %v, want none", diverged)
 	}
 	if len(added) == 0 {
 		t.Errorf("EnsureInherited() added nothing")
@@ -323,7 +337,7 @@ func TestEnsureInherited_CopiesUserURLs(t *testing.T) {
 	if err := os.WriteFile(seedPath, []byte(seedContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := EnsureInherited(wt, seedPath, map[string]int{"app": 8001}); err != nil {
+	if _, err := EnsureInherited(wt, seedPath, map[string]int{"app": 8001}); err != nil {
 		t.Fatalf("EnsureInherited() = %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
@@ -347,7 +361,7 @@ func TestEnsureInherited_MissingSeedBehavesLikeEnsure(t *testing.T) {
 	dir := t.TempDir()
 	wt := filepath.Join(dir, "feature-foo")
 	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
-	if _, _, err := EnsureInherited(wt, filepath.Join(dir, "nope", EnvFileName), a.BaseAllocation()); err != nil {
+	if _, err := EnsureInherited(wt, filepath.Join(dir, "nope", EnvFileName), a.BaseAllocation()); err != nil {
 		t.Fatalf("EnsureInherited() = %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
@@ -377,7 +391,7 @@ func TestEnsureInherited_ExistingFileNotReseeded(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := Allocator{Base: DefaultBase(), Ranges: DefaultRanges()}
-	if _, _, err := EnsureInherited(wt, seedPath, a.BaseAllocation()); err != nil {
+	if _, err := EnsureInherited(wt, seedPath, a.BaseAllocation()); err != nil {
 		t.Fatalf("EnsureInherited() = %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
@@ -443,7 +457,7 @@ func TestStripManaged_DeletesWhenOnlyManaged(t *testing.T) {
 func TestReadPorts_RecoversAllocation(t *testing.T) {
 	dir := t.TempDir()
 	base := map[string]int{"app": 8000, "web": 3000}
-	if _, _, err := Ensure(dir, map[string]int{"app": 8001, "web": 3001}); err != nil {
+	if _, err := Ensure(dir, map[string]int{"app": 8001, "web": 3001}); err != nil {
 		t.Fatal(err)
 	}
 	got, ok := ReadPorts(dir, base)

@@ -144,6 +144,33 @@ func TestCopyIncluded_SkipsGit(t *testing.T) {
 	}
 }
 
+func TestCopyIncluded_SkipsDotEnv(t *testing.T) {
+	root := t.TempDir()
+	wt := t.TempDir()
+	writeCopyFile(t, filepath.Join(root, ".env"), "APP_PORT=8000\n")
+	writeCopyFile(t, filepath.Join(root, ".env.local"), "secret=1\n")
+	writeCopyFile(t, filepath.Join(root, "subdir", ".env"), "nested\n")
+	writeCopyFile(t, filepath.Join(root, "ok.txt"), "ok")
+
+	warns, err := CopyIncluded(root, wt, []string{".env*", "subdir", "ok.txt"})
+	if err != nil {
+		t.Fatalf("CopyIncluded: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(wt, ".env")); !os.IsNotExist(err) {
+		t.Fatalf(".env must never copy (warns=%v)", warns)
+	}
+	if _, err := os.Stat(filepath.Join(wt, "subdir", ".env")); !os.IsNotExist(err) {
+		t.Fatalf("subdir/.env must never copy (warns=%v)", warns)
+	}
+	got, err := os.ReadFile(filepath.Join(wt, ".env.local"))
+	if err != nil || string(got) != "secret=1\n" {
+		t.Fatalf(".env.local must copy: %q, %v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(wt, "ok.txt")); err != nil {
+		t.Fatalf("ok.txt must copy: %v", err)
+	}
+}
+
 func TestCopyIncluded_EmptyPatterns(t *testing.T) {
 	warns, err := CopyIncluded(t.TempDir(), t.TempDir(), nil)
 	if err != nil || len(warns) != 0 {

@@ -84,7 +84,7 @@ wrk3 project ls                     # all auto-registered projects (NAME/CONFIG/
 wrk3 logs feature-a [--follow]     # entry.logs command
 wrk3 log [-n 50] [--json]           # persistent system log: every command run, state change, warning/error (next to the state file)
 wrk3 exec feature-a -- <cmd...>     # run inside worktree env (cwd=worktree)
-wrk3 env feature-a                 # open the worktree .env in $VISUAL/$EDITOR (ensured first, never overwritten)
+wrk3 env feature-a                 # open the worktree .env in $VISUAL/$EDITOR (ensured first; managed ports overwritten)
 wrk3 env feature-a --print         # print the worktree .env to stdout instead
 wrk3 checkout feature-a             # cd to the worktree (needs shell-init wrapper; else prints path)
 wrk3 down feature-a | wrk3 down     # bare = all including main
@@ -103,7 +103,8 @@ sudo wrk3 proxy hosts-sync          # 127.0.0.1 entries for Safari/curl (Chrome/
 Copy includes: `source.git.copy` lists repo-relative files/dirs (globs,
 `**` supported) copied from the repo root into each new worktree on `add`
 — use it for gitignored files like `.env.local`, `certs/`, or
-`storage/*.sqlite`. Missing sources skip with a warning and existing files
+`storage/*.sqlite`. Listing `.env` itself is rejected (wrk3 manages that
+file and will not copy it). Missing sources skip with a warning and existing files
 are never overwritten (dirs merge); `add --local` adoption never copies.
 
 Branch slugs: `feature/foo` → `feature-foo` (max 50 chars). `add`/`up`/`down`
@@ -183,8 +184,8 @@ branch order for deterministic ports:
   otherwise the lowest free range allocation is assigned (gap reuse,
   OS-aware, so a `ports.base`/`ranges` change never reuses a taken port).
   The worktree
-  `.env` is gap-filled (existing values never overwritten, divergences
-  warn). Adopted records start as `stopped` — display overlays the live
+  `.env` is ensured (managed port keys overwritten to the allocation).
+  Adopted records start as `stopped` — display overlays the live
   probe.
 - Slug or compose-project collisions are hard errors (state is never
   half-written).
