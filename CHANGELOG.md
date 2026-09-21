@@ -138,12 +138,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   DETAILS preview lists the per-check breakdown. Failures never fail
   `up`, never block `down`, and never persist to the state file.
 - `podman` runner (`runner.type: podman` with `runner.podman.composeFiles` /
-  `runner.podman.projectPrefix`): full parity with the `docker` runner via
-  native `podman compose -p <prefix>-<slug>` (`up -d --build`, `down`,
-  `logs`, host `exec`, `ps -q` status with out-of-band label fallbacks over
-  both `com.docker.compose.project` and `io.podman.compose.project` label
-  keys, plus the same `container_name:` preflight on `up`). `entry.*`
-  strings stay verbatim — podman configs call `podman compose ...` there.
+   `runner.podman.projectPrefix`): full parity with the `docker` runner via
+   native `podman compose -p <prefix>-<slug>` (`up -d --build`, `down`,
+   `logs`, host `exec`, `ps -q` status with out-of-band label fallbacks over
+   both `com.docker.compose.project` and `io.podman.compose.project` label
+   keys, plus the same `container_name:` preflight on `up`). `entry.*`
+   strings stay verbatim — podman configs call `podman compose ...` there.
+- Anonymous opt-in Sentry error reporting (default off): CLI and dashboard
+   action errors (up/down/reload/pull/add/remove/fetch, plus panics) are
+   reported only after explicit consent. The dashboard prompts once on first
+   run (default No). `wrk3 telemetry enable|disable|status` CLI group. Env
+   kill-switch `WRK3_NO_TELEMETRY`, DSN override `WRK3_SENTRY_DSN`. Scrubbed
+   allowlist: error type, sanitized message, command name, version, OS/arch
+   only — never paths, branches, ports, emails, IPs, or secrets.
 
 ## [0.10.0] - 2026-09-16
 

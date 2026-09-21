@@ -32,6 +32,12 @@ var (
 	Date    = "unknown"
 )
 
+var lastCommandName string
+
+func NameOfLastCommand() string {
+	return lastCommandName
+}
+
 var _ = config.Config{}
 var _ = ports.Allocator{}
 var _ source.Source
@@ -48,8 +54,8 @@ var rootCmd = &cobra.Command{
 	Long: `wrk3 runs multiple versions (branches) of the same repo in parallel
 as git worktrees, each isolated with its own ports and container project.`,
 	Version: Version,
-	// Daily update notice: best-effort, never blocks the command.
 	PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+		lastCommandName = cmd.Name()
 		maybePrintUpdateNotice(cmd)
 	},
 }
@@ -90,7 +96,7 @@ func init() {
 // would spam every new terminal).
 func maybePrintUpdateNotice(cmd *cobra.Command) {
 	switch cmd.Name() {
-	case "update", "version", "completion", "shell-init":
+	case "update", "version", "completion", "shell-init", "telemetry":
 		return
 	}
 	for _, a := range os.Args[1:] {

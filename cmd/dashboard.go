@@ -24,6 +24,7 @@ import (
 	"github.com/mytmlt/wrk3/internal/config"
 	"github.com/mytmlt/wrk3/internal/ports"
 	"github.com/mytmlt/wrk3/internal/source"
+	"github.com/mytmlt/wrk3/internal/telemetry"
 )
 
 var (
@@ -161,36 +162,38 @@ type dashboardOp struct {
 
 // dashboardModel is the BubbleTea model for the whole dashboard.
 type dashboardModel struct {
-	projects     []*dashboardProject
-	cur          int
-	rows         []dashboardRow
-	branches     []branchEntry
-	workCursor   int
-	brCursor     int
-	pane         int // 0 = worktrees, 1 = branches
-	workSel      map[string]bool
-	brSel        map[string]bool
-	log          []string
-	statusMsg    string
-	proxyInfo    string // gateway status for the meta line (set on refresh)
-	fetchedAt    time.Time
-	ops          []dashboardOp
-	nextOpID     int
-	confirm      string // pending confirm label, "" when none
-	pendingX     []string
-	pendingForce bool // true when the pending remove confirm is a --force remove
-	mine         bool
-	authors      []string
-	myprs        bool
-	poll         time.Duration
-	width        int
-	height       int
-	spinner      spinner.Model
-	showMenu     bool
-	menuCursor   int
-	keys         dashboardKeys
-	help         help.Model
-	logView      viewport.Model
+	projects        []*dashboardProject
+	cur             int
+	rows            []dashboardRow
+	branches        []branchEntry
+	workCursor      int
+	brCursor        int
+	pane            int // 0 = worktrees, 1 = branches
+	workSel         map[string]bool
+	brSel           map[string]bool
+	log             []string
+	statusMsg       string
+	proxyInfo       string // gateway status for the meta line (set on refresh)
+	fetchedAt       time.Time
+	ops             []dashboardOp
+	nextOpID        int
+	confirm         string // pending confirm label, "" when none
+	pendingX        []string
+	pendingForce    bool // true when the pending remove confirm is a --force remove
+	mine            bool
+	authors         []string
+	myprs           bool
+	poll            time.Duration
+	width           int
+	height          int
+	spinner         spinner.Model
+	showMenu        bool
+	menuCursor      int
+	keys            dashboardKeys
+	help            help.Model
+	logView         viewport.Model
+	telemetryPrompt bool
+	telemetryCursor int // 0 = No (default), 1 = Yes
 }
 
 func newDashboardModel(descs []dashboardProjectDesc, poll time.Duration, remote string, mine bool, authors []string, myprs bool) dashboardModel {
@@ -206,19 +209,26 @@ func newDashboardModel(descs []dashboardProjectDesc, poll time.Duration, remote 
 	lv.GotoBottom()
 	hp := help.New()
 	hp.ShowAll = false
+	showPrompt := false
+	if !telemetry.CheckDisabled() {
+		_, prompted := telemetry.LoadPrefs()
+		showPrompt = !prompted
+	}
 	return dashboardModel{
-		projects: projects,
-		workSel:  map[string]bool{},
-		brSel:    map[string]bool{},
-		poll:     poll,
-		mine:     mine,
-		authors:  append([]string(nil), authors...),
-		myprs:    myprs,
-		spinner:  sp,
-		keys:     newDashboardKeys(),
-		help:     hp,
-		logView:  lv,
-		log:      []string{"dashboard started — r refresh, R fetch, ? menu"},
+		projects:        projects,
+		workSel:         map[string]bool{},
+		brSel:           map[string]bool{},
+		poll:            poll,
+		mine:            mine,
+		authors:         append([]string(nil), authors...),
+		myprs:           myprs,
+		spinner:         sp,
+		keys:            newDashboardKeys(),
+		help:            hp,
+		logView:         lv,
+		log:             []string{"dashboard started — r refresh, R fetch, ? menu"},
+		telemetryPrompt: showPrompt,
+		telemetryCursor: 0,
 	}
 }
 
@@ -969,6 +979,8 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.statusMsg = msg.label + ": " + msg.err.Error()
 			m = m.appendLog("error: " + msg.err.Error())
+			cmdName := strings.TrimSuffix(msg.label, " --force")
+			telemetry.ReportIfEnabled("dashboard/"+cmdName, msg.err)
 		} else {
 			m.statusMsg = msg.label + " done"
 			// Clear only this op's branches so selections queued while it
@@ -1101,8 +1113,43 @@ func (m dashboardModel) markRowsStatus(targets []ports.WorktreeRecord, status st
 }
 
 func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Pending remove confirm (normal or --force) wins over everything:
-	// the Menu cannot open while a confirm is pending.
+	// Telemetry prompt blocking modal wins over everything.
+	if m.telemetryPrompt {
+		switch msg.String() {
+		case "y", "Y":
+			_ = telemetry.SavePrefs(true, true)
+			m.telemetryPrompt = false
+			m.statusMsg = "error reporting enabled"
+			return m, nil
+		case "n", "N", "esc":
+			_ = telemetry.SavePrefs(false, true)
+			m.telemetryPrompt = false
+			m.statusMsg = "error reporting disabled"
+			return m, nil
+		case "up", "k":
+			m.telemetryCursor = 0
+			return m, nil
+		case "down", "j":
+			m.telemetryCursor = 1
+			return m, nil
+		case "enter":
+			enabled := m.telemetryCursor == 1
+			_ = telemetry.SavePrefs(enabled, true)
+			m.telemetryPrompt = false
+			if enabled {
+				m.statusMsg = "error reporting enabled"
+			} else {
+				m.statusMsg = "error reporting disabled"
+			}
+			return m, nil
+		case "q", "ctrl+c":
+			return m, tea.Quit
+		}
+		return m, nil
+	}
+	// Pending remove confirm (normal or --force) wins over everything
+	// except the telemetry prompt: the Menu cannot open while a confirm is
+	// pending.
 	if m.confirm != "" {
 		switch msg.String() {
 		case "y", "Y":
@@ -1176,6 +1223,9 @@ func (m dashboardModel) handleMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.showMenu = false
 		m.menuCursor = 0
 		m.statusMsg = ""
+		if run == "telemetry" {
+			return m.handleNormalKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("telemetry")})
+		}
 		return m.handleNormalKey(dashboardKeyMsg(run))
 	case "esc", "?", "q":
 		m.showMenu = false
@@ -1342,6 +1392,13 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.myprs = !m.myprs
 		m.statusMsg = "myprs filter " + map[bool]string{true: "on", false: "off"}[m.myprs]
 		return m, dashboardReloadBranchesCmd(m.curProject(), m.mine, m.authors, m.myprs, m.brSel)
+	case "telemetry":
+		enabled, prompted := telemetry.LoadPrefs()
+		enabled = !enabled
+		_ = telemetry.SavePrefs(enabled, prompted || true)
+		state := map[bool]string{true: "enabled", false: "disabled"}[enabled]
+		m.statusMsg = "error reporting " + state
+		return m, nil
 	case "u":
 		targets := m.selectedWorktrees()
 		if len(targets) == 0 {
@@ -2172,6 +2229,35 @@ func (m dashboardModel) menuPane(width int) string {
 		Render(body)
 }
 
+func (m dashboardModel) telemetryPromptView(width int) string {
+	title := dashMenuTitleStyle.Render("Anonymous error reporting")
+	lines := []string{
+		"",
+		"Help improve wrk3 by sending anonymous error reports.",
+		"Only error types, scrubbed messages, and command names are sent.",
+		"No repositories, branches, secrets, or personal data.",
+		"",
+	}
+	cursor := m.telemetryCursor
+	noStyle := dashMenuKeyStyle
+	yesStyle := dashMenuKeyStyle
+	if cursor == 0 {
+		noStyle = dashMenuSelectedStyle
+	} else {
+		yesStyle = dashMenuSelectedStyle
+	}
+	choice := fmt.Sprintf("  %s  %s", noStyle.Render("  No  "), yesStyle.Render("  Yes  "))
+	lines = append(lines, choice, "")
+	hint := dashMenuHintStyle.Render("j/k move · y/n choose · enter accept · q quit")
+	body := title + "\n" + strings.Join(lines, "\n") + hint
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("42")).
+		Padding(0, 1).
+		Width(width).
+		Render(body)
+}
+
 func (m dashboardModel) logPane(width, height int) string {
 	focused := m.pane == 2
 	// Same chrome as the table panes (border 2 + padding 2): wrapping
@@ -2293,6 +2379,14 @@ func (m dashboardModel) View() string {
 		return b.String()
 	}
 	b.WriteString(dashMetaStyle.Render(m.dashboardMeta()) + "\n\n")
+
+	// Telemetry prompt: replaces the panes on first run (before Menu/grid).
+	if m.telemetryPrompt {
+		promptW := min(max(w-4, 44), 60)
+		b.WriteString(lipgloss.Place(w-2, 8, lipgloss.Center, lipgloss.Top, m.telemetryPromptView(promptW)) + "\n")
+		b.WriteString(m.helpBar(w) + "\n")
+		return b.String()
+	}
 
 	// Lazydocker-style Menu popup: replaces the panes while open.
 	if m.showMenu {

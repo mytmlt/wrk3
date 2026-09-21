@@ -345,3 +345,20 @@ Each test builds a throwaway git repo in a temp dir, writes a minimal
 | Port conflicts | Two checkouts sharing `base`+`ranges` on one host — give each config a distinct `ports.base` offset or non-overlapping `ports.ranges`. |
 | `sets container_name for service(s) ...` | Compose file pins `container_name:`, which is global and collides across worktrees — delete it (compose generates `<project>-<service>-1`). |
 | `Conflict. The container name ... is already in use` | Same cause as above on a stack that predates the preflight check — remove `container_name:` and `docker rm -f` the leftover, then `up` again. |
+
+## Telemetry
+
+`wrk3` includes opt-in anonymous error reporting via Sentry. Reporting is
+off by default and is never enabled without explicit consent.
+
+**First run:** the dashboard shows a one-time prompt (default No). `y`
+enables; `n`/`esc` leaves off. Both states persist.
+
+**CLI commands:**
+- `wrk3 telemetry enable` — turn on reporting (prints what is/is not sent)
+- `wrk3 telemetry disable` — turn off reporting
+- `wrk3 telemetry status` — show current configuration
+
+**Environment variables:**
+- `WRK3_NO_TELEMETRY=1` — hard kill-switch (wins over the prefs file)
+- `WRK3_SENTRY_DSN` — override the built-in Sentry DSN (forks/self-builds)
