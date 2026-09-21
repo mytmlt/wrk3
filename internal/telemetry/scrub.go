@@ -13,6 +13,7 @@ var (
 	emailRe   = regexp.MustCompile(`\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b`)
 	ipv4Re    = regexp.MustCompile(`\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`)
 	absPathRe = regexp.MustCompile(`(?:^|\s)(/[^\s:"]*(?:/[^\s:"]+)+)`)
+	quotedRe  = regexp.MustCompile(`"[^"\\]*(?:\\.[^"\\]*)*"`)
 )
 
 func Scrub(err error) string {
@@ -32,6 +33,7 @@ func Scrub(err error) string {
 
 func scrubString(s string) string {
 	s = scrubHomeDir(s)
+	s = quotedRe.ReplaceAllString(s, `"<name>"`)
 	s = scrubAbsPaths(s)
 	s = uuidRe.ReplaceAllString(s, "<uuid>")
 	s = hexHashRe.ReplaceAllString(s, "<hash>")
