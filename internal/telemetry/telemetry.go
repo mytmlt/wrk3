@@ -10,7 +10,11 @@ import (
 	"github.com/getsentry/sentry-go"
 )
 
-var DSN string
+// DefaultDSN is baked into every build (including plain `go build`).
+// Overridden at release time via `-X .../telemetry.DSN=$SENTRY_DSN`
+// and at runtime via WRK3_SENTRY_DSN. Forks can strip it by building
+// with `-X .../telemetry.DSN=` (empty).
+var DSN = "https://5453eb392d183be1161ff1da5450c98e@o4512095348916224.ingest.de.sentry.io/4512124896608336"
 
 var (
 	Version = "dev"
