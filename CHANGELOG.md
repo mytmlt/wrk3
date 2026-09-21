@@ -160,6 +160,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    allowlist: error type, sanitized message, command name, version, OS/arch
    only — never paths, branches, ports, emails, IPs, or secrets.
 
+### Added
+
+- Concurrency and readiness semantics pinned down: regression tests now
+  prove `up`/`down` execute worktrees in parallel (one worker per
+  worktree, `sync.WaitGroup`; a failing worktree marks itself failed
+  without aborting siblings) and that every entry command (`setup`/`run`,
+  via `sh -c`) is awaited to completion before the worktree moves on —
+  a `run` entry that polls an API (health check) blocks `up` until it
+  exits. Docs clarify the readiness nuance: the built-in compose step is
+  `up -d --build` (returns *started*, not *healthy*), so gate readiness
+  in `entry.setup` (`docker compose up --wait --build`) or `entry.run`;
+  configured `health.checks` remain display-only.
+
 ## [0.10.0] - 2026-09-16
 
 ### Added
