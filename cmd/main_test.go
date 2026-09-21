@@ -262,10 +262,8 @@ func TestEnsureWorktreeEnv_WritesDotEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if warns, err := ensureWorktreeEnv(r, *rec); err != nil {
+	if err := ensureWorktreeEnv(r, *rec); err != nil {
 		t.Fatal(err)
-	} else if len(warns) != 0 {
-		t.Errorf("warns = %v, want none for fresh .env", warns)
 	}
 	content, err := os.ReadFile(filepath.Join(repo, ".env"))
 	if err != nil {
@@ -288,10 +286,8 @@ func TestEnsureWorktreeEnv_PreservesSecrets(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, ".env"), []byte(secret), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if warns, err := ensureWorktreeEnv(r, *rec); err != nil {
+	if err := ensureWorktreeEnv(r, *rec); err != nil {
 		t.Fatal(err)
-	} else if len(warns) != 0 {
-		t.Errorf("warns = %v, want none", warns)
 	}
 	content, err := os.ReadFile(filepath.Join(repo, ".env"))
 	if err != nil {
@@ -323,10 +319,8 @@ func TestEnsureWorktreeEnv_ManagedWorktreeGapFilled(t *testing.T) {
 		Index:   0,
 		Ports:   map[string]int{"app": 8000},
 	}
-	if warns, err := ensureWorktreeEnv(r, rec); err != nil {
+	if err := ensureWorktreeEnv(r, rec); err != nil {
 		t.Fatal(err)
-	} else if len(warns) != 0 {
-		t.Errorf("warns = %v, want none", warns)
 	}
 	content, err := os.ReadFile(filepath.Join(wt, ".env"))
 	if err != nil {
@@ -341,12 +335,12 @@ func TestEnsureWorktreeEnv_ManagedWorktreeGapFilled(t *testing.T) {
 	}
 }
 
-func TestEnsureWorktreeEnv_DivergenceWarnsNeverOverwrites(t *testing.T) {
+func TestEnsureWorktreeEnv_OverwritesManagedPorts(t *testing.T) {
 	repo := initMainTestRepo(t)
 	cfg := writeTestConfig(t, repo)
 	r := &resolved{cfg: cfg, src: &source.GitSource{}}
 	wt := t.TempDir()
-	if err := os.WriteFile(filepath.Join(wt, ".env"), []byte("APP_PORT=5000\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(wt, ".env"), []byte("SECRET=topsecret\nAPP_PORT=5000\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	rec := ports.WorktreeRecord{
@@ -356,27 +350,52 @@ func TestEnsureWorktreeEnv_DivergenceWarnsNeverOverwrites(t *testing.T) {
 		Index:   0,
 		Ports:   map[string]int{"app": 8000},
 	}
-	warns, err := ensureWorktreeEnv(r, rec)
-	if err != nil {
+	if err := ensureWorktreeEnv(r, rec); err != nil {
 		t.Fatal(err)
-	}
-	if len(warns) == 0 {
-		t.Fatalf("warns empty, want divergence warning for APP_PORT")
-	}
-	found := false
-	for _, w := range warns {
-		if strings.Contains(w, "APP_PORT") && strings.Contains(w, "5000") && strings.Contains(w, "8000") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("warns missing APP_PORT divergence: %v", warns)
 	}
 	content, err := os.ReadFile(filepath.Join(wt, ".env"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(content), "APP_PORT=5000\n") {
-		t.Errorf("existing APP_PORT was overwritten.\n%s", content)
+	s := string(content)
+	if !strings.Contains(s, "APP_PORT=8000\n") {
+		t.Errorf("allocation missing.\n%s", s)
+	}
+	if strings.Contains(s, "APP_PORT=5000") {
+		t.Errorf("stale APP_PORT left intact.\n%s", s)
+	}
+	if !strings.Contains(s, "SECRET=topsecret\n") {
+		t.Errorf("secret lost.\n%s", s)
+	}
+}
+
+func TestEnsureWorktreeEnv_DoesNotWriteAppURL(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfig(t, repo)
+	cfg.Proxy.Enabled = true
+	cfg.Proxy.Domain = "localhost"
+	cfg.Proxy.Addr = "127.0.0.1:8080"
+	r := &resolved{cfg: cfg, src: &source.GitSource{}}
+	wt := t.TempDir()
+	rec := ports.WorktreeRecord{
+		Branch:  "feature-foo",
+		Slug:    "feature-foo",
+		AbsPath: wt,
+		Index:   0,
+		Ports:   map[string]int{"app": 8000},
+	}
+	if err := ensureWorktreeEnv(r, rec); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(wt, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(content), "APP_URL") {
+		t.Errorf("gateway URL must not be written to .env.\n%s", content)
+	}
+	merged := envForWorktree(cfg, rec)
+	if merged[ports.EnvAppURL] != "http://feature-foo.localhost:8080" {
+		t.Errorf("runner env missing APP_URL: %v", merged)
 	}
 }

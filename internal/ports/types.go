@@ -1,5 +1,6 @@
 // Package ports allocates per-worktree host ports and ensures managed keys
-// in .env files (append-only: existing lines are never modified).
+// in .env files (managed <NAME>_PORT keys always match the allocation;
+// unmanaged lines are never modified).
 //
 // Allocation rule: per-service ranges scanned from base upward by 1; the
 // lowest free port wins (gap reuse). Runtime state lives in

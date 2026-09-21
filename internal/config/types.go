@@ -54,7 +54,8 @@ type GitConfig struct {
 	// Copy lists repo-root-relative files/dirs (glob patterns allowed)
 	// copied into each new worktree after git worktree add.
 	// Missing sources are skipped; existing destinations are never
-	// overwritten. Applies to add only, not adopt.
+	// overwritten. `.env` is rejected (wrk3 manages that file).
+	// Applies to add only, not adopt.
 	Copy []string `yaml:"copy"`
 }
 
@@ -108,8 +109,8 @@ type PortsConfig struct {
 }
 
 // ProxyConfig holds the local-only gateway (<slug>.<domain> -> app port).
-// Disabled by default; when enabled `up` ensures the gateway and each
-// worktree gains an APP_URL in its .env. Domain defaults to "localhost"
+// Disabled by default; when enabled `up` ensures the gateway and runner
+// env gains APP_URL. Domain defaults to "localhost"
 // (zero-config in Chrome/Firefox/Edge; Safari/curl need hosts-sync) and
 // addr defaults to "127.0.0.1:8080" (port 80 needs root).
 type ProxyConfig struct {
@@ -464,6 +465,9 @@ func validateGitCopy(patterns []string) error {
 		clean := filepath.Clean(noSlash)
 		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 			return fmt.Errorf("source.git.copy[%d] %q must not escape the repo root", i, p)
+		}
+		if clean == ".env" || filepath.Base(clean) == ".env" {
+			return fmt.Errorf("source.git.copy[%d] %q must not copy .env", i, p)
 		}
 	}
 	return nil

@@ -26,7 +26,7 @@ never touches real checkouts.
 | E03 | bare `add feat/new2` with EOF stdin cancels with `cancelled` + `--create` hint | `TestE2E_CreatePromptEOF` |
 | E04 | two adds allocate `app=8001` then `app=8002` (base 8000, upward by 1) | `TestE2E_PortAllocation` |
 | E05 | `SECRET=topsecret` appended to worktree `.env` survives `up` with `APP_PORT` gap-filled | `TestE2E_EnvPreservesSecrets` |
-| E06 | diverged `APP_PORT=5000` warns on `up` and is left intact | `TestE2E_EnvDivergenceWarns` |
+| E06 | leaked `APP_PORT=5000` is overwritten to the allocated port on `up` | `TestE2E_EnvOverwritesManagedPorts` |
 | E07 | deleting `.wrk3-state.json` then `status` re-adopts the on-disk worktree | `TestE2E_AdoptsOrphanAfterStateLoss` |
 | E09 | fresh `status` lists implicit `main` at `app=8000`; `remove main` refuses | `TestE2E_MainCheckout` |
 | E10 | `exec feature/foo -- sh -c 'test "$APP_PORT" = 8001'` exits 0 | `TestE2E_ExecEnv` |

@@ -509,8 +509,8 @@ func confirmCreate(cmd *cobra.Command, branch, remote, baseDesc string) (bool, e
 
 // addOne creates one worktree: git add + copy includes + port assign +
 // state + .env ensure. The new .env inherits non-managed keys (secrets)
-// from the repo-root checkout's .env when present; pre-existing values are
-// never overwritten (divergences are returned as warnings). Remote-only
+// from the repo-root checkout's .env when present; managed port keys are
+// always written to this worktree's allocation. Remote-only
 // branches are created as tracking branches (--track -b).
 func addOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, branch, remote string) ([]string, error) {
 	return createWorktreeRecord(r, recs, alloc, branch, func(path string) error {
@@ -564,13 +564,11 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 	} else {
 		warns = append(warns, copyWarns...)
 	}
-	envWarns, err := ensureWorktreeEnv(r, ports.WorktreeRecord{
+	if err := ensureWorktreeEnv(r, ports.WorktreeRecord{
 		Branch: branch, Slug: slug, AbsPath: path, Ports: allocation,
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
-	warns = append(warns, envWarns...)
 	*recs = append(*recs, ports.WorktreeRecord{
 		Branch:         branch,
 		Slug:           slug,
@@ -590,8 +588,8 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 
 // adoptOne registers one pre-existing worktree path: port assign + state +
 // .env ensure. A missing .env is seeded with non-managed keys from the
-// repo-root checkout's .env; pre-existing values are never overwritten
-// (divergences are returned as warnings). No git worktree add — the checkout
+// repo-root checkout's .env; managed port keys are overwritten to this
+// worktree's allocation. No git worktree add — the checkout
 // already exists. Index stays monotonic; ports are the lowest free range
 // allocation (gap reuse, OS-aware).
 func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, branch, path string) ([]string, error) {
@@ -608,10 +606,9 @@ func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator,
 		return nil, fmt.Errorf("adopt worktree %q: %w", branch, err)
 	}
 	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
-	warns, err := ensureWorktreeEnv(r, ports.WorktreeRecord{
+	if err := ensureWorktreeEnv(r, ports.WorktreeRecord{
 		Branch: branch, Slug: slug, AbsPath: path, Ports: allocation,
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	*recs = append(*recs, ports.WorktreeRecord{
@@ -628,7 +625,7 @@ func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator,
 		return nil, err
 	}
 	r.logOpDone("adopt", fmt.Sprintf("adopted %s (index %d)", branch, idx), nil)
-	return warns, nil
+	return nil, nil
 }
 
 func init() {

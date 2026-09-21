@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mytmlt/wrk3/internal/ports"
@@ -125,16 +126,26 @@ func TestReconcileState_DivergedEnvAllocatesFresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !dirty || updated[0].Ports["app"] != 8001 || updated[0].Index != 1 {
-		t.Errorf("updated = %+v, want fresh app 8001 index 1", updated)
+		t.Errorf("updated = %+v dirty=%v, want fresh app 8001 index 1", updated, dirty)
 	}
 	if len(warns) == 0 {
 		t.Error("diverged .env must warn")
+	}
+	raw, err := os.ReadFile(filepath.Join(wt, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "APP_PORT=8001\n") {
+		t.Errorf("fresh allocation not written to .env:\n%s", raw)
+	}
+	if strings.Contains(string(raw), "APP_PORT=9999") {
+		t.Errorf("stale APP_PORT left intact:\n%s", raw)
 	}
 }
 
 // A .env holding the base ports must not be adopted at the reserved
 // main index: the orphan gets a fresh managed index with warnings, and
-// its existing values stay intact.
+// ensure overwrites managed port keys to the new allocation.
 func TestReconcileState_BaseEnvDoesNotAdoptMainSlot(t *testing.T) {
 	r, repo := reconcileFixture(t)
 	wt := filepath.Join(repo, ".worktrees", "feature-base")
@@ -155,13 +166,15 @@ func TestReconcileState_BaseEnvDoesNotAdoptMainSlot(t *testing.T) {
 	if len(warns) == 0 {
 		t.Error("adopting over base-port .env values must warn")
 	}
-	// Existing values are never overwritten.
 	raw, err := os.ReadFile(filepath.Join(wt, ".env"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(raw) != "APP_PORT=8000\n" {
-		t.Errorf(".env was rewritten, want existing values intact:\n%s", raw)
+	if !strings.Contains(string(raw), "APP_PORT=8001\n") {
+		t.Errorf("fresh allocation not written to .env:\n%s", raw)
+	}
+	if strings.Contains(string(raw), "APP_PORT=8000") {
+		t.Errorf("main ports left in worktree .env:\n%s", raw)
 	}
 }
 

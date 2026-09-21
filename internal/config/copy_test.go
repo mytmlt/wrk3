@@ -22,6 +22,8 @@ func TestValidateGitCopy(t *testing.T) {
 		{"absolute", []string{abs}},
 		{"escape", []string{"../x"}},
 		{"escapeNested", []string{"a/../../x"}},
+		{"dotEnv", []string{".env"}},
+		{"nestedDotEnv", []string{"subdir/.env"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := validateGitCopy(tc.in); err == nil {
