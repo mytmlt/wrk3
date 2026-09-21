@@ -1,10 +1,13 @@
 package telemetry
 
 import (
+	"errors"
 	"fmt"
+	"net"
 	"os"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/getsentry/sentry-go"
@@ -46,6 +49,33 @@ func activeDSN() string {
 	return DSN
 }
 
+// IsPermissionDeniedListen reports whether err is a permission-denied
+// listen error (e.g. binding a restricted port without CAP_NET_BIND_SERVICE
+// or equivalent on Windows). It walks the error chain via errors.As and
+// falls back to a case-insensitive substring check for wrapped net errors
+// on platforms where the syscall constant differs.
+func IsPermissionDeniedListen(err error) bool {
+	if err == nil {
+		return false
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) && opErr.Op == "listen" {
+		var syscallErr os.SyscallError
+		if errors.As(opErr, &syscallErr) {
+			var errno syscall.Errno
+			if errors.As(&syscallErr, &errno) {
+				if errno == syscall.EACCES || errno == syscall.EPERM {
+					return true
+				}
+			}
+		}
+	}
+	// Fallback: case-insensitive substring match for Windows and other
+	// platforms where the syscall error wrapping may differ.
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "permission denied")
+}
+
 func ReportIfEnabled(command string, err error) {
 	if err == nil {
 		return
@@ -75,6 +105,11 @@ func newErrorEvent(command string, err error) *sentry.Event {
 	if err == nil {
 		return nil
 	}
+
+	if IsPermissionDeniedListen(err) {
+		return nil
+	}
+
 	msg := Scrub(err)
 	if msg == "" {
 		return nil

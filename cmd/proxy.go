@@ -19,6 +19,7 @@ import (
 	"github.com/mytmlt/wrk3/internal/ports"
 	"github.com/mytmlt/wrk3/internal/proxy"
 	"github.com/mytmlt/wrk3/internal/syslog"
+	"github.com/mytmlt/wrk3/internal/telemetry"
 )
 
 // proxyPid holds the gateway daemon identity on disk.
@@ -389,7 +390,7 @@ var proxyRunCmd = &cobra.Command{
 		addr := r.cfg.ProxyAddr()
 		ln, err := net.Listen("tcp", addr)
 		if err != nil {
-			return fmt.Errorf("proxy listen %s: %w", addr, err)
+			return wrapListenError(addr, err)
 		}
 		pid := proxyPid{PID: os.Getpid(), Addr: addr, Domain: r.cfg.ProxyDomain()}
 		raw, _ := json.Marshal(pid)
@@ -424,6 +425,17 @@ var proxyRunCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+// wrapListenError wraps a net.Listen failure. When the error is
+// permission-denied (restricted bind port) the message names the address
+// and suggests the default high port as an alternative. Other errors keep
+// the standard wrap so they are still sent as crash reports.
+func wrapListenError(addr string, err error) error {
+	if telemetry.IsPermissionDeniedListen(err) {
+		return fmt.Errorf("proxy listen %s: %w (extra permission required; the default 127.0.0.1:8080 does not need it)", addr, err)
+	}
+	return fmt.Errorf("proxy listen %s: %w", addr, err)
 }
 
 func init() {

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Restricted-port permission-denied failures on the local gateway now print
+  a clear local error naming the address and requesting extra permission,
+  with a hint that the default `127.0.0.1:8080` does not need it. These
+  failures are no longer sent as remote crash reports.
+  ([#2](https://github.com/mytmlt/wrk3/issues/2))
+
 - Error reports now include a PII-free exception stacktrace and a crashed
   main thread (module, function, line; no locals, source context, user,
   or server name) so issues group by code location.

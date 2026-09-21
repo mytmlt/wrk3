@@ -1,9 +1,11 @@
 package telemetry
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/getsentry/sentry-go"
@@ -338,5 +340,78 @@ func TestBeforeSend_DropsWhenDisabledOrEmpty(t *testing.T) {
 	event.Message = "something went wrong"
 	if got := beforeSend(event, nil); got != nil {
 		t.Error("beforeSend should drop when kill-switch is on")
+	}
+}
+
+func permissionDeniedListenErr() error {
+	return &net.OpError{
+		Op:   "listen",
+		Net:  "tcp",
+		Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 80},
+		Err:  os.NewSyscallError("bind", syscall.EACCES),
+	}
+}
+
+func addrInUseListenErr() error {
+	return &net.OpError{
+		Op:   "listen",
+		Net:  "tcp",
+		Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 80},
+		Err:  os.NewSyscallError("bind", syscall.EADDRINUSE),
+	}
+}
+
+func TestIsPermissionDeniedListen_PermissionDenied(t *testing.T) {
+	if !IsPermissionDeniedListen(permissionDeniedListenErr()) {
+		t.Error("IsPermissionDeniedListen = false for EACCES listen error")
+	}
+}
+
+func TestIsPermissionDeniedListen_AddrInUse(t *testing.T) {
+	if IsPermissionDeniedListen(addrInUseListenErr()) {
+		t.Error("IsPermissionDeniedListen = true for EADDRINUSE listen error")
+	}
+}
+
+func TestIsPermissionDeniedListen_GenericError(t *testing.T) {
+	if IsPermissionDeniedListen(errSentinel("something went wrong")) {
+		t.Error("IsPermissionDeniedListen = true for generic error")
+	}
+}
+
+func TestIsPermissionDeniedListen_SubstringFallback(t *testing.T) {
+	err := errSentinel("listen tcp 0.0.0.0:80: bind: permission denied")
+	if !IsPermissionDeniedListen(err) {
+		t.Error("IsPermissionDeniedListen = false for substring match")
+	}
+}
+
+func TestIsPermissionDeniedListen_Nil(t *testing.T) {
+	if IsPermissionDeniedListen(nil) {
+		t.Error("IsPermissionDeniedListen = true for nil")
+	}
+}
+
+func TestNewErrorEvent_PermissionDeniedListen(t *testing.T) {
+	event := newErrorEvent("proxy run", permissionDeniedListenErr())
+	if event != nil {
+		t.Error("newErrorEvent should return nil for permission-denied listen error")
+	}
+}
+
+func TestNewErrorEvent_UnrelatedError(t *testing.T) {
+	event := newErrorEvent("status", errSentinel("something went wrong"))
+	if event == nil {
+		t.Fatal("newErrorEvent returned nil for unrelated error")
+	}
+	if event.Message != "something went wrong" {
+		t.Errorf("event.Message = %q, want %q", event.Message, "something went wrong")
+	}
+}
+
+func TestNewErrorEvent_AddrInUseStillReports(t *testing.T) {
+	event := newErrorEvent("proxy run", addrInUseListenErr())
+	if event == nil {
+		t.Error("newErrorEvent returned nil for EADDRINUSE, should still report")
 	}
 }
