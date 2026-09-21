@@ -101,3 +101,6 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Public client identifier (not a secret, see SECURITY.md).
+          # Forks can replace with their own DSN or an empty string to strip.
+          SENTRY_DSN: https://5453eb392d183be1161ff1da5450c98e@o4512095348916224.ingest.de.sentry.io/4512124896608336
