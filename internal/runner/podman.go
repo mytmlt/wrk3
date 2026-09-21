@@ -72,7 +72,8 @@ func (r *PodmanRunner) environ(extra map[string]string) []string {
 	return buildEnv(os.Environ(), r.ProjectName(), extra)
 }
 
-// Up starts the worktree via `podman compose up -d --build`.
+// Up starts the worktree via `podman compose up -d --build`. Command
+// output streams to the ctx sink when present (see WithOutput).
 func (r *PodmanRunner) Up(ctx context.Context, worktreePath string, env map[string]string) error {
 	if strings.TrimSpace(worktreePath) == "" {
 		return fmt.Errorf("podman up: empty worktree path")
@@ -80,18 +81,19 @@ func (r *PodmanRunner) Up(ctx context.Context, worktreePath string, env map[stri
 	if err := CheckComposeFiles(worktreePath, r.opts.ComposeFiles); err != nil {
 		return fmt.Errorf("podman up: %w", err)
 	}
-	_, err := r.runCompose(ctx, worktreePath, env, "up", "-d", "--build")
+	_, err := composeLive(ctx, r.timeout(), "podman", r.ProjectName(), r.opts.ComposeFiles, worktreePath, r.environ(env), "up", "-d", "--build")
 	return err
 }
 
 // Down stops the worktree via `podman compose down` (containers and
 // networks removed, named volumes preserved; the remove path uses
-// `down -v` explicitly to reclaim volumes).
+// `down -v` explicitly to reclaim volumes). Output streams to the ctx
+// sink when present.
 func (r *PodmanRunner) Down(ctx context.Context, worktreePath string, env map[string]string) error {
 	if strings.TrimSpace(worktreePath) == "" {
 		return fmt.Errorf("podman down: empty worktree path")
 	}
-	_, err := r.runCompose(ctx, worktreePath, env, "down")
+	_, err := composeLive(ctx, r.timeout(), "podman", r.ProjectName(), r.opts.ComposeFiles, worktreePath, r.environ(env), "down")
 	return err
 }
 
@@ -109,7 +111,8 @@ func (r *PodmanRunner) Logs(ctx context.Context, worktreePath string, follow boo
 }
 
 // Exec runs cmd as a host process with cwd=worktreePath and env applied
-// (used for entry commands such as `podman compose up --wait`).
+// (used for entry commands such as `podman compose up --wait`). Output
+// streams to the ctx sink when present.
 func (r *PodmanRunner) Exec(ctx context.Context, worktreePath string, cmd []string, env map[string]string) error {
 	if strings.TrimSpace(worktreePath) == "" {
 		return fmt.Errorf("podman exec: empty worktree path")
@@ -119,12 +122,12 @@ func (r *PodmanRunner) Exec(ctx context.Context, worktreePath string, cmd []stri
 	}
 	timeoutCtx, cancel := context.WithTimeout(ctx, r.timeout())
 	defer cancel()
-	var stdout, stderr bytes.Buffer
-	if err := runDockerCmd(timeoutCtx, cmd[0], worktreePath,
-		buildEnv(os.Environ(), r.ProjectName(), env), &stdout, &stderr, cmd[1:]...); err != nil {
+	_, stderr, err := runCmdLive(timeoutCtx, cmd[0], worktreePath,
+		buildEnv(os.Environ(), r.ProjectName(), env), cmd[1:]...)
+	if err != nil {
 		return fmt.Errorf("exec %q (dir=%s project=%s): %w: %s",
 			strings.Join(cmd, " "), worktreePath, r.ProjectName(),
-			err, strings.TrimSpace(stderr.String()))
+			err, strings.TrimSpace(stderr))
 	}
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/mytmlt/wrk3/internal/config"
 	"github.com/mytmlt/wrk3/internal/ports"
+	"github.com/mytmlt/wrk3/internal/runner"
 	"github.com/mytmlt/wrk3/internal/source"
 	"github.com/mytmlt/wrk3/internal/telemetry"
 )
@@ -160,7 +162,14 @@ type dashboardOp struct {
 	proj     int
 }
 
-// dashboardModel is the BubbleTea model for the whole dashboard.
+// dashboardModel is the BubbleTea model for the whole dashboard. The log
+// area has two tabs sharing the right-bottom box: "console" shows live
+// command output from up/down/reload/remove (docker compose, entry
+// strings) as it streams, and "dashboard" shows the brief event lines
+// (op starts, refreshes, fetch, copy/open notes) the pane always had.
+// Console lines bypass the 200-line cap only in the sense that overflow
+// drops from the console buffer itself: both stay bounded, both scroll
+// with the same viewport (j/k, pgup/pgdn, home/end).
 type dashboardModel struct {
 	projects        []*dashboardProject
 	cur             int
@@ -168,10 +177,12 @@ type dashboardModel struct {
 	branches        []branchEntry
 	workCursor      int
 	brCursor        int
-	pane            int // 0 = worktrees, 1 = branches
+	pane            int // 0 = worktrees, 1 = branches, 2 = logs
 	workSel         map[string]bool
 	brSel           map[string]bool
 	log             []string
+	console         []string
+	logTab          int // 0 = console, 1 = dashboard; sticky per model
 	statusMsg       string
 	proxyInfo       string // gateway status for the meta line (set on refresh)
 	fetchedAt       time.Time
@@ -192,6 +203,7 @@ type dashboardModel struct {
 	keys            dashboardKeys
 	help            help.Model
 	logView         viewport.Model
+	consoleView     viewport.Model
 	telemetryPrompt bool
 	telemetryCursor int // 0 = No (default), 1 = Yes
 }
@@ -207,6 +219,9 @@ func newDashboardModel(descs []dashboardProjectDesc, poll time.Duration, remote 
 	seed := []string{"dashboard started — r refresh, R fetch, ? menu"}
 	lv.SetContent(strings.Join(wrapLogLines(seed, 78), "\n"))
 	lv.GotoBottom()
+	cv := viewport.New(78, dashboardLogFallbackHeight)
+	cv.SetContent("(console idle — run u/d/l/x on a worktree to stream output here)")
+	cv.GotoBottom()
 	hp := help.New()
 	hp.ShowAll = false
 	showPrompt := false
@@ -226,6 +241,9 @@ func newDashboardModel(descs []dashboardProjectDesc, poll time.Duration, remote 
 		keys:            newDashboardKeys(),
 		help:            hp,
 		logView:         lv,
+		consoleView:     cv,
+		console:         []string{},
+		logTab:          0,
 		log:             []string{"dashboard started — r refresh, R fetch, ? menu"},
 		telemetryPrompt: showPrompt,
 		telemetryCursor: 0,
@@ -357,7 +375,10 @@ type dashboardOpDoneMsg struct {
 	opID  int
 	label string
 	lines []string
-	err   error
+	// console carries raw runner command output for the console tab
+	// (up/down/reload/remove only; empty for event-only ops).
+	console []string
+	err     error
 }
 
 func (m dashboardModel) Init() tea.Cmd {
@@ -552,6 +573,58 @@ func (m dashboardModel) appendLog(line string) dashboardModel {
 	return m
 }
 
+// appendConsole appends raw command output to the console tab buffer and
+// syncs the console viewport. Console holds up to 500 lines (command
+// output is verbose); overflow drops the oldest. Follows the same
+// follow-mode rule as the dashboard log: sticks to the bottom only when
+// already there so reading earlier output is never yanked away.
+func (m dashboardModel) appendConsole(line string) dashboardModel {
+	m.console = append(m.console, line)
+	if len(m.console) > 500 {
+		m.console = m.console[len(m.console)-500:]
+	}
+	m.syncConsoleView()
+	return m
+}
+
+// syncConsoleView rewraps m.console to the console viewport width and
+// refreshes content, preserving scroll position like syncLogView.
+func (m *dashboardModel) syncConsoleView() {
+	w := m.consoleView.Width
+	if w <= 0 {
+		w = 78
+		m.consoleView.Width = w
+	}
+	if m.consoleView.Height <= 0 {
+		m.consoleView.Height = dashboardLogViewportHeight(m.height)
+	}
+	wasBottom := m.consoleView.AtBottom()
+	m.consoleView.SetContent(strings.Join(wrapLogLines(m.console, max(w, 10)), "\n"))
+	if wasBottom {
+		m.consoleView.GotoBottom()
+	}
+}
+
+// activeLogView returns the viewport for the visible log tab (console by
+// default, dashboard events after `t`). Scroll keys operate on this so
+// both tabs share j/k/pgup/pgdn/home/end.
+func (m *dashboardModel) activeLogView() *viewport.Model {
+	if m.logTab == 1 {
+		return &m.logView
+	}
+	return &m.consoleView
+}
+
+// syncActiveLogView re-syncs the visible tab after a `t` toggle so the
+// newly shown buffer wraps to the current width instead of stale content.
+func (m *dashboardModel) syncActiveLogView() {
+	if m.logTab == 1 {
+		m.syncLogView()
+	} else {
+		m.syncConsoleView()
+	}
+}
+
 // syncLogView rewraps m.log to the viewport width and refreshes content.
 // It preserves the user's scroll position: only sticks to the bottom when
 // the view was already at the bottom (follow mode). New log lines must go
@@ -634,6 +707,9 @@ func wrapLogLine(line string, width int) []string {
 }
 
 // Op commands: up / down / add / remove over explicit selections.
+// Console-output ops (up/down/reload/remove) stream runner command output
+// into the console tab via dashboardOpCmdStream; event-only ops
+// (pull/add/open) keep the plain dashboardOpCmd path.
 func dashboardOpCmd(p *dashboardProject, opID int, label string, fn func(logf func(string, ...any)) error) tea.Cmd {
 	return func() tea.Msg {
 		var lines []string
@@ -645,8 +721,44 @@ func dashboardOpCmd(p *dashboardProject, opID int, label string, fn func(logf fu
 	}
 }
 
+// dashboardOpCmdStream is dashboardOpCmd plus console capture: fn receives
+// a ctx whose output sink (see runner.WithOutput) collects every runner
+// command-output line while the op runs. Event lines and console lines
+// travel together inside dashboardOpDoneMsg, so Update routes them to
+// their tabs — one message, no cross-goroutine model mutation, and the
+// op/test contract stays identical to dashboardOpCmd (unit tests call the
+// cmd synchronously and read console off the completion message).
+func dashboardOpCmdStream(p *dashboardProject, opID int, label string, fn func(ctx context.Context, logf func(string, ...any)) error) tea.Cmd {
+	return func() tea.Msg {
+		var lines []string
+		var console []string
+		var mu sync.Mutex
+		logf := func(format string, a ...any) {
+			mu.Lock()
+			lines = append(lines, fmt.Sprintf(format, a...))
+			mu.Unlock()
+		}
+		sink := func(line string) {
+			mu.Lock()
+			console = append(console, "["+label+"] "+line)
+			mu.Unlock()
+		}
+		err := fn(runner.WithOutput(context.Background(), sink), logf)
+		return dashboardOpDoneMsg{opID: opID, label: label, lines: lines, console: console, err: err}
+	}
+}
+
+// dashboardConsoleLineMsg is reserved for live per-line console streaming
+// (a future step once op commands can reach the running tea.Program).
+// Today console lines arrive with the completion message; Update handles
+// both paths identically.
+type dashboardConsoleLineMsg struct {
+	label string
+	line  string
+}
+
 func dashboardUpCmd(p *dashboardProject, opID int, targets []ports.WorktreeRecord) tea.Cmd {
-	return dashboardOpCmd(p, opID, "up", func(logf func(string, ...any)) error {
+	return dashboardOpCmdStream(p, opID, "up", func(ctx context.Context, logf func(string, ...any)) error {
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
@@ -658,27 +770,27 @@ func dashboardUpCmd(p *dashboardProject, opID int, targets []ports.WorktreeRecor
 			logf("warning: %s", warn)
 			r.logProxyResult("", warn)
 		}
-		return runUpTargets(context.Background(), r, targets, logf)
+		return runUpTargets(ctx, r, targets, logf)
 	})
 }
 
 func dashboardDownCmd(p *dashboardProject, opID int, targets []ports.WorktreeRecord) tea.Cmd {
-	return dashboardOpCmd(p, opID, "down", func(logf func(string, ...any)) error {
+	return dashboardOpCmdStream(p, opID, "down", func(ctx context.Context, logf func(string, ...any)) error {
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
 		r := p.resolved()
-		return runDownTargets(context.Background(), r, targets, logf)
+		return runDownTargets(ctx, r, targets, logf)
 	})
 }
 
 func dashboardReloadCmd(p *dashboardProject, opID int, targets []ports.WorktreeRecord) tea.Cmd {
-	return dashboardOpCmd(p, opID, "reload", func(logf func(string, ...any)) error {
+	return dashboardOpCmdStream(p, opID, "reload", func(ctx context.Context, logf func(string, ...any)) error {
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
 		r := p.resolved()
-		return runReloadTargets(context.Background(), r, targets, logf)
+		return runReloadTargets(ctx, r, targets, logf)
 	})
 }
 
@@ -757,7 +869,7 @@ func dashboardRemoveCmd(p *dashboardProject, opID int, branches []string, force 
 	if force {
 		label = "remove --force"
 	}
-	return dashboardOpCmd(p, opID, label, func(logf func(string, ...any)) error {
+	return dashboardOpCmdStream(p, opID, label, func(ctx context.Context, logf func(string, ...any)) error {
 		if p == nil || p.cfg == nil {
 			return fmt.Errorf("project not loaded")
 		}
@@ -784,39 +896,39 @@ func dashboardRemoveCmd(p *dashboardProject, opID int, branches []string, force 
 				r.logOpDone(label, label+" "+rec.Branch, err)
 				return err
 			}
-			if err := rn.Down(context.Background(), rec.AbsPath, envForWorktree(r.cfg, *rec)); err != nil {
-				logf("warning: compose down for %q: %v", rec.Branch, err)
-			}
-			if _, err := ports.StripManaged(filepath.Join(rec.AbsPath, ports.EnvFileName), rec.Ports); err != nil {
-				logf("warning: strip managed .env keys for %q: %v", rec.Branch, err)
-			}
-			if err := r.src.Remove(r.cfg.RepoPath(), rec.AbsPath, force); err != nil {
-				if !force {
-					err = fmt.Errorf("remove worktree %q: %w", rec.Branch, err)
-					r.logOpDone(label, label+" "+rec.Branch, err)
-					return err
-				}
-				logf("warning: worktree remove for %q: %v", rec.Branch, err)
-				_ = os.RemoveAll(rec.AbsPath)
-			}
-			var kept []ports.WorktreeRecord
-			for _, existing := range recs {
-				if existing.Branch == rec.Branch {
-					continue
-				}
-				kept = append(kept, existing)
-			}
-			if kept == nil {
-				kept = []ports.WorktreeRecord{}
-			}
-			if err := saveState(r, kept); err != nil {
+		if err := rn.Down(ctx, rec.AbsPath, envForWorktree(r.cfg, *rec)); err != nil {
+			logf("warning: compose down for %q: %v", rec.Branch, err)
+		}
+		if _, err := ports.StripManaged(filepath.Join(rec.AbsPath, ports.EnvFileName), rec.Ports); err != nil {
+			logf("warning: strip managed .env keys for %q: %v", rec.Branch, err)
+		}
+		if err := r.src.Remove(r.cfg.RepoPath(), rec.AbsPath, force); err != nil {
+			if !force {
+				err = fmt.Errorf("remove worktree %q: %w", rec.Branch, err)
 				r.logOpDone(label, label+" "+rec.Branch, err)
 				return err
 			}
-			r.logOpDone(label, "removed "+rec.Branch, nil)
-			logf("removed %s", rec.Branch)
+			logf("warning: worktree remove for %q: %v", rec.Branch, err)
+			_ = os.RemoveAll(rec.AbsPath)
 		}
-		return nil
+		var kept []ports.WorktreeRecord
+		for _, existing := range recs {
+			if existing.Branch == rec.Branch {
+				continue
+			}
+			kept = append(kept, existing)
+		}
+		if kept == nil {
+			kept = []ports.WorktreeRecord{}
+		}
+		if err := saveState(r, kept); err != nil {
+			r.logOpDone(label, label+" "+rec.Branch, err)
+			return err
+		}
+		r.logOpDone(label, "removed "+rec.Branch, nil)
+		logf("removed %s", rec.Branch)
+	}
+	return nil
 	})
 }
 
@@ -888,10 +1000,11 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Keep the log viewport in sync with the rendered grid geometry
+		// Keep both log viewports in sync with the rendered grid geometry
 		// so the rewrapped line count (and maxYOffset) stays valid for
 		// scrolling: logPane renders logViewW wide and logViewH tall.
 		wasBottom := m.logView.AtBottom()
+		wasConsoleBottom := m.consoleView.AtBottom()
 		grid := computeDashboardGrid(msg.Width, msg.Height)
 		m.logView.Width = grid.logViewW
 		m.logView.Height = grid.logViewH
@@ -900,6 +1013,14 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logView.GotoBottom()
 		} else {
 			m.logView.SetYOffset(m.logView.YOffset)
+		}
+		m.consoleView.Width = grid.logViewW
+		m.consoleView.Height = grid.logViewH
+		m.consoleView.SetContent(strings.Join(wrapLogLines(m.console, m.consoleView.Width), "\n"))
+		if wasConsoleBottom || len(m.console) == 0 {
+			m.consoleView.GotoBottom()
+		} else {
+			m.consoleView.SetYOffset(m.consoleView.YOffset)
 		}
 		return m, nil
 	case dashboardTickMsg:
@@ -968,6 +1089,10 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+	case dashboardConsoleLineMsg:
+		m = m.appendConsole("[" + msg.label + "] " + msg.line)
+		m.logTab = 0
+		return m, nil
 	case dashboardOpDoneMsg:
 		op, _ := m.popOp(msg.opID)
 		// Staged remove confirms are cleared at op start (y), never here:
@@ -975,6 +1100,17 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// completion.
 		for _, l := range msg.lines {
 			m = m.appendLog("[" + msg.label + "] " + l)
+		}
+		for _, l := range msg.console {
+			m = m.appendConsole(l)
+		}
+		if len(msg.console) > 0 {
+			// Command output landed: flip to the console tab and stick
+			// to the bottom (follow mode) so the result is visible
+			// immediately. A scrolled-up console stays put on later
+			// appends via appendConsole's own follow rule.
+			m.logTab = 0
+			m.consoleView.GotoBottom()
 		}
 		if msg.err != nil {
 			m.statusMsg = msg.label + ": " + msg.err.Error()
@@ -1034,7 +1170,6 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMsg = "copied " + msg.url
 			m = m.appendLog("copied " + msg.url)
 		}
-		return m, nil
 	case dashboardEnvDoneMsg:
 		if msg.err != nil {
 			m.statusMsg = "edit .env: " + msg.err.Error()
@@ -1262,19 +1397,24 @@ func dashboardKeyMsg(s string) tea.KeyMsg {
 }
 
 func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Log pane scrolling always works (menu closed, no pending confirm).
+	// Log pane scrolling always works (menu closed, no pending confirm)
+	// and follows the active tab: console or dashboard.
 	switch msg.String() {
 	case "pgup":
-		m.logView.ScrollUp(max(m.logView.Height, 1))
+		m.activeLogView().ScrollUp(max(m.activeLogView().Height, 1))
 		return m, nil
 	case "pgdown":
-		m.logView.ScrollDown(max(m.logView.Height, 1))
+		m.activeLogView().ScrollDown(max(m.activeLogView().Height, 1))
 		return m, nil
 	case "home":
-		m.logView.GotoTop()
+		m.activeLogView().GotoTop()
 		return m, nil
 	case "end":
-		m.logView.GotoBottom()
+		m.activeLogView().GotoBottom()
+		return m, nil
+	case "t", "T":
+		m.logTab = 1 - m.logTab
+		m.syncActiveLogView()
 		return m, nil
 	}
 	switch msg.String() {
@@ -1329,7 +1469,7 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "up", "k":
 		if m.pane == 2 {
-			m.logView.ScrollUp(1)
+			m.activeLogView().ScrollUp(1)
 			return m, nil
 		}
 		if m.pane == 0 && m.workCursor > 0 {
@@ -1340,7 +1480,7 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "down", "j":
 		if m.pane == 2 {
-			m.logView.ScrollDown(1)
+			m.activeLogView().ScrollDown(1)
 			return m, nil
 		}
 		if m.pane == 0 && m.workCursor < len(m.rows)-1 {
@@ -1624,7 +1764,7 @@ type dashboardKeys struct {
 	Move, Select, Pane, Project                                                                  key.Binding
 	OpUp, OpDown, OpReload, OpPull, OpAdd, OpOpen, OpCopyURL, OpEditEnv, OpRemove, OpForceRemove key.Binding
 	Refresh, Fetch, Mine, MyPRS                                                                  key.Binding
-	LogScroll                                                                                    key.Binding
+	LogScroll, LogTab                                                                             key.Binding
 	Help, Quit                                                                                   key.Binding
 }
 
@@ -1652,8 +1792,9 @@ func newDashboardKeys() dashboardKeys {
 			key.WithKeys("pgup", "pgdown", "home", "end"),
 			key.WithHelp("pgup/pgdn", "scroll log"),
 		),
-		Help: key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "menu")),
-		Quit: key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		LogTab: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "console/dashboard")),
+		Help:   key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "menu")),
+		Quit:   key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 	}
 }
 
@@ -1675,13 +1816,12 @@ func (k dashboardKeys) ActHelp() []key.Binding {
 
 // FullHelp implements help.KeyMap: the grouped key reference. The live
 // `?` Menu popup (dashboardMenuItems) is the interactive surface; this
-// stays as the static grouping for the KeyMap contract.
 func (k dashboardKeys) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Move, k.Select, k.Pane, k.Project},
 		{k.OpUp, k.OpDown, k.OpReload, k.OpPull, k.OpAdd, k.OpOpen, k.OpCopyURL, k.OpEditEnv, k.OpRemove, k.OpForceRemove},
 		{k.Refresh, k.Fetch, k.Mine, k.MyPRS},
-		{k.LogScroll, k.Help, k.Quit},
+		{k.LogScroll, k.LogTab, k.Help, k.Quit},
 	}
 }
 
@@ -1787,6 +1927,8 @@ var (
 	dashPaneTitleFocused = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("51"))
 	dashPaneTitleBlurred = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247"))
 	dashLogTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247"))
+	dashLogTabStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
+	dashLogTabActiveStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("51"))
 
 	dashMenuTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
 	dashMenuSelectedStyle = lipgloss.NewStyle().Bold(true).
@@ -2263,8 +2405,8 @@ func (m dashboardModel) logPane(width, height int) string {
 	// Same chrome as the table panes (border 2 + padding 2): wrapping
 	// wider would let lipgloss clip the tail of every long log line.
 	w := max(width-4, 10)
-	// Outer pane is title (1) + top/bottom borders (2); the rest is viewport.
-	vpH := max(height-3, 3)
+	// Title (1) + tab bar (1) + top/bottom borders (2); the rest is viewport.
+	vpH := max(height-4, 3)
 	if height <= 0 {
 		vpH = m.logView.Height
 		if vpH <= 0 {
@@ -2274,20 +2416,32 @@ func (m dashboardModel) logPane(width, height int) string {
 	vpH = max(vpH, 3)
 	// Wrap to the current pane width so long lines become multiple lines
 	// instead of being cut off horizontally (viewport truncates MaxWidth).
-	wrapped := wrapLogLines(m.log, w)
-	lv := m.logView
+	var wrapped []string
+	var lv viewport.Model
+	if m.logTab == 1 {
+		wrapped = wrapLogLines(m.log, w)
+		lv = m.logView
+	} else if len(m.console) == 0 {
+		wrapped = []string{"(console idle — run u/d/l/x on a worktree to stream output here)"}
+		lv = m.consoleView
+	} else {
+		wrapped = wrapLogLines(m.console, w)
+		lv = m.consoleView
+	}
 	lv.Width = w
 	lv.Height = vpH
 	lv.SetContent(strings.Join(wrapped, "\n"))
 	// Preserve the user's scroll position: only stick to the bottom when
 	// the model view was already there. Never force GotoBottom here —
 	// doing so every frame is what made the log unscrollable.
-	if m.logView.AtBottom() {
+	active := m.activeLogView()
+	if active.AtBottom() {
 		lv.GotoBottom()
 	} else {
-		lv.SetYOffset(m.logView.YOffset)
+		lv.SetYOffset(active.YOffset)
 	}
-	title := "[3]-Logs (3, j/k scroll) - " + fmt.Sprintf("%d lines", len(wrapped))
+	tabBar := m.logTabBar()
+	title := "[3]-Logs (3, j/k scroll, t tab) - " + fmt.Sprintf("%d lines", len(wrapped))
 	if focused {
 		title += " ●"
 	}
@@ -2304,7 +2458,21 @@ func (m dashboardModel) logPane(width, height int) string {
 		titleStyled = dashPaneTitleFocused.Render(title)
 	}
 	return dashboardPaneStyle(focused).Width(width).Render(
-		titleStyled + "\n" + lv.View())
+		titleStyled + "\n" + tabBar + "\n" + lv.View())
+}
+
+// logTabBar renders the console/dashboard tab selector above the log
+// viewport. The active tab is highlighted; `t` toggles. Console is the
+// default: command output from up/down/reload/remove lands there.
+func (m dashboardModel) logTabBar() string {
+	consoleCount := len(m.console)
+	dashCount := len(m.log)
+	consoleLabel := fmt.Sprintf("console (%d)", consoleCount)
+	dashLabel := fmt.Sprintf("dashboard (%d)", dashCount)
+	if m.logTab == 0 {
+		return dashLogTabActiveStyle.Render("● "+consoleLabel) + "  " + dashLogTabStyle.Render("○ "+dashLabel)
+	}
+	return dashLogTabStyle.Render("○ "+consoleLabel) + "  " + dashLogTabActiveStyle.Render("● "+dashLabel)
 }
 
 // dashboardGrid splits the body (header/footer excluded) into the
