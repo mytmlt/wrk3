@@ -61,8 +61,12 @@ func TestLoadPrefs_ParsesFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("WRK3_CONFIG_HOME", dir)
 	path := filepath.Join(dir, "wrk3", "preferences.yaml")
-	os.MkdirAll(filepath.Dir(path), 0o755)
-	os.WriteFile(path, []byte("telemetry:\n  enabled: true\n  prompted: true\n"), 0o600)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("telemetry:\n  enabled: true\n  prompted: true\n"), 0o600); err != nil {
+		t.Fatalf("write prefs: %v", err)
+	}
 	enabled, prompted := LoadPrefs()
 	if !enabled {
 		t.Error("LoadPrefs() enabled = false, want true")
@@ -76,8 +80,12 @@ func TestLoadPrefs_EmptyFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("WRK3_CONFIG_HOME", dir)
 	path := filepath.Join(dir, "wrk3", "preferences.yaml")
-	os.MkdirAll(filepath.Dir(path), 0o755)
-	os.WriteFile(path, []byte{}, 0o600)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte{}, 0o600); err != nil {
+		t.Fatalf("write prefs: %v", err)
+	}
 	enabled, prompted := LoadPrefs()
 	if enabled {
 		t.Error("LoadPrefs() enabled = true for empty file")

@@ -51,8 +51,7 @@ func scrubHomeDir(s string) string {
 }
 
 func scrubAbsPaths(s string) string {
-	return absPathRe.ReplaceAllStringFunc(s, func(match string) string {
-		match = strings.TrimSpace(match)
+	return absPathRe.ReplaceAllStringFunc(s, func(string) string {
 		return " <path>"
 	})
 }

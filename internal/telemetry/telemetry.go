@@ -70,18 +70,18 @@ func ReportIfEnabled(command string, err error) {
 	event.Level = sentry.LevelError
 	event.Message = msg
 	event.Extra = map[string]interface{}{
-		"error_type": et,
-		"message":    msg,
-		"command":    command,
+		"error_type":   et,
+		"message":      msg,
+		"command":      command,
 		"wrk3_version": Version,
-		"goos":       runtime.GOOS,
-		"goarch":     runtime.GOARCH,
+		"goos":         runtime.GOOS,
+		"goarch":       runtime.GOARCH,
 	}
 	event.Tags = map[string]string{
-		"command":     command,
+		"command":      command,
 		"wrk3_version": Version,
-		"goos":        runtime.GOOS,
-		"goarch":      runtime.GOARCH,
+		"goos":         runtime.GOOS,
+		"goarch":       runtime.GOARCH,
 	}
 	event.User = sentry.User{}
 	event.ServerName = ""

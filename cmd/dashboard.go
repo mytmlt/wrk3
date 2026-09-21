@@ -162,36 +162,36 @@ type dashboardOp struct {
 
 // dashboardModel is the BubbleTea model for the whole dashboard.
 type dashboardModel struct {
-	projects     []*dashboardProject
-	cur          int
-	rows         []dashboardRow
-	branches     []branchEntry
-	workCursor   int
-	brCursor     int
-	pane         int // 0 = worktrees, 1 = branches
-	workSel      map[string]bool
-	brSel        map[string]bool
-	log          []string
-	statusMsg    string
-	proxyInfo    string // gateway status for the meta line (set on refresh)
-	fetchedAt    time.Time
-	ops          []dashboardOp
-	nextOpID     int
-	confirm      string // pending confirm label, "" when none
-	pendingX     []string
-	pendingForce bool // true when the pending remove confirm is a --force remove
-	mine         bool
-	authors      []string
-	myprs        bool
-	poll         time.Duration
-	width        int
-	height       int
-	spinner      spinner.Model
-	showMenu     bool
-	menuCursor   int
-	keys         dashboardKeys
-	help         help.Model
-	logView      viewport.Model
+	projects        []*dashboardProject
+	cur             int
+	rows            []dashboardRow
+	branches        []branchEntry
+	workCursor      int
+	brCursor        int
+	pane            int // 0 = worktrees, 1 = branches
+	workSel         map[string]bool
+	brSel           map[string]bool
+	log             []string
+	statusMsg       string
+	proxyInfo       string // gateway status for the meta line (set on refresh)
+	fetchedAt       time.Time
+	ops             []dashboardOp
+	nextOpID        int
+	confirm         string // pending confirm label, "" when none
+	pendingX        []string
+	pendingForce    bool // true when the pending remove confirm is a --force remove
+	mine            bool
+	authors         []string
+	myprs           bool
+	poll            time.Duration
+	width           int
+	height          int
+	spinner         spinner.Model
+	showMenu        bool
+	menuCursor      int
+	keys            dashboardKeys
+	help            help.Model
+	logView         viewport.Model
 	telemetryPrompt bool
 	telemetryCursor int // 0 = No (default), 1 = Yes
 }
