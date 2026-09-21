@@ -62,13 +62,33 @@ func ReportIfEnabled(command string, err error) {
 		return
 	}
 
+	event := newErrorEvent(command, err)
+	if event == nil {
+		return
+	}
+
+	hub := sentry.CurrentHub()
+	hub.CaptureEvent(event)
+}
+
+func newErrorEvent(command string, err error) *sentry.Event {
+	if err == nil {
+		return nil
+	}
 	msg := Scrub(err)
 	if msg == "" {
-		return
+		return nil
 	}
 
 	et := fmt.Sprintf("%T", err)
 	et = strings.TrimPrefix(et, "*")
+	et = scrubString(et)
+
+	st := sentry.ExtractStacktrace(err)
+	if st == nil {
+		st = sentry.NewStacktrace()
+	}
+	scrubStacktrace(st)
 
 	event := sentry.NewEvent()
 	event.Level = sentry.LevelError
@@ -89,9 +109,52 @@ func ReportIfEnabled(command string, err error) {
 	}
 	event.User = sentry.User{}
 	event.ServerName = ""
+	event.Exception = []sentry.Exception{{
+		Type:       et,
+		Value:      msg,
+		Stacktrace: st,
+	}}
+	event.Threads = []sentry.Thread{{
+		ID:         "0",
+		Name:       "main",
+		Current:    true,
+		Crashed:    true,
+		Stacktrace: st,
+	}}
+	return event
+}
 
-	hub := sentry.CurrentHub()
-	hub.CaptureEvent(event)
+func beforeSend(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
+	if CheckDisabled() {
+		return nil
+	}
+	enabled, _ := LoadPrefs()
+	if !enabled {
+		return nil
+	}
+	if event == nil {
+		return nil
+	}
+	event.Message = scrubString(event.Message)
+	if event.Message == "" {
+		return nil
+	}
+	for i := range event.Exception {
+		event.Exception[i].Type = scrubString(event.Exception[i].Type)
+		event.Exception[i].Value = scrubString(event.Exception[i].Value)
+		scrubStacktrace(event.Exception[i].Stacktrace)
+	}
+	if event.Extra != nil {
+		if m, ok := event.Extra["message"].(string); ok {
+			event.Extra["message"] = scrubString(m)
+		}
+	}
+	for i := range event.Threads {
+		scrubStacktrace(event.Threads[i].Stacktrace)
+	}
+	event.User = sentry.User{}
+	event.ServerName = ""
+	return event
 }
 
 func Init() {
@@ -104,19 +167,7 @@ func Init() {
 		TracesSampleRate: 0,
 		SendDefaultPII:   false,
 		ServerName:       "",
-		BeforeSend: func(event *sentry.Event, hint *sentry.EventHint) *sentry.Event {
-			if CheckDisabled() {
-				return nil
-			}
-			enabled, _ := LoadPrefs()
-			if !enabled {
-				return nil
-			}
-			if event.Message == "" {
-				return nil
-			}
-			return event
-		},
+		BeforeSend:       beforeSend,
 	}); err != nil {
 		_ = err
 	}

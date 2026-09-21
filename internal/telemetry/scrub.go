@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/getsentry/sentry-go"
 )
 
 var (
@@ -56,4 +58,37 @@ func scrubAbsPaths(s string) string {
 	return absPathRe.ReplaceAllStringFunc(s, func(string) string {
 		return " <path>"
 	})
+}
+
+func scrubStacktrace(st *sentry.Stacktrace) {
+	if st == nil {
+		return
+	}
+	for i := range st.Frames {
+		scrubFrame(&st.Frames[i])
+	}
+}
+
+func scrubFrame(f *sentry.Frame) {
+	if f == nil {
+		return
+	}
+	f.Filename = scrubFrameField(f.Filename)
+	f.AbsPath = scrubFrameField(f.AbsPath)
+	f.Module = scrubFrameField(f.Module)
+	f.Function = scrubFrameField(f.Function)
+	f.Package = scrubFrameField(f.Package)
+	f.Vars = nil
+	f.ContextLine = ""
+	f.PreContext = nil
+	f.PostContext = nil
+}
+
+func scrubFrameField(s string) string {
+	s = scrubHomeDir(s)
+	s = uuidRe.ReplaceAllString(s, "<uuid>")
+	s = hexHashRe.ReplaceAllString(s, "<hash>")
+	s = emailRe.ReplaceAllString(s, "<email>")
+	s = ipv4Re.ReplaceAllString(s, "<ip>")
+	return s
 }

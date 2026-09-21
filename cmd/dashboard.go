@@ -2234,7 +2234,7 @@ func (m dashboardModel) telemetryPromptView(width int) string {
 	lines := []string{
 		"",
 		"Help improve wrk3 by sending anonymous error reports.",
-		"Only error types, scrubbed messages, and command names are sent.",
+		"Only error types, scrubbed messages, scrubbed stacktraces, and command names are sent.",
 		"No repositories, branches, secrets, or personal data.",
 		"",
 	}
