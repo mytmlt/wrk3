@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Error reports now include a PII-free exception stacktrace and a crashed
+  main thread (module, function, line; no locals, source context, user,
+  or server name) so issues group by code location.
+
 - Error reports now replace Go-quoted names (branch, slug, worktree) with
   `"<name>"` so leaked identifiers cannot appear in remote payloads.
   Local command and dashboard error text is unchanged.

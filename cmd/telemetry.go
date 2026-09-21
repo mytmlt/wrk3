@@ -49,6 +49,7 @@ var telemetryEnableCmd = &cobra.Command{
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "The following data is sent when an error occurs:")
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "  - Error type (Go type name)")
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "  - Scrubbed error message (no paths, branches, IPs, emails, or secrets)")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "  - Scrubbed stacktrace (module, function, line; no locals or source)")
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "  - Command name (e.g. up, never arguments or flags)")
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "  - wrk3 version, OS, and architecture")
 		_, _ = fmt.Fprintln(cmd.OutOrStdout())

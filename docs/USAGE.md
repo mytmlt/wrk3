@@ -349,7 +349,9 @@ Each test builds a throwaway git repo in a temp dir, writes a minimal
 ## Telemetry
 
 `wrk3` includes opt-in anonymous error reporting via Sentry. Reporting is
-off by default and is never enabled without explicit consent.
+off by default and is never enabled without explicit consent. Enabled
+reports include a scrubbed stacktrace (module, function, line; no locals,
+source context, paths, or personal data) so issues can group by location.
 
 **First run:** the dashboard shows a one-time prompt (default No). `y`
 enables; `n`/`esc` leaves off. Both states persist.

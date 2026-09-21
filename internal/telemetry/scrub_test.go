@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/getsentry/sentry-go"
 )
 
 func TestScrub_NilError(t *testing.T) {
@@ -136,6 +138,54 @@ func TestScrub_EmptyMessage(t *testing.T) {
 	got := Scrub(err)
 	if got != "" {
 		t.Errorf("Scrub of empty error should be empty; got %q", got)
+	}
+}
+
+func TestScrubFrame_RedactsPIIKeepsLocation(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Skip("no home dir")
+	}
+	f := sentry.Frame{
+		Filename:    home + "/src/user@example.com/192.168.1.1/550e8400-e29b-41d4-a716-446655440000/abc123def456/foo.go",
+		AbsPath:     home + "/src/foo.go",
+		Module:      "github.com/mytmlt/wrk3/internal/telemetry",
+		Function:    "ReportIfEnabled",
+		Package:     home + "/pkg",
+		Lineno:      49,
+		Colno:       12,
+		InApp:       true,
+		Vars:        map[string]interface{}{"secret": "value"},
+		ContextLine: "var secret = 1",
+		PreContext:  []string{"before"},
+		PostContext: []string{"after"},
+	}
+	scrubFrame(&f)
+	if strings.Contains(f.Filename, home) || strings.Contains(f.AbsPath, home) || strings.Contains(f.Package, home) {
+		t.Errorf("home dir still present: filename=%q abs=%q pkg=%q", f.Filename, f.AbsPath, f.Package)
+	}
+	if !strings.Contains(f.Filename, "$HOME") {
+		t.Errorf("filename missing $HOME: %q", f.Filename)
+	}
+	for _, tok := range []string{"user@example.com", "192.168.1.1", "550e8400-e29b-41d4-a716-446655440000", "abc123def456"} {
+		if strings.Contains(f.Filename, tok) {
+			t.Errorf("filename still contains %q: %q", tok, f.Filename)
+		}
+	}
+	if f.Module != "github.com/mytmlt/wrk3/internal/telemetry" {
+		t.Errorf("Module = %q, want kept", f.Module)
+	}
+	if f.Function != "ReportIfEnabled" {
+		t.Errorf("Function = %q, want kept", f.Function)
+	}
+	if f.Lineno != 49 {
+		t.Errorf("Lineno = %d, want 49", f.Lineno)
+	}
+	if f.Vars != nil {
+		t.Errorf("Vars = %#v, want nil", f.Vars)
+	}
+	if f.ContextLine != "" || f.PreContext != nil || f.PostContext != nil {
+		t.Errorf("source context not cleared: line=%q pre=%v post=%v", f.ContextLine, f.PreContext, f.PostContext)
 	}
 }
 

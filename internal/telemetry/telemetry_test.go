@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/getsentry/sentry-go"
 )
 
 func TestPrefsPath_Default(t *testing.T) {
@@ -201,4 +203,140 @@ func TestInit_NoDSN(t *testing.T) {
 func TestInit_WithDSN(t *testing.T) {
 	DSN = "https://key@o0.ingest.sentry.io/project"
 	Init()
+}
+
+func TestNewErrorEvent_ExceptionAndThread(t *testing.T) {
+	event := newErrorEvent("status", errSentinel("something went wrong"))
+	if event == nil {
+		t.Fatal("newErrorEvent returned nil")
+	}
+	if !event.User.IsEmpty() {
+		t.Errorf("User = %+v, want empty", event.User)
+	}
+	if event.ServerName != "" {
+		t.Errorf("ServerName = %q, want empty", event.ServerName)
+	}
+	if len(event.Exception) != 1 {
+		t.Fatalf("Exception len = %d, want 1", len(event.Exception))
+	}
+	if len(event.Threads) != 1 {
+		t.Fatalf("Threads len = %d, want 1", len(event.Threads))
+	}
+	th := event.Threads[0]
+	if th.Name != "main" {
+		t.Errorf("thread Name = %q, want main", th.Name)
+	}
+	if th.ID != "0" {
+		t.Errorf("thread ID = %q, want 0", th.ID)
+	}
+	if !th.Current {
+		t.Error("thread Current = false, want true")
+	}
+	if !th.Crashed {
+		t.Error("thread Crashed = false, want true")
+	}
+	st := event.Exception[0].Stacktrace
+	if st == nil || len(st.Frames) == 0 {
+		t.Fatal("exception stacktrace is empty")
+	}
+	if th.Stacktrace != st {
+		t.Error("thread and exception must share the same stacktrace")
+	}
+	for i, f := range st.Frames {
+		if f.Vars != nil {
+			t.Errorf("frame %d Vars = %#v, want nil", i, f.Vars)
+		}
+		if f.ContextLine != "" {
+			t.Errorf("frame %d ContextLine = %q, want empty", i, f.ContextLine)
+		}
+		if f.PreContext != nil {
+			t.Errorf("frame %d PreContext = %#v, want nil", i, f.PreContext)
+		}
+		if f.PostContext != nil {
+			t.Errorf("frame %d PostContext = %#v, want nil", i, f.PostContext)
+		}
+	}
+}
+
+func TestBeforeSend_ScrubsMessageAndFrames(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Skip("no home dir")
+	}
+	dir := t.TempDir()
+	t.Setenv("WRK3_CONFIG_HOME", dir)
+	t.Setenv("WRK3_NO_TELEMETRY", "")
+	if err := SavePrefs(true, true); err != nil {
+		t.Fatalf("SavePrefs: %v", err)
+	}
+
+	event := sentry.NewEvent()
+	event.Message = "failed at " + home + "/.config/wrk3.yaml"
+	event.User = sentry.User{Username: "alice"}
+	event.ServerName = "devbox"
+	event.Exception = []sentry.Exception{{
+		Type:  "pathError",
+		Value: "open " + home + "/secret",
+		Stacktrace: &sentry.Stacktrace{Frames: []sentry.Frame{{
+			Filename: home + "/src/foo.go",
+			AbsPath:  home + "/src/foo.go",
+			Module:   "github.com/mytmlt/wrk3/internal/telemetry",
+			Function: "ReportIfEnabled",
+			Lineno:   49,
+		}}},
+	}}
+
+	got := beforeSend(event, nil)
+	if got == nil {
+		t.Fatal("beforeSend dropped event")
+	}
+	if strings.Contains(got.Message, home) {
+		t.Errorf("message still contains home dir: %q", got.Message)
+	}
+	if !strings.Contains(got.Message, "$HOME") {
+		t.Errorf("message missing $HOME: %q", got.Message)
+	}
+	if !got.User.IsEmpty() {
+		t.Errorf("User = %+v, want empty", got.User)
+	}
+	if got.ServerName != "" {
+		t.Errorf("ServerName = %q, want empty", got.ServerName)
+	}
+	frame := got.Exception[0].Stacktrace.Frames[0]
+	if strings.Contains(frame.Filename, home) || strings.Contains(frame.AbsPath, home) {
+		t.Errorf("frame still contains home dir: filename=%q abs=%q", frame.Filename, frame.AbsPath)
+	}
+	if !strings.Contains(frame.Filename, "$HOME") {
+		t.Errorf("frame filename missing $HOME: %q", frame.Filename)
+	}
+}
+
+func TestBeforeSend_DropsWhenDisabledOrEmpty(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("WRK3_CONFIG_HOME", dir)
+	t.Setenv("WRK3_NO_TELEMETRY", "")
+	if err := SavePrefs(false, true); err != nil {
+		t.Fatalf("SavePrefs: %v", err)
+	}
+	event := sentry.NewEvent()
+	event.Message = "something went wrong"
+	if got := beforeSend(event, nil); got != nil {
+		t.Error("beforeSend should drop when prefs are disabled")
+	}
+
+	if err := SavePrefs(true, true); err != nil {
+		t.Fatalf("SavePrefs: %v", err)
+	}
+	event = sentry.NewEvent()
+	event.Message = ""
+	if got := beforeSend(event, nil); got != nil {
+		t.Error("beforeSend should drop when message is empty")
+	}
+
+	t.Setenv("WRK3_NO_TELEMETRY", "1")
+	event = sentry.NewEvent()
+	event.Message = "something went wrong"
+	if got := beforeSend(event, nil); got != nil {
+		t.Error("beforeSend should drop when kill-switch is on")
+	}
 }

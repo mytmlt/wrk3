@@ -42,6 +42,7 @@ Treat `wrk3.yaml` like a script: only run configs you trust, and review
 The built-in Sentry DSN is a public client identifier (not a secret) — same
 practice as `brew`, `gh`, `sentry-cli`, and frontend JS SDKs. Privacy
 controls are on the payload side: the client scrubs paths, branches, emails,
-IPs, and secrets before sending, and only sends when explicitly enabled.
+IPs, and secrets before sending, attaches a PII-free stacktrace (module,
+function, line; no locals or source), and only sends when explicitly enabled.
 `WRK3_SENTRY_DSN` overrides the DSN (forks/self-builds can strip it by
 building with an empty DSN).
