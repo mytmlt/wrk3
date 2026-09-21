@@ -13,6 +13,7 @@ coverage.html
 
 # Local project configs (personal paths — never commit)
 wrk3.*.local.yaml
+opencode.json
 .wrk3-state.json
 .wrk3-log.jsonl
 .wrk3-log.jsonl.1
