@@ -35,6 +35,7 @@ builds:
       - -s -w -X github.com/mytmlt/wrk3/cmd.Version={{ .Version }}
         -X github.com/mytmlt/wrk3/cmd.Commit={{ .Commit }}
         -X github.com/mytmlt/wrk3/cmd.Date={{ .CommitDate }}
+        -X github.com/mytmlt/wrk3/internal/telemetry.DSN={{ .Env.SENTRY_DSN }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:

@@ -210,6 +210,20 @@ errors ambiguous instead of guessing.
 
 Runtime state (`<worktreeBase>/.wrk3-state.json`) lives next to the repo.
 
+## User preferences file
+
+Global preferences live in `~/.config/wrk3/preferences.yaml` (XDG-aware,
+`$WRK3_CONFIG_HOME` override, same path resolution as the project registry).
+Current use:
+
+| Field | Type | Default | Description |
+| ----- | ---- | ------- | ----------- |
+| `telemetry.enabled` | bool | false | Anonymous error reporting opt-in |
+| `telemetry.prompted` | bool | false | Whether the first-run dashboard prompt has been shown |
+
+Managed by `wrk3 telemetry enable|disable|status`. Missing or empty file
+means both fields are false.
+
 ## Local configs
 
 Start from `wrk3.yaml.example` (committed template). Copy it to `wrk3.yaml`

@@ -229,6 +229,7 @@ func dashboardMenuItems() []dashboardMenuItem {
 		{Key: "2", Desc: "focus branches pane", Run: "2"},
 		{Key: "3", Desc: "focus log pane", Run: "3"},
 		{Key: "tab", Desc: "switch project", Run: "tab"},
+		{Key: "T", Desc: "toggle error reporting", Run: "telemetry"},
 		{Key: "q", Desc: "quit", Run: "q"},
 	}
 }

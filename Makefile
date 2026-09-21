@@ -27,10 +27,12 @@ INSTALL_DIR := $(DESTDIR)$(PREFIX)/bin
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+SENTRY_DSN ?= 
 LDFLAGS := -s -w \
 	-X $(MODULE)/cmd.Version=$(VERSION) \
 	-X $(MODULE)/cmd.Commit=$(COMMIT) \
-	-X $(MODULE)/cmd.Date=$(DATE)
+	-X $(MODULE)/cmd.Date=$(DATE) \
+	-X $(MODULE)/internal/telemetry.DSN=$(SENTRY_DSN)
 
 GO      ?= go
 GORELEASER ?= goreleaser
