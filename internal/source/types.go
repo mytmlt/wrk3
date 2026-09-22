@@ -5,7 +5,22 @@
 // unknown types error listing available options.
 package source
 
-import "time"
+import (
+	"time"
+)
+
+// ErrDirtyWorktree is returned by Remove when the checkout has modified
+// or untracked files and force is false. Callers should pass force=true
+// or surface the error; it is an expected user condition, not a crash.
+var ErrDirtyWorktree = dirtyWorktreeError{}
+
+type dirtyWorktreeError struct{}
+
+func (dirtyWorktreeError) Error() string {
+	return "contains modified or untracked files, use --force to delete it"
+}
+
+func (dirtyWorktreeError) SkipTelemetry() {}
 
 // WorktreeInfo describes one entry from `git worktree list --porcelain`.
 type WorktreeInfo struct {
@@ -112,6 +127,7 @@ type Source interface {
 	// <base>). Base is a start point like "<remote>/<default>" or "HEAD".
 	AddNew(repoPath, branch, worktreePath, base string) error
 	// Remove deletes the worktree at worktreePath (git worktree remove).
+	// Without force, a dirty checkout returns ErrDirtyWorktree.
 	Remove(repoPath, worktreePath string, force bool) error
 	// Pull fast-forwards/merges the worktree's branch from its upstream
 	// (git -C worktreePath pull [--rebase|--ff-only]). Rebase and FFOnly

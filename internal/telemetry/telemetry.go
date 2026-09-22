@@ -48,7 +48,7 @@ func activeDSN() string {
 }
 
 func ReportIfEnabled(command string, err error) {
-	if err == nil {
+	if !shouldReport(err) {
 		return
 	}
 	if CheckDisabled() {
@@ -70,6 +70,14 @@ func ReportIfEnabled(command string, err error) {
 
 	hub := sentry.CurrentHub()
 	hub.CaptureEvent(event)
+}
+
+func shouldReport(err error) bool {
+	if err == nil {
+		return false
+	}
+	var s interface{ SkipTelemetry() }
+	return !errors.As(err, &s)
 }
 
 func newErrorEvent(command string, err error) *sentry.Event {

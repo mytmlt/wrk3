@@ -334,6 +334,7 @@ Each test builds a throwaway git repo in a temp dir, writes a minimal
 | `no wrk3.yaml found ...` | Not inside a repo checkout, or config named differently — `cd` in or pass `-f <path>`. |
 | `unknown worktree "foo"` | Name/slug not in state — check `wrk3 status`. |
 | `stale` / `?` in status | Worktree directory deleted out-of-band; `remove --force` to clean state, or re-`add`. |
+| `contains modified or untracked files, use --force to delete it` | Clean `remove` / dashboard `x` refuses dirty checkouts so uncommitted work is not deleted. Use `wrk3 remove --force <branch>` or dashboard `X`. |
 | deleted `.wrk3-state.json` | Self-heals: next `status`/`ls`/`up`/`down`/dashboard run re-adopts on-disk worktrees (ports from `.env` when intact). |
 | `already checked out at ... (use add --local ...)` | On-disk worktree missing from state (e.g. state file deleted); `add <branch>` adopts it automatically, or use `add --local`. |
 | `main worktree ports collide with worktree "x" ...` | Legacy guard only: current builds auto-migrate a managed allocation overlapping main's `ports.base` ports to the lowest free range allocation on the next `status`/`pull`/`up`/`down`/dashboard run — no manual `remove`+re-`add` needed. |

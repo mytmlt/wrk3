@@ -193,6 +193,28 @@ func TestReportIfEnabled_NilError(t *testing.T) {
 	ReportIfEnabled("test", nil)
 }
 
+type skipSentinel struct{}
+
+func (skipSentinel) Error() string {
+	return "contains modified or untracked files, use --force to delete it"
+}
+func (skipSentinel) SkipTelemetry() {}
+
+func TestShouldReport(t *testing.T) {
+	if shouldReport(nil) {
+		t.Error("nil should not report")
+	}
+	if !shouldReport(errSentinel("something went wrong")) {
+		t.Error("plain error should report")
+	}
+	if shouldReport(skipSentinel{}) {
+		t.Error("SkipTelemetry error should not report")
+	}
+	if shouldReport(fmt.Errorf("remove worktree %q: %w", "feat", skipSentinel{})) {
+		t.Error("wrapped SkipTelemetry error should not report")
+	}
+}
+
 func TestFlush_Noop(t *testing.T) {
 	Flush()
 }

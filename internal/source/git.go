@@ -227,7 +227,17 @@ func (g *GitSource) Remove(repoPath, worktreePath string, force bool) error {
 	}
 	args = append(args, worktreePath)
 	_, err := g.run(repoPath, args...)
+	if err != nil && !force && isDirtyWorktreeRemove(err) {
+		return ErrDirtyWorktree
+	}
 	return err
+}
+
+func isDirtyWorktreeRemove(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "modified or untracked files")
 }
 
 // Pull runs git pull inside the worktree at worktreePath (fast-forwards or

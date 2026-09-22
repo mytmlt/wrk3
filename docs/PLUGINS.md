@@ -93,6 +93,8 @@ Semantics (match `internal/source/git.go`):
   dir with a new local branch starting at `base`
   (`worktree add -b <branch> <path> <base>`).
 - `Remove(repoPath, worktreePath string, force bool)` — delete it.
+  Without force, a dirty checkout returns `source.ErrDirtyWorktree`
+  (expected user condition; not reported to telemetry).
 - `Pull(worktreePath string, opts PullOptions)` — pull the worktree's
   branch from its upstream (git: `-C <worktreePath> pull`
   with `--rebase`/`--ff-only` from `opts`; the two flags are mutually

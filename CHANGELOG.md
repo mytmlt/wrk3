@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `remove` / dashboard `x` on a dirty worktree now returns
+  `source.ErrDirtyWorktree` (`contains modified or untracked files, use
+  --force to delete it`) instead of the raw `git worktree remove` fatal.
+  That is an expected user condition (use `remove --force` or dashboard
+  `X`) and is no longer reported to Sentry.
+
 - Error reports now use the innermost meaningful error type (instead of the
   generic `fmt.wrapError` wrapper) when grouping in Sentry, so issues from
   unrelated commands no longer look alike. The reported message and

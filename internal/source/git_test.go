@@ -1,6 +1,8 @@
 package source
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -227,6 +229,46 @@ func TestRemove_ForceDirtyWorktree(t *testing.T) {
 	}
 	if err := src.Remove(repo, wt, true); err != nil {
 		t.Fatalf("force Remove of dirty worktree: %v", err)
+	}
+}
+
+func TestRemove_DirtyWithoutForce(t *testing.T) {
+	repo := initRepo(t)
+	src := &GitSource{}
+	runGit(t, repo, "branch", "dirty")
+	wt := filepath.Join(t.TempDir(), "wt-dirty-noforce")
+	if err := src.Add(repo, "dirty", wt, "origin"); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wt, "new.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := src.Remove(repo, wt, false)
+	if err == nil {
+		t.Fatal("expected error for dirty worktree without force")
+	}
+	if !errors.Is(err, ErrDirtyWorktree) {
+		t.Fatalf("Remove dirty without force: %v, want ErrDirtyWorktree", err)
+	}
+	wrapped := fmt.Errorf("remove worktree %q: %w", "dirty", err)
+	if !errors.Is(wrapped, ErrDirtyWorktree) {
+		t.Fatalf("wrapped dirty error: %v, want ErrDirtyWorktree", wrapped)
+	}
+	if _, statErr := os.Stat(wt); statErr != nil {
+		t.Fatalf("dirty worktree should still exist: %v", statErr)
+	}
+}
+
+func TestIsDirtyWorktreeRemove(t *testing.T) {
+	if isDirtyWorktreeRemove(nil) {
+		t.Fatal("nil should not match")
+	}
+	if isDirtyWorktreeRemove(fmt.Errorf("exit status 128")) {
+		t.Fatal("unrelated error should not match")
+	}
+	err := fmt.Errorf("git worktree remove /tmp/wt: exit status 128: fatal: '/tmp/wt' contains modified or untracked files, use --force to delete it")
+	if !isDirtyWorktreeRemove(err) {
+		t.Fatal("expected match for git dirty-worktree fatal")
 	}
 }
 
