@@ -48,6 +48,7 @@ func isMainPath(r *resolved, path string) bool {
 // It returns (nil, nil) when there is no applicable main checkout:
 // git list fails, root not listed, bare repo, or detached HEAD.
 // It returns an error on port/compose-project collisions with state.
+// For the "none" runner, ports and compose project are nil/empty.
 func mainRecord(r *resolved, recs []ports.WorktreeRecord) (*ports.WorktreeRecord, error) {
 	infos, err := r.src.List(r.cfg.RepoPath())
 	if err != nil {
@@ -78,6 +79,15 @@ func mainRecord(r *resolved, recs []ports.WorktreeRecord) (*ports.WorktreeRecord
 	}
 	if existing := findRecord(recs, slug); existing != nil {
 		return nil, fmt.Errorf("main worktree slug %q for branch %q collides with branch %q", slug, branch, existing.Branch)
+	}
+	noPorts := r.cfg.Runner.Type == "none" || r.cfg.Ports.Base == nil
+	if noPorts {
+		return &ports.WorktreeRecord{
+			Branch:  branch,
+			Slug:    slug,
+			AbsPath: repoRoot,
+			Index:   mainWorktreeIndex,
+		}, nil
 	}
 	alloc := r.cfg.Allocator()
 	allocation := alloc.BaseAllocation()
@@ -209,7 +219,11 @@ func recordsForDisplay(cfg *config.Config) ([]ports.WorktreeRecord, error) {
 // managed worktrees as well as the implicit main checkout (for which the
 // seed is itself, so only ensure happens). Managed <NAME>_PORT keys are
 // always rewritten to rec's allocation; user-owned keys stay intact.
+// For the "none" runner (no ports), this is a no-op.
 func ensureWorktreeEnv(r *resolved, rec ports.WorktreeRecord) error {
+	if len(rec.Ports) == 0 {
+		return nil
+	}
 	seed := filepath.Join(r.cfg.RepoPath(), ports.EnvFileName)
 	if _, err := ports.EnsureInherited(rec.AbsPath, seed, rec.Ports); err != nil {
 		return fmt.Errorf("write .env for worktree %q: %w", rec.Branch, err)

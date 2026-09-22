@@ -90,15 +90,19 @@ func removeOne(cmd *cobra.Command, r *resolved, recs []ports.WorktreeRecord, bra
 		return err
 	}
 	env := envForWorktree(r.cfg, *rec)
-	if err := rn.Down(cmd.Context(), rec.AbsPath, env); err != nil {
-		warnf(cmd, "compose down for %q: %v", rec.Branch, err)
+	if r.cfg.Runner.Type != "none" {
+		if err := rn.Down(cmd.Context(), rec.AbsPath, env); err != nil {
+			warnf(cmd, "compose down for %q: %v", rec.Branch, err)
+		}
 	}
 	// The worktree's .env may hold user secrets alongside wrk3-managed
 	// port keys, so strip only the managed keys instead of deleting the
 	// file. StripManaged deletes it when nothing but managed keys remain,
 	// keeping plain remove working on otherwise clean worktrees.
-	if _, err := ports.StripManaged(filepath.Join(rec.AbsPath, ports.EnvFileName), rec.Ports); err != nil {
-		warnf(cmd, "strip managed .env keys for %q: %v", rec.Branch, err)
+	if len(rec.Ports) > 0 {
+		if _, err := ports.StripManaged(filepath.Join(rec.AbsPath, ports.EnvFileName), rec.Ports); err != nil {
+			warnf(cmd, "strip managed .env keys for %q: %v", rec.Branch, err)
+		}
 	}
 	if err := r.src.Remove(r.cfg.RepoPath(), rec.AbsPath, removeForce); err != nil {
 		if !removeForce {

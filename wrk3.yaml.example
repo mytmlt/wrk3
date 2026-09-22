@@ -10,6 +10,19 @@ source:
     # Missing sources skip with a warning; existing files are never
     # overwritten. Example:
     # copy: [".env.local", "certs/", "storage/*.sqlite"]
+# For CLI-only repos (no compose stack): set runner.type: none.
+# No ports, no .env, no compose up/down — just worktree isolation.
+# `up` runs setup entries then the run entry; `down` runs stop.
+# `status` shows WORKTREE/BRANCH/STATUS (no ports or compose project).
+# Example:
+# runner:
+#   type: none
+# entry:
+#   setup: []
+#   run: ""
+#   stop: ""
+#   reload: []
+# For compose-backed repos (docker or podman):
 runner:
   type: docker
   docker:

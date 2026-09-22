@@ -531,7 +531,8 @@ func addNewOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator
 // add), then copy includes + .env ensure + state append. Shared by addOne
 // (existing branch) and addNewOne (new branch from a base). Index stays a
 // monotonic id (max+1); ports come from the lowest free range allocation
-// (gap reuse, OS-aware).
+// (gap reuse, OS-aware). For the "none" runner (no ports), port allocation
+// and .env management are skipped.
 func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, branch string, create func(path string) error) ([]string, error) {
 	slug := source.Slugify(branch)
 	path := worktreePath(r.base, slug)
@@ -549,11 +550,17 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 		}
 	}
 	idx := nextIndex(*recs)
-	allocation, err := assignPorts(*alloc, *recs)
-	if err != nil {
-		return nil, fmt.Errorf("add worktree %q: %w", branch, err)
+	noPorts := r.cfg.Runner.Type == "none" || r.cfg.Ports.Base == nil
+	var allocation map[string]int
+	var composeProject string
+	if !noPorts {
+		var err error
+		allocation, err = assignPorts(*alloc, *recs)
+		if err != nil {
+			return nil, fmt.Errorf("add worktree %q: %w", branch, err)
+		}
+		composeProject = r.cfg.ComposeOptions(slug).ProjectName()
 	}
-	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
 	if err := create(path); err != nil {
 		return nil, fmt.Errorf("add worktree %q: %w", branch, err)
 	}
@@ -564,10 +571,12 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 	} else {
 		warns = append(warns, copyWarns...)
 	}
-	if err := ensureWorktreeEnv(r, ports.WorktreeRecord{
-		Branch: branch, Slug: slug, AbsPath: path, Ports: allocation,
-	}); err != nil {
-		return nil, err
+	if !noPorts {
+		if err := ensureWorktreeEnv(r, ports.WorktreeRecord{
+			Branch: branch, Slug: slug, AbsPath: path, Ports: allocation,
+		}); err != nil {
+			return nil, err
+		}
 	}
 	*recs = append(*recs, ports.WorktreeRecord{
 		Branch:         branch,
@@ -591,7 +600,8 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 // repo-root checkout's .env; managed port keys are overwritten to this
 // worktree's allocation. No git worktree add — the checkout
 // already exists. Index stays monotonic; ports are the lowest free range
-// allocation (gap reuse, OS-aware).
+// allocation (gap reuse, OS-aware). For the "none" runner (no ports), port
+// allocation and .env management are skipped.
 func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator, branch, path string) ([]string, error) {
 	slug := source.Slugify(branch)
 	if existing := findRecord(*recs, slug); existing != nil && existing.Branch != branch {
@@ -601,15 +611,21 @@ func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator,
 		return nil, fmt.Errorf("adopt worktree %q: path %s missing or not a directory", branch, path)
 	}
 	idx := nextIndex(*recs)
-	allocation, err := assignPorts(*alloc, *recs)
-	if err != nil {
-		return nil, fmt.Errorf("adopt worktree %q: %w", branch, err)
-	}
-	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
-	if err := ensureWorktreeEnv(r, ports.WorktreeRecord{
-		Branch: branch, Slug: slug, AbsPath: path, Ports: allocation,
-	}); err != nil {
-		return nil, err
+	noPorts := r.cfg.Runner.Type == "none" || r.cfg.Ports.Base == nil
+	var allocation map[string]int
+	var composeProject string
+	if !noPorts {
+		var err error
+		allocation, err = assignPorts(*alloc, *recs)
+		if err != nil {
+			return nil, fmt.Errorf("adopt worktree %q: %w", branch, err)
+		}
+		composeProject = r.cfg.ComposeOptions(slug).ProjectName()
+		if err := ensureWorktreeEnv(r, ports.WorktreeRecord{
+			Branch: branch, Slug: slug, AbsPath: path, Ports: allocation,
+		}); err != nil {
+			return nil, err
+		}
 	}
 	*recs = append(*recs, ports.WorktreeRecord{
 		Branch:         branch,

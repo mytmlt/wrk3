@@ -184,8 +184,12 @@ func (c *Config) StatePath() string {
 	return ports.StatePath(c.AbsWorktreeBase())
 }
 
-// Allocator returns the port allocator for this config.
+// Allocator returns the port allocator for this config (nil-safe for
+// runner.type "none" where ports may be unconfigured).
 func (c *Config) Allocator() ports.Allocator {
+	if c.Ports.Base == nil || c.Ports.Ranges == nil {
+		return ports.Allocator{Base: nil, Ranges: nil}
+	}
 	return ports.Allocator{Base: c.Ports.Base, Ranges: c.Ports.Ranges}
 }
 
@@ -233,8 +237,12 @@ func proxyURLFor(domain, addr, slug string) string {
 }
 
 // ComposeOptions builds runner.Options for slug from the selected
-// compose backend (docker or podman).
+// compose backend (docker or podman). For the "none" runner it returns
+// empty Options (no compose project).
 func (c *Config) ComposeOptions(slug string) runner.Options {
+	if c.Runner.Type == "none" {
+		return runner.Options{Slug: slug}
+	}
 	if c.Runner.Type == "podman" {
 		return runner.Options{
 			ComposeFiles:  append([]string(nil), c.Runner.Podman.ComposeFiles...),
@@ -250,8 +258,11 @@ func (c *Config) ComposeOptions(slug string) runner.Options {
 }
 
 // ComposeFiles returns the compose files of the selected compose backend
-// (docker or podman). Empty for non-compose backends.
+// (docker or podman). Empty for non-compose backends and the "none" runner.
 func (c *Config) ComposeFiles() []string {
+	if c.Runner.Type == "none" {
+		return nil
+	}
 	if c.Runner.Type == "podman" {
 		return c.Runner.Podman.ComposeFiles
 	}
@@ -297,13 +308,18 @@ func (c *Config) Validate() error {
 	if _, err := source.Resolve(c.Source.Type); err != nil {
 		return err
 	}
+	// Default runner.type to "none" for CLI-only repos. A "none" runner
+	// skips compose operations and relaxes port/entry validation.
 	if strings.TrimSpace(c.Runner.Type) == "" {
-		return fmt.Errorf("runner.type must not be empty (available runners: %v)", runner.Available())
+		c.Runner.Type = "none"
 	}
 	if _, err := runner.Resolve(c.Runner.Type); err != nil {
 		return err
 	}
-	if c.Runner.Type == "docker" {
+	if c.Runner.Type == "none" {
+		// No compose files, no port allocation, no .env management needed.
+		// entry.run/stop are optional (entry strings still work via exec).
+	} else if c.Runner.Type == "docker" {
 		if len(c.Runner.Docker.ComposeFiles) == 0 {
 			return fmt.Errorf("runner.docker.composeFiles must list at least one compose file")
 		}
@@ -329,23 +345,29 @@ func (c *Config) Validate() error {
 		// slug-only compose project names (see runner.Options.ProjectName).
 		c.Runner.Podman.ProjectPrefix = strings.TrimSpace(c.Runner.Podman.ProjectPrefix)
 	}
-	if strings.TrimSpace(c.Entry.Run) == "" {
-		return fmt.Errorf("entry.run must not be empty")
-	}
-	if strings.TrimSpace(c.Entry.Stop) == "" {
-		return fmt.Errorf("entry.stop must not be empty")
-	}
-	if c.Ports.Base == nil {
-		c.Ports.Base = ports.DefaultBase()
-	}
-	if c.Ports.Ranges == nil {
-		c.Ports.Ranges = ports.DefaultRanges()
-	}
-	if c.Ports.Step != nil {
-		return fmt.Errorf("ports.step was removed: delete `ports.step` and add per-service `ports.ranges` (e.g. ranges: {app: [8000, 8099]}); ports now increment by 1 with gap reuse")
-	}
-	if err := (ports.Allocator{Base: c.Ports.Base, Ranges: c.Ports.Ranges}).Validate(); err != nil {
-		return fmt.Errorf("ports: %w", err)
+	if c.Runner.Type != "none" {
+		if strings.TrimSpace(c.Entry.Run) == "" {
+			return fmt.Errorf("entry.run must not be empty")
+		}
+		if strings.TrimSpace(c.Entry.Stop) == "" {
+			return fmt.Errorf("entry.stop must not be empty")
+		}
+		if c.Ports.Base == nil {
+			c.Ports.Base = ports.DefaultBase()
+		}
+		if c.Ports.Ranges == nil {
+			c.Ports.Ranges = ports.DefaultRanges()
+		}
+		if c.Ports.Step != nil {
+			return fmt.Errorf("ports.step was removed: delete `ports.step` and add per-service `ports.ranges` (e.g. ranges: {app: [8000, 8099]}); ports now increment by 1 with gap reuse")
+		}
+		if err := (ports.Allocator{Base: c.Ports.Base, Ranges: c.Ports.Ranges}).Validate(); err != nil {
+			return fmt.Errorf("ports: %w", err)
+		}
+	} else {
+		if c.Ports.Step != nil {
+			return fmt.Errorf("ports.step was removed: delete `ports.step`")
+		}
 	}
 	if err := validateGitCopy(c.Source.Git.Copy); err != nil {
 		return err

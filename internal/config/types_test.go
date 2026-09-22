@@ -35,6 +35,17 @@ ports:
     app: [8000, 8099]
 `
 
+const validNoneBase = `project:
+  worktreeBase: .worktrees
+source:
+  type: git
+runner:
+  type: none
+entry:
+  run: ""
+  stop: ""
+`
+
 func TestValidateTable(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -102,6 +113,21 @@ func TestValidateTable(t *testing.T) {
 		{"bad proxy addr", func(s string) string {
 			return s + "proxy:\n  enabled: true\n  addr: \"noport\"\n"
 		}, "proxy.addr"},
+		{"none runner happy", func(s string) string {
+			return validNoneBase
+		}, ""},
+		{"none runner empty run ok", func(s string) string {
+			return strings.Replace(validNoneBase, `run: ""`, `run: ""`, 1)
+		}, ""},
+		{"none runner empty worktreeBase", func(s string) string {
+			return strings.Replace(validNoneBase, "worktreeBase: .worktrees", "worktreeBase: \"\"", 1)
+		}, "project.worktreeBase"},
+		{"empty runner.type defaults to none", func(s string) string {
+			return strings.Replace(validNoneBase, "type: none", "type: \"\"", 1)
+		}, ""},
+		{"none runner step still rejected", func(s string) string {
+			return validNoneBase + "  step: 100\n"
+		}, "ports.step was removed"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

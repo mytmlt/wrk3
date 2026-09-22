@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `runner.type: none` — new runner backend for CLI-only repos with no
+  compose stack. Skips ports, `.env` management, and compose up/down.
+  `entry.run` and `entry.stop` are optional. Empty `runner.type` now
+  defaults to `none`. `status` omits PORTS and COMPOSE_PROJECT columns
+  when the runner is `none`. Worktree isolation (separate dirs via
+  `exec` with `cwd=worktree`) stays fully functional. The dogfood
+  `wrk3.yaml` now uses `runner.type: none` to match the repo's
+  stack-less nature.
+
 ### Fixed
 
 - Error reports now use the innermost meaningful error type (instead of the

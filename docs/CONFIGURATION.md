@@ -75,14 +75,14 @@ broader than `--mine`, which matches git commit authorship).
 
 | Path | Required | Notes |
 | ---- | -------- | ----- |
-| `runner.type` | yes | `docker` or `podman` (both ship). `portainer`/`nomad` exist as stubs → `not implemented`. Unknown values error listing available runners. |
+| `runner.type` | yes | `none`, `docker`, or `podman`. `none` skips compose operations (ports, .env, compose up/down) for CLI-only repos that just need worktree isolation. `portainer`/`nomad` exist as stubs → `not implemented`. Unknown values error listing available runners. |
 | `runner.docker.composeFiles` | yes (docker) | At least one compose file, resolved inside each worktree. Compose files must not set `container_name:` — it is global on the daemon and bypasses `-p <prefix>-<slug>` isolation, so `up` fails fast naming the offending file/services. Compose generates `<project>-<service>-1` automatically. |
 | `runner.docker.projectPrefix` | no (docker) | Compose project is `<prefix>-<slug>` → free volume/network isolation. Empty, missing, or whitespace-only means slug-only (`<slug>`); slug-only names can collide across repos sharing a daemon. |
 | `runner.podman.composeFiles` | yes (podman) | Same as `runner.docker.composeFiles`, for `podman compose`. `up` runs the same `container_name:` preflight. |
 | `runner.podman.projectPrefix` | no (podman) | Same as `runner.docker.projectPrefix`, for `podman compose` (empty => slug-only). |
 | `entry.setup` | no | Ordered list, each run via `sh -c` with `cwd=worktree`, `env=allocated ports`. Empty strings skipped. |
-| `entry.run` | yes | Long-running command started after compose up (e.g. dev server). Run via `sh -c` with `cwd=worktree`, `env=allocated ports`. |
-| `entry.stop` | yes | Run via `sh -c` before `compose down` by `down` (failures warn, never block teardown). |
+| `entry.run` | yes (docker/podman) | Long-running command started after compose up (e.g. dev server). Run via `sh -c` with `cwd=worktree`, `env=allocated ports`. Optional when `runner.type: none`. |
+| `entry.stop` | yes (docker/podman) | Run via `sh -c` before `compose down` by `down` (failures warn, never block teardown). Optional when `runner.type: none`. |
 | `entry.logs` | no | When set, `logs` runs it via `sh -c` instead of `compose logs`; when empty, `compose logs` is used. |
 | `entry.reload` | no | Ordered list run by `reload` (CLI + dashboard `l`), each via `sh -c` with `cwd=worktree`, `env=allocated ports`. Empty strings skipped. `reload` errors when nothing is set. |
 | `ports.base` | no | Defaults to `{app: 8000}`. `app` is required; add more names when the stack binds extra host ports. Each base must sit inside its `ports.ranges` entry. |
@@ -117,6 +117,13 @@ Like `entry.*`, `run` strings execute from your `wrk3.yaml` — only use
 configs you trust.
 
 ## Ports and `.env`
+
+When `runner.type: none` (CLI-only repos), ports and `.env` management are
+skipped entirely. No `ports.base` or `ports.ranges` are needed, and no
+`.env` file is written inside worktrees. `status` omits the PORTS and
+COMPOSE_PROJECT columns.
+
+For compose-backed repos (`docker`/`podman`):
 
 - Each `add` keeps a monotonic index (`max(index)+1`, floored at 1 —
   index `0` is reserved for the repo-root main checkout) but allocates

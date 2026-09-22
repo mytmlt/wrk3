@@ -169,7 +169,11 @@ func resolveTargetsRequired(recs []ports.WorktreeRecord, args []string, all bool
 // envForWorktree maps an allocation to runner env vars plus the gateway
 // APP_URL when proxy.enabled. COMPOSE_PROJECT_NAME is forced by the
 // compose runners (docker/podman) and is not set here.
+// Returns nil when there are no ports to map.
 func envForWorktree(cfg *config.Config, rec ports.WorktreeRecord) map[string]string {
+	if len(rec.Ports) == 0 {
+		return proxyEnvForSlug(cfg, rec.Slug)
+	}
 	out := envFromPorts(rec.Ports)
 	for k, v := range proxyEnvForSlug(cfg, rec.Slug) {
 		out[k] = v

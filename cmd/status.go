@@ -17,7 +17,7 @@ import (
 
 var statusCmd = &cobra.Command{
 	Use:               "status",
-	Short:             "WORKTREE/BRANCH/STATUS/PORTS/COMPOSE_PROJECT",
+	Short:             "show worktree status (WORKTREE/BRANCH/STATUS, plus PORTS/COMPOSE_PROJECT for compose runners)",
 	Args:              cobra.NoArgs,
 	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -26,12 +26,20 @@ var statusCmd = &cobra.Command{
 			return err
 		}
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-		if r.cfg.Proxy.Enabled {
+		noPorts := r.cfg.Runner.Type == "none" || len(r.cfg.Ports.Base) == 0
+		switch {
+		case r.cfg.Proxy.Enabled:
 			if _, err := fmt.Fprintln(w, "WORKTREE\tBRANCH\tSTATUS\tPORTS\tCOMPOSE_PROJECT\tURL"); err != nil {
 				return fmt.Errorf("write output: %w", err)
 			}
-		} else if _, err := fmt.Fprintln(w, "WORKTREE\tBRANCH\tSTATUS\tPORTS\tCOMPOSE_PROJECT"); err != nil {
-			return fmt.Errorf("write output: %w", err)
+		case noPorts:
+			if _, err := fmt.Fprintln(w, "WORKTREE\tBRANCH\tSTATUS"); err != nil {
+				return fmt.Errorf("write output: %w", err)
+			}
+		default:
+			if _, err := fmt.Fprintln(w, "WORKTREE\tBRANCH\tSTATUS\tPORTS\tCOMPOSE_PROJECT"); err != nil {
+				return fmt.Errorf("write output: %w", err)
+			}
 		}
 		if err := printResolvedStatus(w, r.cfg); err != nil {
 			return err
@@ -49,17 +57,24 @@ func printResolvedStatus(w *tabwriter.Writer, cfg *config.Config) error {
 	if len(recs) == 0 {
 		return nil
 	}
+	noPorts := cfg.Runner.Type == "none" || len(cfg.Ports.Base) == 0
 	for _, cell := range probeStatusCells(cfg, recs) {
-		if cfg.Proxy.Enabled {
+		switch {
+		case cfg.Proxy.Enabled:
 			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 				cell.slug, cell.branch, cell.status, cell.ports, cell.project, cfg.ProxyURL(cell.slug)); err != nil {
 				return fmt.Errorf("write output: %w", err)
 			}
-			continue
-		}
-		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			cell.slug, cell.branch, cell.status, cell.ports, cell.project); err != nil {
-			return fmt.Errorf("write output: %w", err)
+		case noPorts:
+			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\n",
+				cell.slug, cell.branch, cell.status); err != nil {
+				return fmt.Errorf("write output: %w", err)
+			}
+		default:
+			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+				cell.slug, cell.branch, cell.status, cell.ports, cell.project); err != nil {
+				return fmt.Errorf("write output: %w", err)
+			}
 		}
 	}
 	return nil

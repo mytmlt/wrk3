@@ -784,11 +784,15 @@ func dashboardRemoveCmd(p *dashboardProject, opID int, branches []string, force 
 				r.logOpDone(label, label+" "+rec.Branch, err)
 				return err
 			}
-			if err := rn.Down(context.Background(), rec.AbsPath, envForWorktree(r.cfg, *rec)); err != nil {
-				logf("warning: compose down for %q: %v", rec.Branch, err)
+			if r.cfg.Runner.Type != "none" {
+				if err := rn.Down(context.Background(), rec.AbsPath, envForWorktree(r.cfg, *rec)); err != nil {
+					logf("warning: compose down for %q: %v", rec.Branch, err)
+				}
 			}
-			if _, err := ports.StripManaged(filepath.Join(rec.AbsPath, ports.EnvFileName), rec.Ports); err != nil {
-				logf("warning: strip managed .env keys for %q: %v", rec.Branch, err)
+			if len(rec.Ports) > 0 {
+				if _, err := ports.StripManaged(filepath.Join(rec.AbsPath, ports.EnvFileName), rec.Ports); err != nil {
+					logf("warning: strip managed .env keys for %q: %v", rec.Branch, err)
+				}
 			}
 			if err := r.src.Remove(r.cfg.RepoPath(), rec.AbsPath, force); err != nil {
 				if !force {

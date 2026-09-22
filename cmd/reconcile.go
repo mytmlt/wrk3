@@ -41,6 +41,8 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 	}
 	sort.Strings(branches)
 
+	noPorts := r.cfg.Runner.Type == "none" || r.cfg.Ports.Base == nil
+
 	alloc := r.cfg.Allocator()
 	base := r.cfg.Ports.Base
 	if base == nil {
@@ -60,28 +62,32 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 			return recs, nil, false, fmt.Errorf("reconcile worktree %q: slug %q collides with branch %q", branch, slug, existing.Branch)
 		}
 		composeProject := r.cfg.ComposeOptions(slug).ProjectName()
-		for _, rec := range all {
-			if rec.ComposeProject == composeProject {
-				return recs, nil, false, fmt.Errorf("reconcile worktree %q: compose project %q collides with worktree %q", branch, composeProject, rec.Branch)
+		if !noPorts {
+			for _, rec := range all {
+				if rec.ComposeProject == composeProject {
+					return recs, nil, false, fmt.Errorf("reconcile worktree %q: compose project %q collides with worktree %q", branch, composeProject, rec.Branch)
+				}
 			}
 		}
 		path := byBranch[branch]
 
 		idx := nextIndex(all)
 		var allocation map[string]int
-		if recovered, ok := ports.ReadPorts(path, base); ok {
-			if recoveredReusable(alloc, base, recovered, taken, mainPorts) {
-				allocation = recovered
-			} else {
-				warns = append(warns, fmt.Sprintf("worktree %q .env ports cannot be adopted; allocating a free set", branch))
+		if !noPorts {
+			if recovered, ok := ports.ReadPorts(path, base); ok {
+				if recoveredReusable(alloc, base, recovered, taken, mainPorts) {
+					allocation = recovered
+				} else {
+					warns = append(warns, fmt.Sprintf("worktree %q .env ports cannot be adopted; allocating a free set", branch))
+				}
 			}
-		}
-		if allocation == nil {
-			fresh, err := alloc.FindFreeAllocation(taken, osPortFree)
-			if err != nil {
-				return recs, nil, false, fmt.Errorf("reconcile worktree %q: %w", branch, err)
+			if allocation == nil {
+				fresh, err := alloc.FindFreeAllocation(taken, osPortFree)
+				if err != nil {
+					return recs, nil, false, fmt.Errorf("reconcile worktree %q: %w", branch, err)
+				}
+				allocation = fresh
 			}
-			allocation = fresh
 		}
 
 		rec := ports.WorktreeRecord{
@@ -93,8 +99,10 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 			ComposeProject: composeProject,
 			Status:         ports.StatusStopped,
 		}
-		if err := ensureWorktreeEnv(r, rec); err != nil {
-			return recs, nil, false, err
+		if !noPorts {
+			if err := ensureWorktreeEnv(r, rec); err != nil {
+				return recs, nil, false, err
+			}
 		}
 		all = append(all, rec)
 		for _, p := range allocation {
