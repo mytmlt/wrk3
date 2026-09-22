@@ -102,7 +102,7 @@ func removeOne(cmd *cobra.Command, r *resolved, recs []ports.WorktreeRecord, bra
 	}
 	if err := r.src.Remove(r.cfg.RepoPath(), rec.AbsPath, removeForce); err != nil {
 		if !removeForce {
-			err = fmt.Errorf("remove worktree %q: %w", rec.Branch, err)
+			err = fmt.Errorf("remove worktree %q: %w\nhint: uncommitted changes detected; use `wrk3 remove --force %s` to discard them", rec.Branch, err, rec.Branch)
 			r.logOpDone("remove", "remove "+branch, err)
 			return err
 		}
