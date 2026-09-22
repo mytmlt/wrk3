@@ -1659,7 +1659,7 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if p := m.curProject(); p != nil && p.cfg != nil {
 			r := &resolved{cfg: p.cfg, src: p.src, base: p.base, stateP: p.stateP}
-			if err := ensureWorktreeEnv(r, rec); err != nil {
+			if err := ensureWorktreeEnv(r, rec, p.cfg.URLSpecs()); err != nil {
 				m.statusMsg = "edit .env: " + err.Error()
 				return m, nil
 			}

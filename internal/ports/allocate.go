@@ -8,6 +8,19 @@ import (
 	"strings"
 )
 
+// BasePort returns the explicit port from the URLSpec's BaseURL.
+func (s URLSpec) BasePort() int {
+	if s.BaseURL == nil {
+		return 0
+	}
+	p := s.BaseURL.Port()
+	if p == "" {
+		return 0
+	}
+	n, _ := strconv.Atoi(p)
+	return n
+}
+
 // baseOrDefault returns a copy of the allocator base, defaulting to
 // DefaultBase when Base is nil.
 func (a Allocator) baseOrDefault() map[string]int {
@@ -251,4 +264,57 @@ func AllocationsCollide(a, b map[string]int) bool {
 		}
 	}
 	return false
+}
+
+// AllocateURLs scans each URLSpec range from its base port upward and
+// returns the lowest free port per var. taken holds already-used ports
+// (host allocations + previously allocated URL ports); isFree probes OS
+// availability. Results are added to used so cross-collisions within one
+// call are avoided. Exhaustion errors name the var and its range.
+func AllocateURLs(specs []URLSpec, taken map[int]struct{}, isFree func(int) bool) (map[string]int, error) {
+	if len(specs) == 0 {
+		return nil, nil
+	}
+	used := make(map[int]struct{}, len(taken))
+	for p := range taken {
+		used[p] = struct{}{}
+	}
+	out := make(map[string]int, len(specs))
+	for _, spec := range specs {
+		bp := spec.BasePort()
+		if bp <= 0 {
+			return nil, fmt.Errorf("no free port for %q in [%d,%d]: no explicit port in base URL", spec.Var, spec.Range[0], spec.Range[1])
+		}
+		found := -1
+		for p := bp; p <= spec.Range[1]; p++ {
+			if _, ok := used[p]; ok {
+				continue
+			}
+			if isFree != nil && !isFree(p) {
+				continue
+			}
+			found = p
+			break
+		}
+		if found < 0 {
+			return nil, fmt.Errorf("no free port for %q in [%d,%d]", spec.Var, spec.Range[0], spec.Range[1])
+		}
+		out[spec.Var] = found
+		used[found] = struct{}{}
+	}
+	return out, nil
+}
+
+// TakenFromURLRecords returns the union of all URL port values in recs.
+func TakenFromURLRecords(recs []WorktreeRecord) map[int]struct{} {
+	out := make(map[int]struct{})
+	for _, rec := range recs {
+		if rec.Urls == nil {
+			continue
+		}
+		for _, p := range rec.Urls {
+			out[p] = struct{}{}
+		}
+	}
+	return out
 }
