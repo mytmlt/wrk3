@@ -262,7 +262,7 @@ func TestEnsureWorktreeEnv_WritesDotEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ensureWorktreeEnv(r, *rec); err != nil {
+	if err := ensureWorktreeEnv(r, *rec, r.cfg.URLSpecs()); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(filepath.Join(repo, ".env"))
@@ -286,7 +286,7 @@ func TestEnsureWorktreeEnv_PreservesSecrets(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, ".env"), []byte(secret), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := ensureWorktreeEnv(r, *rec); err != nil {
+	if err := ensureWorktreeEnv(r, *rec, r.cfg.URLSpecs()); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(filepath.Join(repo, ".env"))
@@ -319,7 +319,7 @@ func TestEnsureWorktreeEnv_ManagedWorktreeGapFilled(t *testing.T) {
 		Index:   0,
 		Ports:   map[string]int{"app": 8000},
 	}
-	if err := ensureWorktreeEnv(r, rec); err != nil {
+	if err := ensureWorktreeEnv(r, rec, r.cfg.URLSpecs()); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(filepath.Join(wt, ".env"))
@@ -350,7 +350,7 @@ func TestEnsureWorktreeEnv_OverwritesManagedPorts(t *testing.T) {
 		Index:   0,
 		Ports:   map[string]int{"app": 8000},
 	}
-	if err := ensureWorktreeEnv(r, rec); err != nil {
+	if err := ensureWorktreeEnv(r, rec, r.cfg.URLSpecs()); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(filepath.Join(wt, ".env"))
@@ -384,7 +384,7 @@ func TestEnsureWorktreeEnv_DoesNotWriteAppURL(t *testing.T) {
 		Index:   0,
 		Ports:   map[string]int{"app": 8000},
 	}
-	if err := ensureWorktreeEnv(r, rec); err != nil {
+	if err := ensureWorktreeEnv(r, rec, r.cfg.URLSpecs()); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(filepath.Join(wt, ".env"))

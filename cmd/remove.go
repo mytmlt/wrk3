@@ -99,8 +99,8 @@ func removeOne(cmd *cobra.Command, r *resolved, recs []ports.WorktreeRecord, bra
 	// port keys, so strip only the managed keys instead of deleting the
 	// file. StripManaged deletes it when nothing but managed keys remain,
 	// keeping plain remove working on otherwise clean worktrees.
-	if len(rec.Ports) > 0 {
-		if _, err := ports.StripManaged(filepath.Join(rec.AbsPath, ports.EnvFileName), rec.Ports); err != nil {
+	if len(rec.Ports) > 0 || len(rec.Urls) > 0 {
+		if _, err := ports.StripManagedExt(filepath.Join(rec.AbsPath, ports.EnvFileName), rec.Ports, rec.Urls, r.cfg.URLSpecs()); err != nil {
 			warnf(cmd, "strip managed .env keys for %q: %v", rec.Branch, err)
 		}
 	}

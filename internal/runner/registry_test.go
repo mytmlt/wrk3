@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-func TestAvailableIsDockerAndPodman(t *testing.T) {
+func TestAvailableIsDockerPodmanAndNone(t *testing.T) {
 	got := Available()
-	if len(got) != 2 || got[0] != "docker" || got[1] != "podman" {
-		t.Fatalf("Available() = %v, want [docker podman]", got)
+	if len(got) != 3 || got[0] != "docker" || got[1] != "none" || got[2] != "podman" {
+		t.Fatalf("Available() = %v, want [docker none podman]", got)
 	}
 }
 

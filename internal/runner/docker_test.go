@@ -186,6 +186,34 @@ func TestDockerRunnerExecHostCommand(t *testing.T) {
 	}
 }
 
+// TestDockerRunnerExecWaitsForScriptCompletion proves Exec blocks until
+// the `sh -c` script has fully finished (relevant to readiness: an
+// entry.run that polls an API must gate `up` until it exits). The script
+// sleeps then writes a marker; Exec must not return before the marker
+// exists, and the elapsed time must span the sleep.
+func TestDockerRunnerExecWaitsForScriptCompletion(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skipf("sh not found: %v", err)
+	}
+	dir := t.TempDir()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	r := New(Options{ProjectPrefix: "demo", Slug: "exec-wait-test"})
+	marker := filepath.Join(dir, "done")
+	start := time.Now()
+	if err := r.Exec(ctx, dir, []string{"sh", "-c", "sleep 0.3 && touch \"$WRK3_TEST_MARKER\""},
+		map[string]string{"WRK3_TEST_MARKER": marker}); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	elapsed := time.Since(start)
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("script-written marker must exist when Exec returns (Exec did not wait for the command): %v", err)
+	}
+	if elapsed < 200*time.Millisecond {
+		t.Errorf("Exec returned after %v; the script was not awaited to completion", elapsed)
+	}
+}
+
 func TestDockerRunnerParallelDistinctProjects(t *testing.T) {
 	if testing.Short() {
 		t.Skip("docker integration: run with go test -short=false")

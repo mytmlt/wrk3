@@ -1,0 +1,48 @@
+name: OpenCodeReview
+
+# AI code review bot: posts inline + summary PR comments via github-actions[bot].
+# Requires repo secrets:
+#   OCR_LLM_URL   = https://opencode.ai/zen/go/v1
+#   OCR_LLM_TOKEN = OpenCode Zen API key (https://opencode.ai/auth)
+#   OCR_LLM_MODEL = muse-spark-1.3-contributor
+# Zen serves Muse Spark via the OpenAI Responses API, hence
+# llm_protocol: openai-responses (OCR appends /responses to the base URL).
+# The x-opencode-session header mirrors a working local `ocr` config and is
+# required by the /go/v1 gateway; {ocr_session_key} is expanded per request.
+# Runs on collaborator PRs; no fork-PR handling (see pull_request_target docs
+# if forks ever need reviews).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: open-code-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: alibaba/open-code-review@bccbc15f785269400735d5255540c231e6c02b6d # v1.12.9
+        with:
+          llm_url: ${{ secrets.OCR_LLM_URL }}
+          llm_auth_token: ${{ secrets.OCR_LLM_TOKEN }}
+          llm_model: ${{ secrets.OCR_LLM_MODEL }}
+          llm_protocol: openai-responses
+          llm_extra_headers: 'x-opencode-session={ocr_session_key}'
+          # Empty object: the action default sends {"thinking":...}, which
+          # strict OpenAI-compatible endpoints reject with HTTP 400.
+          llm_extra_body: '{}'
+          language: English
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          sticky_summary: 'true'
+          incremental: 'false'
+          upload_artifacts: 'true'
+          effort: medium

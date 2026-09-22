@@ -551,11 +551,11 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 	}
 	idx := nextIndex(*recs)
 	noPorts := r.cfg.Runner.Type == "none" || r.cfg.Ports.Base == nil
-	var allocation map[string]int
+	var envAlloc ports.EnvAllocation
 	var composeProject string
 	if !noPorts {
 		var err error
-		allocation, err = assignPorts(*alloc, *recs)
+		envAlloc, err = assignAllocation(r, *recs)
 		if err != nil {
 			return nil, fmt.Errorf("add worktree %q: %w", branch, err)
 		}
@@ -573,8 +573,8 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 	}
 	if !noPorts {
 		if err := ensureWorktreeEnv(r, ports.WorktreeRecord{
-			Branch: branch, Slug: slug, AbsPath: path, Ports: allocation,
-		}); err != nil {
+			Branch: branch, Slug: slug, AbsPath: path, Ports: envAlloc.Ports, Urls: envAlloc.URLs,
+		}, r.cfg.URLSpecs()); err != nil {
 			return nil, err
 		}
 	}
@@ -583,7 +583,8 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 		Slug:           slug,
 		AbsPath:        path,
 		Index:          idx,
-		Ports:          allocation,
+		Ports:          envAlloc.Ports,
+		Urls:           envAlloc.URLs,
 		ComposeProject: composeProject,
 		Status:         ports.StatusStopped,
 	})
@@ -612,18 +613,18 @@ func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator,
 	}
 	idx := nextIndex(*recs)
 	noPorts := r.cfg.Runner.Type == "none" || r.cfg.Ports.Base == nil
-	var allocation map[string]int
+	var envAlloc ports.EnvAllocation
 	var composeProject string
 	if !noPorts {
 		var err error
-		allocation, err = assignPorts(*alloc, *recs)
+		envAlloc, err = assignAllocation(r, *recs)
 		if err != nil {
 			return nil, fmt.Errorf("adopt worktree %q: %w", branch, err)
 		}
 		composeProject = r.cfg.ComposeOptions(slug).ProjectName()
 		if err := ensureWorktreeEnv(r, ports.WorktreeRecord{
-			Branch: branch, Slug: slug, AbsPath: path, Ports: allocation,
-		}); err != nil {
+			Branch: branch, Slug: slug, AbsPath: path, Ports: envAlloc.Ports, Urls: envAlloc.URLs,
+		}, r.cfg.URLSpecs()); err != nil {
 			return nil, err
 		}
 	}
@@ -632,7 +633,8 @@ func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator,
 		Slug:           slug,
 		AbsPath:        path,
 		Index:          idx,
-		Ports:          allocation,
+		Ports:          envAlloc.Ports,
+		Urls:           envAlloc.URLs,
 		ComposeProject: composeProject,
 		Status:         ports.StatusStopped,
 	})

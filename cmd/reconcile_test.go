@@ -219,6 +219,24 @@ func TestRecoveredReusable_RejectsSelfCollision(t *testing.T) {
 	}
 }
 
+func TestRecoveredReusable_AliasLockstep(t *testing.T) {
+	alloc := ports.Allocator{
+		Base:   map[string]int{"app": 8000, "public_api": 8000},
+		Ranges: map[string][2]int{"app": {8000, 8099}, "public_api": {8000, 8099}},
+	}
+	base := map[string]int{"app": 8000, "public_api": 8000}
+	mainPorts := alloc.BaseAllocation()
+	taken := map[int]struct{}{8000: {}}
+	// Aliases sharing one recovered port reuse.
+	if !recoveredReusable(alloc, base, map[string]int{"app": 8001, "public_api": 8001}, taken, mainPorts) {
+		t.Error("alias recovered ports sharing one value should be reusable")
+	}
+	// Split aliases must not reuse.
+	if recoveredReusable(alloc, base, map[string]int{"app": 8001, "public_api": 8002}, taken, mainPorts) {
+		t.Error("split alias recovered ports should not be reusable")
+	}
+}
+
 func TestUnionBranches(t *testing.T) {
 	got := unionBranches([]string{"b", "a"}, []string{"c", "a"})
 	if len(got) != 3 || got[0] != "a" || got[1] != "b" || got[2] != "c" {

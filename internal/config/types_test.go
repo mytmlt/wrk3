@@ -126,8 +126,11 @@ func TestValidateTable(t *testing.T) {
 			return strings.Replace(validNoneBase, "type: none", "type: \"\"", 1)
 		}, ""},
 		{"none runner step still rejected", func(s string) string {
-			return validNoneBase + "  step: 100\n"
+			return validNoneBase + "ports:\n  step: 100\n"
 		}, "ports.step was removed"},
+		{"privileged proxy port", func(s string) string {
+			return s + "proxy:\n  enabled: true\n  addr: \"127.0.0.1:80\"\n"
+		}, "requires root"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -312,5 +315,179 @@ ports:
 				t.Errorf("ProjectName = %q, want feat-x", got)
 			}
 		})
+	}
+}
+
+func TestValidateURLs(t *testing.T) {
+	base := `project:
+  worktreeBase: .worktrees
+source:
+  type: git
+runner:
+  type: docker
+  docker:
+    composeFiles: [docker-compose.yml]
+    projectPrefix: demo
+entry:
+  run: "echo run"
+  stop: "echo stop"
+ports:
+  base: {app: 8000}
+  ranges:
+    app: [8000, 8099]
+urls:
+  - var: APP_URL
+    base: http://localhost:8000
+    range: [8000, 8099]
+`
+	urlBlock := `urls:
+  - var: APP_URL
+    base: http://localhost:8000
+    range: [8000, 8099]`
+	cases := []struct {
+		name    string
+		wantErr string
+		urlYAML string
+	}{
+		{"happy", "", urlBlock},
+		{"empty var", "urls[0].var must not be empty", `urls:
+  - var: ""
+    base: http://localhost:8000
+    range: [8000, 8099]`},
+		{"duplicate var", "is duplicated", `urls:
+  - var: APP_URL
+    base: http://localhost:8000
+    range: [8000, 8099]
+  - var: APP_URL
+    base: http://localhost:9000
+    range: [9000, 9099]`},
+		{"var collides with managed port", "collides with managed port key", `urls:
+  - var: APP_PORT
+    base: http://localhost:8000
+    range: [8000, 8099]`},
+		{"invalid var", "not a valid .env variable name", `urls:
+  - var: 123URL
+    base: http://localhost:8000
+    range: [8000, 8099]`},
+		{"no explicit port", "must have an explicit port", `urls:
+  - var: APP_URL
+    base: http://localhost
+    range: [8000, 8099]`},
+		{"inverted range", "min must be <= max", `urls:
+  - var: APP_URL
+    base: http://localhost:8000
+    range: [8099, 8000]`},
+		{"base port outside range", "outside its range", `urls:
+  - var: APP_URL
+    base: http://localhost:8000
+    range: [8001, 8099]`},
+		{"invalid range values", "ports must be 1", `urls:
+  - var: APP_URL
+    base: http://localhost:8000
+    range: [0, 8099]`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			body := strings.Replace(base, urlBlock, c.urlYAML, 1)
+			path := writeConfig(t, body)
+			cfg, err := Load(path)
+			if c.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Load = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Load = nil, want error containing %q", c.wantErr)
+			}
+			if !strings.Contains(err.Error(), c.wantErr) {
+				t.Errorf("error %q should contain %q", err.Error(), c.wantErr)
+			}
+			if cfg != nil {
+				t.Logf("config loaded but expected error; cfg.Urls = %+v", cfg.Urls)
+			}
+		})
+	}
+}
+
+func TestURLSpecs_Conversion(t *testing.T) {
+	body := `project:
+  worktreeBase: .worktrees
+source:
+  type: git
+runner:
+  type: docker
+  docker:
+    composeFiles: [docker-compose.yml]
+    projectPrefix: demo
+entry:
+  run: "echo run"
+  stop: "echo stop"
+ports:
+  base: {app: 8000}
+  ranges:
+    app: [8000, 8099]
+urls:
+  - var: APP_URL
+    base: http://localhost:8000
+    range: [8000, 8099]
+  - var: BASE_URL
+    base: https://api.example.com:443/api/v1
+    range: [443, 500]
+`
+	cfg, err := Load(writeConfig(t, body))
+	if err != nil {
+		t.Fatalf("Load = %v", err)
+	}
+	specs := cfg.URLSpecs()
+	if len(specs) != 2 {
+		t.Fatalf("URLSpecs len = %d, want 2", len(specs))
+	}
+	if specs[0].Var != "APP_URL" || specs[1].Var != "BASE_URL" {
+		t.Errorf("specs vars = %q, %q", specs[0].Var, specs[1].Var)
+	}
+	if specs[0].BaseURL.String() != "http://localhost:8000" {
+		t.Errorf("APP_URL BaseURL = %q", specs[0].BaseURL)
+	}
+	if specs[0].Range != [2]int{8000, 8099} {
+		t.Errorf("APP_URL Range = %v", specs[0].Range)
+	}
+}
+
+func TestURLBasePorts(t *testing.T) {
+	body := `project:
+  worktreeBase: .worktrees
+source:
+  type: git
+runner:
+  type: docker
+  docker:
+    composeFiles: [docker-compose.yml]
+    projectPrefix: demo
+entry:
+  run: "echo run"
+  stop: "echo stop"
+ports:
+  base: {app: 8000}
+  ranges:
+    app: [8000, 8099]
+urls:
+  - var: APP_URL
+    base: http://localhost:8000
+    range: [8000, 8099]
+  - var: BASE_URL
+    base: https://api.example.com:443/path
+    range: [400, 500]
+`
+	cfg, err := Load(writeConfig(t, body))
+	if err != nil {
+		t.Fatalf("Load = %v", err)
+	}
+	bports := cfg.URLBasePorts()
+	if bports["APP_URL"] != 8000 {
+		t.Errorf("APP_URL base port = %d, want 8000", bports["APP_URL"])
+	}
+	if bports["BASE_URL"] != 443 {
+		t.Errorf("BASE_URL base port = %d, want 443", bports["BASE_URL"])
 	}
 }

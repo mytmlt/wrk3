@@ -17,12 +17,14 @@ import (
 // recovered from the worktree .env when the recovered set matches the
 // configured base keys, sits inside ranges, and collides with neither
 // state nor the OS; otherwise the lowest free range allocation is
-// assigned (gap reuse, OS-aware). The worktree .env is ensured via
-// ensureWorktreeEnv (managed port keys overwritten to the allocation).
-// Records are appended with Status stopped — display
-// overlays the live runner probe. Slug, port, and compose-project
-// collisions are hard errors: state is never half-written (callers save
-// only on success).
+// assigned (gap reuse, OS-aware). URL ports are similarly recovered from
+// the .env when the recovered values match configured URL specs; otherwise
+// a fresh URL allocation is made sharing the taken set with host ports.
+// The worktree .env is ensured via ensureWorktreeEnv (managed port keys
+// overwritten to the allocation). Records are appended with Status stopped
+// — display overlays the live runner probe. Slug, port, and
+// compose-project collisions are hard errors: state is never half-written
+// (callers save only on success).
 //
 // A git List failure degrades to no adoption (offline-safe, like
 // mainRecord) rather than failing the read.
@@ -71,8 +73,11 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 		}
 		path := byBranch[branch]
 
+		urlSpecs := r.cfg.URLSpecs()
+
 		idx := nextIndex(all)
 		var allocation map[string]int
+		var urlAlloc map[string]int
 		if !noPorts {
 			if recovered, ok := ports.ReadPorts(path, base); ok {
 				if recoveredReusable(alloc, base, recovered, taken, mainPorts) {
@@ -89,6 +94,28 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 				allocation = fresh
 			}
 		}
+		for _, p := range allocation {
+			taken[p] = struct{}{}
+		}
+		if !noPorts && len(urlSpecs) > 0 {
+			if recovered, ok := ports.ReadURLs(path, urlSpecs); ok {
+				if urlRecoveredReusable(recovered, taken) {
+					urlAlloc = recovered
+				} else {
+					warns = append(warns, fmt.Sprintf("worktree %q .env URL ports cannot be adopted; allocating a free set", branch))
+				}
+			}
+			if urlAlloc == nil {
+				fresh, err := ports.AllocateURLs(urlSpecs, taken, osPortFree)
+				if err != nil {
+					return recs, nil, false, fmt.Errorf("reconcile worktree %q urls: %w", branch, err)
+				}
+				urlAlloc = fresh
+			}
+			for _, p := range urlAlloc {
+				taken[p] = struct{}{}
+			}
+		}
 
 		rec := ports.WorktreeRecord{
 			Branch:         branch,
@@ -96,11 +123,12 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 			AbsPath:        path,
 			Index:          idx,
 			Ports:          allocation,
+			Urls:           urlAlloc,
 			ComposeProject: composeProject,
 			Status:         ports.StatusStopped,
 		}
 		if !noPorts {
-			if err := ensureWorktreeEnv(r, rec); err != nil {
+			if err := ensureWorktreeEnv(r, rec, urlSpecs); err != nil {
 				return recs, nil, false, err
 			}
 		}
@@ -126,8 +154,9 @@ func collidesTaken(taken map[int]struct{}, p map[string]int) bool {
 }
 
 // recoveredReusable reports whether .env-recovered ports can be reused:
-// same keys as base, each value inside its range, distinct values within
-// the set (no self-collision across services), no collision with main
+// same keys as base, each value inside its range, alias-consistent values
+// (names sharing one base value must share one recovered value; distinct
+// base values must stay distinct), no collision with main
 // or taken state, and OS-free (bind probe).
 func recoveredReusable(alloc ports.Allocator, base, recovered map[string]int, taken map[int]struct{}, mainPorts map[string]int) bool {
 	if len(recovered) != len(base) {
@@ -155,6 +184,59 @@ func recoveredReusable(alloc ports.Allocator, base, recovered map[string]int, ta
 		}
 	}
 	if ports.AllocationsCollide(mainPorts, recovered) || collidesTaken(taken, recovered) {
+		return false
+	}
+	// Alias consistency: names sharing one base value share one host port,
+	// so their recovered values must match; distinct base values must map
+	// to distinct host ports.
+	aliasOf := make(map[string]int, len(recovered))
+	if base != nil {
+		for name := range recovered {
+			if b, ok := base[name]; ok {
+				aliasOf[name] = b
+			} else {
+				aliasOf[name] = -1
+			}
+		}
+	}
+	seen := make(map[int]string, len(recovered))
+	for name, v := range recovered {
+		if other, dup := seen[v]; dup {
+			if base == nil || aliasOf[name] != aliasOf[other] {
+				return false
+			}
+			continue
+		}
+		seen[v] = name
+	}
+	if base != nil {
+		byBase := make(map[int]int, len(recovered))
+		for name, v := range recovered {
+			b := aliasOf[name]
+			if prev, ok := byBase[b]; ok {
+				if prev != v {
+					return false
+				}
+				continue
+			}
+			byBase[b] = v
+		}
+	}
+	for _, v := range recovered {
+		if !osPortFree(v) {
+			return false
+		}
+	}
+	return true
+}
+
+// urlRecoveredReusable reports whether .env-recovered URL ports can be
+// reused: no collision with taken ports, distinct values, and OS-free.
+func urlRecoveredReusable(recovered map[string]int, taken map[int]struct{}) bool {
+	if len(recovered) == 0 {
+		return false
+	}
+	if collidesTaken(taken, recovered) {
 		return false
 	}
 	seen := make(map[int]struct{}, len(recovered))
