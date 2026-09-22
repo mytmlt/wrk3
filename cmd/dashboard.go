@@ -1295,7 +1295,11 @@ func (m dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.confirmSel = (m.confirmSel + 1) % 2
 			return m, nil
 		case "enter":
-			if m.confirmSel == confirmDeleteOpt {
+			sel := m.confirmSel
+			if sel != confirmDeleteOpt && sel != confirmCancelOpt {
+				sel = confirmCancelOpt
+			}
+			if sel == confirmDeleteOpt {
 				return m.executePendingRemove()
 			}
 			m.clearPendingRemove()
@@ -1358,7 +1362,7 @@ func (m dashboardModel) executePendingRemove() (tea.Model, tea.Cmd) {
 		label = "remove --force"
 	}
 	if conflict := m.conflictingOp(targets); conflict != nil {
-		m.statusMsg = label + " blocked: " + conflict.label + " already running for " + strings.Join(targets, ", ") + " (esc to cancel, y to retry)"
+		m.statusMsg = label + " blocked: " + conflict.label + " already running for " + strings.Join(targets, ", ") + " (n/esc to cancel, y to retry)"
 		m = m.appendLog(label + " blocked: " + conflict.label + " already running for " + strings.Join(targets, ", "))
 		return m, nil
 	}
@@ -2423,8 +2427,9 @@ func (m dashboardModel) confirmPane(width int) string {
 		label = "remove"
 	}
 	title := dashErrStyle.Render("Confirm " + label)
-	targets := "  " + strings.Join(m.pendingX, ", ")
-	lines := []string{"", targets, ""}
+	targets := m.confirmTargetLines(width)
+	lines := append([]string{""}, targets...)
+	lines = append(lines, "")
 	if m.pendingForce {
 		lines = append(lines, dashConfirmStyle.Render("Force: deletes worktrees even with uncommitted changes."), "")
 	}
@@ -2437,7 +2442,7 @@ func (m dashboardModel) confirmPane(width int) string {
 	}
 	choice := fmt.Sprintf("  %s  %s", deleteStyle.Render("  Delete  "), cancelStyle.Render("  Cancel  "))
 	lines = append(lines, choice, "")
-	hint := dashMenuHintStyle.Render("←/→ or j/k move · enter confirm · y delete · n/esc cancel")
+	hint := dashMenuHintStyle.Render("←/→/↑/↓ or h/j/k/l move · enter confirm · y delete · n/esc cancel")
 	body := title + "\n" + strings.Join(lines, "\n") + hint
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -2445,6 +2450,13 @@ func (m dashboardModel) confirmPane(width int) string {
 		Padding(0, 1).
 		Width(width).
 		Render(body)
+}
+
+// confirmTargetLines wraps the pending branch names to the dialog width
+// so long/many targets stay visible inside the popup instead of
+// overflowing its border before a destructive confirm.
+func (m dashboardModel) confirmTargetLines(width int) []string {
+	return wrapLogLines([]string{"  " + strings.Join(m.pendingX, ", ")}, max(width-4, 10))
 }
 
 func (m dashboardModel) telemetryPromptView(width int) string {
@@ -2648,7 +2660,7 @@ func (m dashboardModel) View() string {
 	// grid while open (same shape for normal and force removes).
 	if m.confirm != "" {
 		dialogW := min(max(w-4, 44), 64)
-		lines := 7 + (len(m.pendingX)+2)/3
+		lines := 7 + len(m.confirmTargetLines(dialogW))
 		if m.pendingForce {
 			lines++
 		}
