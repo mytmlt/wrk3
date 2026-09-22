@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `up` now pings the docker/podman daemon (`<engine> info`) once before any
+  `entry.setup` command, so a stopped engine fails fast with "start docker
+  and retry" instead of dying inside a project Makefile. Compose and entry
+  exec errors that are daemon-down are wrapped the same way. Those
+  environment failures are not sent as anonymous error reports.
+
 - Error reports now use the innermost meaningful error type (instead of the
   generic `fmt.wrapError` wrapper) when grouping in Sentry, so issues from
   unrelated commands no longer look alike. The reported message and

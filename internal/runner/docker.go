@@ -191,7 +191,7 @@ func (r *DockerRunner) Up(ctx context.Context, worktreePath string, env map[stri
 		return fmt.Errorf("docker up: %w", err)
 	}
 	_, err := r.runCompose(ctx, worktreePath, env, "up", "-d", "--build")
-	return err
+	return wrapEngineErr("docker", err)
 }
 
 // Down stops the worktree via `docker compose down` (containers and
@@ -202,7 +202,7 @@ func (r *DockerRunner) Down(ctx context.Context, worktreePath string, env map[st
 		return fmt.Errorf("docker down: empty worktree path")
 	}
 	_, err := r.runCompose(ctx, worktreePath, env, "down")
-	return err
+	return wrapEngineErr("docker", err)
 }
 
 // Logs returns `docker compose logs` output. With follow=true it runs
@@ -232,9 +232,9 @@ func (r *DockerRunner) Exec(ctx context.Context, worktreePath string, cmd []stri
 	var stdout, stderr bytes.Buffer
 	if err := runDockerCmd(timeoutCtx, cmd[0], worktreePath,
 		buildEnv(os.Environ(), r.ProjectName(), env), &stdout, &stderr, cmd[1:]...); err != nil {
-		return fmt.Errorf("exec %q (dir=%s project=%s): %w: %s",
+		return wrapEngineErr("docker", fmt.Errorf("exec %q (dir=%s project=%s): %w: %s",
 			strings.Join(cmd, " "), worktreePath, r.ProjectName(),
-			err, strings.TrimSpace(stderr.String()))
+			err, strings.TrimSpace(stderr.String())))
 	}
 	return nil
 }
@@ -359,9 +359,9 @@ func (r *DockerRunner) runCompose(ctx context.Context, worktreePath string, env 
 	var stdout, stderr bytes.Buffer
 	if err := runDockerCmd(timeoutCtx, "docker", worktreePath, r.environ(env),
 		&stdout, &stderr, args...); err != nil {
-		return "", fmt.Errorf("docker %s (dir=%s project=%s): %w: %s",
+		return "", wrapEngineErr("docker", fmt.Errorf("docker %s (dir=%s project=%s): %w: %s",
 			strings.Join(args, " "), worktreePath, r.ProjectName(),
-			err, strings.TrimSpace(stderr.String()))
+			err, strings.TrimSpace(stderr.String())))
 	}
 	return stdout.String(), nil
 }

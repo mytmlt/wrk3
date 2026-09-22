@@ -59,7 +59,8 @@ func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func
 	// Preflight before any setup entry (which typically runs
 	// `docker compose up --wait --build` and would otherwise fail
 	// minutes in with a container-name conflict). Applies to both
-	// compose backends (docker and podman).
+	// compose backends (docker and podman). Daemon reachability is
+	// checked once per `up` in checkEngineForUp.
 	if r.cfg.Runner.Type == "docker" || r.cfg.Runner.Type == "podman" {
 		if err := runner.CheckComposeFiles(rec.AbsPath, r.cfg.ComposeFiles()); err != nil {
 			return fmt.Errorf("up %q: %w", rec.Branch, err)
@@ -97,6 +98,10 @@ func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func
 // `docker compose` multi-service behavior.
 func runUpTargets(ctx context.Context, r *resolved, targets []ports.WorktreeRecord, logf func(string, ...any)) error {
 	r.logOpStart("up", "up "+branchesOf(targets))
+	if err := checkEngineForUp(ctx, r); err != nil {
+		r.logOpDone("up", "up "+branchesOf(targets), err)
+		return err
+	}
 	if err := markStatus(r, targets, ports.StatusSettingUp); err != nil {
 		r.logOpDone("up", "up "+branchesOf(targets), err)
 		return err
@@ -154,6 +159,16 @@ func markStatus(r *resolved, targets []ports.WorktreeRecord, status string) erro
 		}
 	}
 	return saveState(r, recs)
+}
+
+func checkEngineForUp(ctx context.Context, r *resolved) error {
+	if r.cfg.Runner.Type != "docker" && r.cfg.Runner.Type != "podman" {
+		return nil
+	}
+	if err := runner.CheckEngine(ctx, r.cfg.Runner.Type); err != nil {
+		return fmt.Errorf("up: %w", err)
+	}
+	return nil
 }
 
 func init() {

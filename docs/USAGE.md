@@ -344,6 +344,7 @@ Each test builds a throwaway git repo in a temp dir, writes a minimal
 | `github forge needs the gh CLI ...` / `gh is not authenticated ...` | Install `gh` from https://cli.github.com, then run `gh auth login` (wrk3 reuses your session, stores no tokens). |
 | Port conflicts | Two checkouts sharing `base`+`ranges` on one host — give each config a distinct `ports.base` offset or non-overlapping `ports.ranges`. |
 | `sets container_name for service(s) ...` | Compose file pins `container_name:`, which is global and collides across worktrees — delete it (compose generates `<project>-<service>-1`). |
+| `docker daemon is not running` / `failed to connect to the docker API` | Docker Desktop (macOS) or the docker/podman service is stopped, or the engine binary is missing — start it and `up` again. wrk3 now preflights `docker info` / `podman info` before `entry.setup`. |
 | `Conflict. The container name ... is already in use` | Same cause as above on a stack that predates the preflight check — remove `container_name:` and `docker rm -f` the leftover, then `up` again. |
 
 ## Telemetry
@@ -352,6 +353,8 @@ Each test builds a throwaway git repo in a temp dir, writes a minimal
 off by default and is never enabled without explicit consent. Enabled
 reports include a scrubbed stacktrace (module, function, line; no locals,
 source context, paths, or personal data) so issues can group by location.
+Expected local failures (container engine not running or missing) stay on
+the machine and are never reported.
 
 **First run:** the dashboard shows a one-time prompt (default No). `y`
 enables; `n`/`esc` leaves off. Both states persist.

@@ -81,7 +81,7 @@ func (r *PodmanRunner) Up(ctx context.Context, worktreePath string, env map[stri
 		return fmt.Errorf("podman up: %w", err)
 	}
 	_, err := r.runCompose(ctx, worktreePath, env, "up", "-d", "--build")
-	return err
+	return wrapEngineErr("podman", err)
 }
 
 // Down stops the worktree via `podman compose down` (containers and
@@ -92,7 +92,7 @@ func (r *PodmanRunner) Down(ctx context.Context, worktreePath string, env map[st
 		return fmt.Errorf("podman down: empty worktree path")
 	}
 	_, err := r.runCompose(ctx, worktreePath, env, "down")
-	return err
+	return wrapEngineErr("podman", err)
 }
 
 // Logs returns `podman compose logs` output. With follow=true it runs
@@ -122,9 +122,9 @@ func (r *PodmanRunner) Exec(ctx context.Context, worktreePath string, cmd []stri
 	var stdout, stderr bytes.Buffer
 	if err := runDockerCmd(timeoutCtx, cmd[0], worktreePath,
 		buildEnv(os.Environ(), r.ProjectName(), env), &stdout, &stderr, cmd[1:]...); err != nil {
-		return fmt.Errorf("exec %q (dir=%s project=%s): %w: %s",
+		return wrapEngineErr("podman", fmt.Errorf("exec %q (dir=%s project=%s): %w: %s",
 			strings.Join(cmd, " "), worktreePath, r.ProjectName(),
-			err, strings.TrimSpace(stderr.String()))
+			err, strings.TrimSpace(stderr.String())))
 	}
 	return nil
 }
@@ -203,9 +203,9 @@ func (r *PodmanRunner) runCompose(ctx context.Context, worktreePath string, env 
 	var stdout, stderr bytes.Buffer
 	if err := runDockerCmd(timeoutCtx, "podman", worktreePath, r.environ(env),
 		&stdout, &stderr, args...); err != nil {
-		return "", fmt.Errorf("podman %s (dir=%s project=%s): %w: %s",
+		return "", wrapEngineErr("podman", fmt.Errorf("podman %s (dir=%s project=%s): %w: %s",
 			strings.Join(args, " "), worktreePath, r.ProjectName(),
-			err, strings.TrimSpace(stderr.String()))
+			err, strings.TrimSpace(stderr.String())))
 	}
 	return stdout.String(), nil
 }

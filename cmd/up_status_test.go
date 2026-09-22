@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/mytmlt/wrk3/internal/config"
 	"github.com/mytmlt/wrk3/internal/ports"
+	"github.com/mytmlt/wrk3/internal/runner"
 )
 
 func TestStoredStatusOverridesLive(t *testing.T) {
@@ -183,5 +187,27 @@ func TestDashboardWorkColumns_StatusFitsSettingUp(t *testing.T) {
 		if statusWidth < len(ports.StatusSettingUp) {
 			t.Errorf("width %d: STATUS column %d truncates %q", w, statusWidth, ports.StatusSettingUp)
 		}
+	}
+}
+
+func TestCheckEngineForUpSkipsNonCompose(t *testing.T) {
+	r := &resolved{cfg: &config.Config{Runner: config.RunnerConfig{Type: "nomad"}}}
+	if err := checkEngineForUp(context.Background(), r); err != nil {
+		t.Fatalf("checkEngineForUp(nomad) = %v, want nil", err)
+	}
+}
+
+func TestCheckEngineForUpMissingBinary(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	r := &resolved{cfg: &config.Config{Runner: config.RunnerConfig{Type: "docker"}}}
+	err := checkEngineForUp(context.Background(), r)
+	if err == nil {
+		t.Fatal("checkEngineForUp with empty PATH = nil, want error")
+	}
+	if !runner.IsEngineUnavailable(err) {
+		t.Fatalf("checkEngineForUp error = %v, want engine unavailable", err)
+	}
+	if !strings.Contains(err.Error(), "up:") {
+		t.Errorf("checkEngineForUp error = %q, want up: prefix", err)
 	}
 }

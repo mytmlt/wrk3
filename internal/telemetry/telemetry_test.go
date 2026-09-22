@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -411,5 +412,60 @@ func TestNewErrorEvent_UnwrappedType(t *testing.T) {
 	}
 	if event.Message != "outer: inner: something went wrong" {
 		t.Errorf("Message = %q, want full wrapped text", event.Message)
+	}
+}
+
+type expectedErr struct{ msg string }
+
+func (e expectedErr) Error() string  { return e.msg }
+func (e expectedErr) Expected() bool { return true }
+
+func TestIsExpected(t *testing.T) {
+	sentryMsg := `up "<name>" setup "<name>": exec "<name>" (dir=$HOME/projects/x/.worktrees/y project=z): exit status 2: failed to connect to the docker API at unix://$HOME/.docker/run/docker.sock; check if the path is correct and if the daemon is running: dial unix $HOME/.docker/run/docker.sock: connect: no such file or directory`
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "bug", err: errSentinel("something went wrong"), want: false},
+		{name: "typed", err: expectedErr{msg: "docker daemon is not running"}, want: true},
+		{name: "wrapped typed", err: fmt.Errorf("up: %w", expectedErr{msg: "docker down"}), want: true},
+		{name: "sentry docker api", err: errors.New(sentryMsg), want: true},
+		{name: "classic daemon", err: errors.New("Cannot connect to the Docker daemon. Is the docker daemon running?"), want: true},
+		{name: "join all expected", err: errors.Join(expectedErr{msg: "a"}, errors.New("docker daemon is not running")), want: true},
+		{name: "join mixed", err: errors.Join(expectedErr{msg: "a"}, errSentinel("nil pointer")), want: false},
+		{name: "container name conflict", err: errors.New("compose file sets container_name"), want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsExpected(tt.err); got != tt.want {
+				t.Errorf("IsExpected() = %v, want %v for %v", got, tt.want, tt.err)
+			}
+		})
+	}
+}
+
+func TestNewErrorEvent_DropsExpected(t *testing.T) {
+	if event := newErrorEvent("dashboard/up", expectedErr{msg: "docker daemon is not running"}); event != nil {
+		t.Fatal("newErrorEvent should drop typed expected errors")
+	}
+	err := errors.New("failed to connect to the docker API at unix://$HOME/.docker/run/docker.sock")
+	if event := newErrorEvent("up", err); event != nil {
+		t.Fatal("newErrorEvent should drop docker-daemon environment errors")
+	}
+}
+
+func TestBeforeSend_DropsExpectedDaemonMessage(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("WRK3_CONFIG_HOME", dir)
+	t.Setenv("WRK3_NO_TELEMETRY", "")
+	if err := SavePrefs(true, true); err != nil {
+		t.Fatalf("SavePrefs: %v", err)
+	}
+	event := sentry.NewEvent()
+	event.Message = "failed to connect to the docker API at unix://$HOME/.docker/run/docker.sock"
+	if got := beforeSend(event, nil); got != nil {
+		t.Error("beforeSend should drop docker-daemon environment errors")
 	}
 }

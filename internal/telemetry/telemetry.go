@@ -51,6 +51,9 @@ func ReportIfEnabled(command string, err error) {
 	if err == nil {
 		return
 	}
+	if IsExpected(err) {
+		return
+	}
 	if CheckDisabled() {
 		return
 	}
@@ -74,6 +77,9 @@ func ReportIfEnabled(command string, err error) {
 
 func newErrorEvent(command string, err error) *sentry.Event {
 	if err == nil {
+		return nil
+	}
+	if IsExpected(err) {
 		return nil
 	}
 	msg := Scrub(err)
@@ -140,6 +146,9 @@ func beforeSend(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
 	if event.Message == "" {
 		return nil
 	}
+	if looksExpected(event.Message) {
+		return nil
+	}
 	for i := range event.Exception {
 		event.Exception[i].Type = scrubString(event.Exception[i].Type)
 		event.Exception[i].Value = scrubString(event.Exception[i].Value)
@@ -196,6 +205,66 @@ func isGenericWrap(name string) bool {
 	switch name {
 	case "*fmt.wrapError", "*fmt.wrapErrors":
 		return true
+	}
+	return false
+}
+
+type expectedMarker interface {
+	Expected() bool
+}
+
+// IsExpected reports whether err is a local/user environment failure
+// that should stay on the machine (not an anonymous error report).
+func IsExpected(err error) bool {
+	if err == nil {
+		return false
+	}
+	if u, ok := err.(interface{ Unwrap() []error }); ok {
+		kids := u.Unwrap()
+		if len(kids) == 0 {
+			return false
+		}
+		for _, k := range kids {
+			if !IsExpected(k) {
+				return false
+			}
+		}
+		return true
+	}
+	if exp, ok := err.(expectedMarker); ok && exp.Expected() {
+		return true
+	}
+	if looksExpected(err.Error()) {
+		return true
+	}
+	if u, ok := err.(interface{ Unwrap() error }); ok {
+		return IsExpected(u.Unwrap())
+	}
+	return false
+}
+
+func looksExpected(msg string) bool {
+	m := strings.ToLower(msg)
+	for _, frag := range []string{
+		"failed to connect to the docker api",
+		"cannot connect to the docker daemon",
+		"cannot connect to podman",
+		"is the docker daemon running",
+		"docker daemon is not running",
+		"podman daemon is not running",
+		"daemon not running",
+		"binary not found in path; install",
+	} {
+		if strings.Contains(m, frag) {
+			return true
+		}
+	}
+	if strings.Contains(m, "docker.sock") || strings.Contains(m, "podman.sock") {
+		if strings.Contains(m, "no such file or directory") ||
+			strings.Contains(m, "connection refused") ||
+			strings.Contains(m, "connect:") {
+			return true
+		}
 	}
 	return false
 }
