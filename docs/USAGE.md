@@ -268,8 +268,10 @@ they just sort newest-first. Layout is a lazygit-style 5-box grid
 and `x of y` counts: [1]-Worktrees (top-left, slim SLUG + health STATUS
 only), [2]-Branches (middle-left), Projects + status (bottom-left),
 Details preview (top-right), and a large focusable [3]-Logs
-(bottom-right, `j/k`/`↑`/`↓` scroll it when focused;
-`pgup`/`pgdn`/`home`/`end` scroll from any pane),
+(bottom-right) with two tabs — `console` (command output from
+`u`/`d`/`l`/`x`, auto-shown when output lands) and `dashboard` (event
+lines); `t` toggles, `j/k`/`↑`/`↓` scroll the active tab when focused,
+`pgup`/`pgdn`/`home`/`end` scroll from any pane,
 the shortcut bar is always visible at the bottom.
 Pressing `u` flips the selected rows to `setting up` immediately; the
 rows keep that status (not `running`) until setup/run entries finish,

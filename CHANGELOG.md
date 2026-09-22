@@ -33,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Dashboard log pane now has two tabs: `console` (raw command output
+  from `u`/`d`/`l`/`x`, auto-shown when output lands, `t` toggles) and
+  `dashboard` (the event lines the pane always had). Docker/podman
+  runners stream entry/compose output through a ctx sink
+  (`runner.WithOutput`/`OutputFrom`/`FeedLine`); new backends should tee
+  through it (see `docs/PLUGINS.md`).
+
 - Automatic releases: every merge to `main` tags a patch bump
   (`vX.Y.Z` → `vX.Y.Z+1`) and publishes the GoReleaser release in the
   same automation run (auto-tagging). No manual tagging

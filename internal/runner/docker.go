@@ -182,7 +182,9 @@ func runDockerCmd(ctx context.Context, name, dir string, env []string, stdout, s
 	return startKillable(ctx, c)
 }
 
-// Up starts the worktree via `docker compose up -d --build`.
+// Up starts the worktree via `docker compose up -d --build`. Command
+// output streams to the ctx sink when present (see WithOutput); without
+// one this is plain buffered compose.
 func (r *DockerRunner) Up(ctx context.Context, worktreePath string, env map[string]string) error {
 	if strings.TrimSpace(worktreePath) == "" {
 		return fmt.Errorf("docker up: empty worktree path")
@@ -190,18 +192,19 @@ func (r *DockerRunner) Up(ctx context.Context, worktreePath string, env map[stri
 	if err := CheckComposeFiles(worktreePath, r.opts.ComposeFiles); err != nil {
 		return fmt.Errorf("docker up: %w", err)
 	}
-	_, err := r.runCompose(ctx, worktreePath, env, "up", "-d", "--build")
+	_, err := composeLive(ctx, r.timeout(), "docker", r.ProjectName(), r.opts.ComposeFiles, worktreePath, r.environ(env), "up", "-d", "--build")
 	return err
 }
 
 // Down stops the worktree via `docker compose down` (containers and
 // networks removed, named volumes preserved; the remove path uses
-// `down -v` explicitly to reclaim volumes).
+// `down -v` explicitly to reclaim volumes). Output streams to the ctx
+// sink when present.
 func (r *DockerRunner) Down(ctx context.Context, worktreePath string, env map[string]string) error {
 	if strings.TrimSpace(worktreePath) == "" {
 		return fmt.Errorf("docker down: empty worktree path")
 	}
-	_, err := r.runCompose(ctx, worktreePath, env, "down")
+	_, err := composeLive(ctx, r.timeout(), "docker", r.ProjectName(), r.opts.ComposeFiles, worktreePath, r.environ(env), "down")
 	return err
 }
 
@@ -219,7 +222,8 @@ func (r *DockerRunner) Logs(ctx context.Context, worktreePath string, follow boo
 }
 
 // Exec runs cmd as a host process with cwd=worktreePath and env applied
-// (used for entry commands such as `docker compose up --wait`).
+// (used for entry commands such as `docker compose up --wait`). Output
+// streams to the ctx sink when present.
 func (r *DockerRunner) Exec(ctx context.Context, worktreePath string, cmd []string, env map[string]string) error {
 	if strings.TrimSpace(worktreePath) == "" {
 		return fmt.Errorf("docker exec: empty worktree path")
@@ -229,12 +233,12 @@ func (r *DockerRunner) Exec(ctx context.Context, worktreePath string, cmd []stri
 	}
 	timeoutCtx, cancel := context.WithTimeout(ctx, r.timeout())
 	defer cancel()
-	var stdout, stderr bytes.Buffer
-	if err := runDockerCmd(timeoutCtx, cmd[0], worktreePath,
-		buildEnv(os.Environ(), r.ProjectName(), env), &stdout, &stderr, cmd[1:]...); err != nil {
+	_, stderr, err := runCmdLive(timeoutCtx, cmd[0], worktreePath,
+		buildEnv(os.Environ(), r.ProjectName(), env), cmd[1:]...)
+	if err != nil {
 		return fmt.Errorf("exec %q (dir=%s project=%s): %w: %s",
 			strings.Join(cmd, " "), worktreePath, r.ProjectName(),
-			err, strings.TrimSpace(stderr.String()))
+			err, strings.TrimSpace(stderr))
 	}
 	return nil
 }
