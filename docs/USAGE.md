@@ -73,7 +73,7 @@ wrk3 add feat/new-feature           # unknown name: refresh remote, then prompt 
 wrk3 add feat/new-feature --create  # same, without prompting (for scripts: no prompt, no hang on EOF)
 wrk3 add feat/new-feature --no-create # fail fast on unknown names instead of prompting
 wrk3 up feature-a                   # setup entries + compose up + run entry
-wrk3 up                             # bare = all worktrees including main, in parallel (errgroup)
+wrk3 up                             # bare = all worktrees including main, in parallel (each worktree runs to completion; a failure marks that worktree failed without aborting the others)
 wrk3 reload feature-a | wrk3 reload # entry.reload commands (bare = all including main, in parallel)
 wrk3 pull feature-a | wrk3 pull     # git pull in one worktree (bare = all including main, in parallel; --rebase/--ff-only)
 wrk3 git-status | wrk3 git-status feature-a  # git status per worktree (bare = all including main, in parallel; --short adds the file list; gs alias)
@@ -143,6 +143,28 @@ a `healthcheck:` are included automatically. Health never fails `up`,
 never blocks `down`, and never persists to the state file; only running
 worktrees are probed. The dashboard DETAILS preview lists the per-check
 breakdown (`api: pass, db: fail: ...`, containers as `container:<name>`).
+
+### Concurrency and readiness
+
+`up`, `down`, `reload`, `pull` and `git-status` run their worktrees
+concurrently — one worker per worktree (`sync.WaitGroup`), so a slow
+`setup` on one branch never blocks another branch's `up`. Within one
+worktree the steps are strictly sequential: each `entry.setup` command,
+then compose up, then the `entry.run` command, and wrk3 waits for
+**every** command to exit before moving to the next or finishing the
+worktree (bounded by the runner's per-invocation timeout). In other
+words, `up` returns only when every worktree's commands have actually
+finished — a `run` entry that polls an API
+(`until curl -sf http://localhost:${APP_PORT}/healthz; do sleep 1; done`)
+blocks `up` until it passes.
+
+One nuance to know: the built-in compose step is
+`docker compose up -d --build`, which returns once containers are
+*started*, not once they are *healthy*. If your services declare a
+`healthcheck:`, run the compose step yourself with `--wait` in
+`entry.setup` (`docker compose up --wait --build`, the example config's
+default) or gate readiness in `entry.run` — configured `health.checks`
+are display-only and never fail or block `up` (see above).
 
 Main checkout: the repo root is always included implicitly (no state entry)
 in `up`/`down` (bare = all including main), `status`/`ls`/`git-status`, and as an
@@ -268,8 +290,10 @@ they just sort newest-first. Layout is a lazygit-style 5-box grid
 and `x of y` counts: [1]-Worktrees (top-left, slim SLUG + health STATUS
 only), [2]-Branches (middle-left), Projects + status (bottom-left),
 Details preview (top-right), and a large focusable [3]-Logs
-(bottom-right, `j/k`/`↑`/`↓` scroll it when focused;
-`pgup`/`pgdn`/`home`/`end` scroll from any pane),
+(bottom-right) with two tabs — `console` (command output from
+`u`/`d`/`l`/`x`, auto-shown when output lands) and `dashboard` (event
+lines); `t` toggles, `j/k`/`↑`/`↓` scroll the active tab when focused,
+`pgup`/`pgdn`/`home`/`end` scroll from any pane,
 the shortcut bar is always visible at the bottom.
 Pressing `u` flips the selected rows to `setting up` immediately; the
 rows keep that status (not `running`) until setup/run entries finish,

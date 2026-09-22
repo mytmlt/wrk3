@@ -45,7 +45,7 @@ of opening an editor.`,
 		} else if !st.IsDir() {
 			return fmt.Errorf("worktree %q path %q is not a directory", rec.Branch, rec.AbsPath)
 		}
-		if err := ensureWorktreeEnv(r, *rec); err != nil {
+		if err := ensureWorktreeEnv(r, *rec, r.cfg.URLSpecs()); err != nil {
 			return err
 		}
 		path := envFilePath(rec.AbsPath)

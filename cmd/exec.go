@@ -32,7 +32,7 @@ var execCmd = &cobra.Command{
 		if rec == nil {
 			return fmt.Errorf("unknown worktree %q (see status)", branch)
 		}
-		if err := ensureWorktreeEnv(r, *rec); err != nil {
+		if err := ensureWorktreeEnv(r, *rec, r.cfg.URLSpecs()); err != nil {
 			return err
 		}
 		rn, err := r.runnerFor(*rec)

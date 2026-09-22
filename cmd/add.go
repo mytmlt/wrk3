@@ -549,7 +549,7 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 		}
 	}
 	idx := nextIndex(*recs)
-	allocation, err := assignPorts(*alloc, *recs)
+	envAlloc, err := assignAllocation(r, *recs)
 	if err != nil {
 		return nil, fmt.Errorf("add worktree %q: %w", branch, err)
 	}
@@ -565,8 +565,8 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 		warns = append(warns, copyWarns...)
 	}
 	if err := ensureWorktreeEnv(r, ports.WorktreeRecord{
-		Branch: branch, Slug: slug, AbsPath: path, Ports: allocation,
-	}); err != nil {
+		Branch: branch, Slug: slug, AbsPath: path, Ports: envAlloc.Ports, Urls: envAlloc.URLs,
+	}, r.cfg.URLSpecs()); err != nil {
 		return nil, err
 	}
 	*recs = append(*recs, ports.WorktreeRecord{
@@ -574,7 +574,8 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 		Slug:           slug,
 		AbsPath:        path,
 		Index:          idx,
-		Ports:          allocation,
+		Ports:          envAlloc.Ports,
+		Urls:           envAlloc.URLs,
 		ComposeProject: composeProject,
 		Status:         ports.StatusStopped,
 	})
@@ -601,14 +602,14 @@ func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator,
 		return nil, fmt.Errorf("adopt worktree %q: path %s missing or not a directory", branch, path)
 	}
 	idx := nextIndex(*recs)
-	allocation, err := assignPorts(*alloc, *recs)
+	envAlloc, err := assignAllocation(r, *recs)
 	if err != nil {
 		return nil, fmt.Errorf("adopt worktree %q: %w", branch, err)
 	}
 	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
 	if err := ensureWorktreeEnv(r, ports.WorktreeRecord{
-		Branch: branch, Slug: slug, AbsPath: path, Ports: allocation,
-	}); err != nil {
+		Branch: branch, Slug: slug, AbsPath: path, Ports: envAlloc.Ports, Urls: envAlloc.URLs,
+	}, r.cfg.URLSpecs()); err != nil {
 		return nil, err
 	}
 	*recs = append(*recs, ports.WorktreeRecord{
@@ -616,7 +617,8 @@ func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator,
 		Slug:           slug,
 		AbsPath:        path,
 		Index:          idx,
-		Ports:          allocation,
+		Ports:          envAlloc.Ports,
+		Urls:           envAlloc.URLs,
 		ComposeProject: composeProject,
 		Status:         ports.StatusStopped,
 	})

@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -80,7 +81,7 @@ func newErrorEvent(command string, err error) *sentry.Event {
 		return nil
 	}
 
-	et := fmt.Sprintf("%T", err)
+	et := errorTypeName(err)
 	et = strings.TrimPrefix(et, "*")
 	et = scrubString(et)
 
@@ -175,4 +176,26 @@ func Init() {
 
 func Flush() {
 	sentry.Flush(2 * time.Second)
+}
+
+func errorTypeName(err error) string {
+	if err == nil {
+		return ""
+	}
+	for cur := err; ; {
+		name := fmt.Sprintf("%T", cur)
+		next := errors.Unwrap(cur)
+		if !isGenericWrap(name) || next == nil {
+			return name
+		}
+		cur = next
+	}
+}
+
+func isGenericWrap(name string) bool {
+	switch name {
+	case "*fmt.wrapError", "*fmt.wrapErrors":
+		return true
+	}
+	return false
 }

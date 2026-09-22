@@ -535,7 +535,8 @@ func TestDashboardView_TablesAndHelp(t *testing.T) {
 		"1 of ", "of 2",
 		"feature-a", "feature-b", "pr-1", "pr-2",
 		"running", "stopped", "registered",
-		"space", "select", "quit", "menu", "dashboard started",
+		"console", "dashboard (1)",
+		"space", "select", "quit", "menu",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("view missing %q:\n%s", want, out)
@@ -595,7 +596,7 @@ func TestDashboardMenuItems_MatchBindings(t *testing.T) {
 		seen[it.Run] = true
 	}
 	// Every Run value must dispatch through the normal key handler.
-	for _, run := range []string{"u", "d", "l", "p", "a", "o", "O", "e", "x", "X", "r", "R", "m", "P", "1", "2", "3", "tab", "q"} {
+	for _, run := range []string{"u", "d", "l", "p", "a", "o", "O", "e", "x", "X", "r", "R", "m", "P", "1", "2", "3", "t", "tab", "q"} {
 		if !seen[run] {
 			t.Errorf("menu missing run %q (drift from newDashboardKeys)", run)
 		}
@@ -1261,6 +1262,9 @@ func seedLogModel(t *testing.T, m dashboardModel) dashboardModel {
 	m.log = lines
 	m.logView.SetContent(strings.Join(wrapLogLines(lines, 60), "\n"))
 	m.logView.GotoBottom()
+	m.console = append([]string(nil), lines...)
+	m.consoleView.SetContent(strings.Join(wrapLogLines(lines, 60), "\n"))
+	m.consoleView.GotoBottom()
 	return m
 }
 
@@ -1270,19 +1274,18 @@ func TestDashboardModel_LogPaneFocusAndScroll(t *testing.T) {
 	if m.pane != 2 {
 		t.Fatalf("3: pane = %d, want 2 (logs)", m.pane)
 	}
-	top := m.logView.YOffset
+	top := m.consoleView.YOffset
 	m = applyKey(t, m, "k")
-	if m.logView.YOffset >= top {
-		t.Errorf("k in log pane should scroll up: %d -> %d", top, m.logView.YOffset)
+	if m.consoleView.YOffset >= top {
+		t.Errorf("k in log pane should scroll up: %d -> %d", top, m.consoleView.YOffset)
 	}
 	if m.workCursor != 0 || m.brCursor != 0 {
 		t.Errorf("j/k in log pane must not move cursors: work=%d br=%d", m.workCursor, m.brCursor)
 	}
 	m = applyKey(t, m, "j")
-	if m.logView.YOffset != top {
-		t.Errorf("j in log pane should scroll back down to %d, got %d", top, m.logView.YOffset)
+	if m.consoleView.YOffset != top {
+		t.Errorf("j in log pane should scroll back down to %d, got %d", top, m.consoleView.YOffset)
 	}
-	// Space is a no-op in the log pane.
 	m = applyKey(t, m, " ")
 	if len(m.workSel) != 0 || len(m.brSel) != 0 {
 		t.Errorf("space in log pane must not select: %v %v", m.workSel, m.brSel)

@@ -3,10 +3,13 @@
 // unmanaged lines are never modified).
 //
 // Allocation rule: per-service ranges scanned from base upward by 1; the
-// lowest free port wins (gap reuse). Runtime state lives in
+// lowest free port wins (gap reuse). URL ports (config-driven url vars
+// with explicit port ranges) follow the same scan. Runtime state lives in
 // <worktreeBase>/.wrk3-state.json with absolute paths so every command
 // works from any cwd.
 package ports
+
+import "net/url"
 
 // PortApp is the canonical port name. It is required in every allocation:
 // the proxy gateway targets it and `status` lists it first in the PORTS
@@ -45,6 +48,22 @@ type Allocator struct {
 	Ranges map[string][2]int
 }
 
+// URLSpec describes one config-driven URL with a port range.
+// Var is the .env variable name (e.g. "APP_URL"); BaseURL is the
+// parsed base URL with an explicit port; Range is [min, max] inclusive.
+type URLSpec struct {
+	Var     string
+	BaseURL *url.URL
+	Range   [2]int
+}
+
+// EnvAllocation combines host port and URL port allocations for one
+// worktree. Ports maps port name -> allocated port; URLs maps var -> port.
+type EnvAllocation struct {
+	Ports map[string]int
+	URLs  map[string]int
+}
+
 // WorktreeRecord is one entry in <worktreeBase>/.wrk3-state.json.
 // AbsPath is always absolute so commands work from any cwd.
 //
@@ -61,6 +80,7 @@ type WorktreeRecord struct {
 	AbsPath        string         `json:"absPath"`
 	Index          int            `json:"index"`
 	Ports          map[string]int `json:"ports"`
+	Urls           map[string]int `json:"urls,omitempty"`
 	ComposeProject string         `json:"composeProject"`
 	Status         string         `json:"status"`
 }
@@ -85,14 +105,15 @@ func StoredStatusOverridesLive(status string) bool {
 
 // ShouldPersistLive reports whether a live probe result should be written
 // back to the state file. Unknown probes never persist (e.g. daemon
-// unreachable). Running always persists (running wins, even over setting
-// up/stopping/failed). Stopped persists only over running/failed so a
+// unreachable). Running persists (clears stopped/failed) but must never
+// clobber transitional states (setting up, stopping) that an active in-band
+// operation just wrote. Stopped persists only over running/failed so a
 // transient empty probe mid-up never clobbers an in-progress transitional
 // state.
 func ShouldPersistLive(stored, live string) bool {
 	switch live {
 	case StatusRunning:
-		return stored != StatusRunning
+		return stored != StatusRunning && stored != StatusSettingUp && stored != StatusStopping
 	case StatusStopped:
 		return stored == StatusRunning || stored == StatusFailed
 	default:
@@ -102,9 +123,14 @@ func ShouldPersistLive(stored, live string) bool {
 
 // ResolveDisplayStatus picks the cell shown in status/ls/dashboard given
 // the stored state and a live probe result. liveErr != nil (or empty live)
-// falls back to stored/unknown. Live running always wins; otherwise stored
-// transitional/terminal states win over the probe.
+// falls back to stored/unknown. Transitional states (setting up, stopping)
+// always win over a live running probe to prevent flicker during long-running
+// operations. Live running always wins over terminal stored states (failed,
+// stopped) so out-of-band recovery still works.
 func ResolveDisplayStatus(stored, live string, liveErr error) string {
+	if stored == StatusSettingUp || stored == StatusStopping {
+		return stored
+	}
 	if liveErr == nil && live == StatusRunning {
 		return StatusRunning
 	}

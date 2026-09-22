@@ -15,8 +15,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `j/k` move, `enter` confirms, `y` deletes, `n`/`esc` cancels) instead
   of the status-line `y/n` prompt. Removal execution and safety guards
   are unchanged.
+### Added
+
+- OpenCodeReview bot (`.github/workflows/open-code-review.yml`, pinned
+  to `alibaba/open-code-review@v1.12.9`): posts inline + sticky summary
+  review comments on collaborator PRs as `github-actions[bot]`.
+  Requires repo secrets `OCR_LLM_URL`, `OCR_LLM_TOKEN`, `OCR_LLM_MODEL`
+  (OpenAI-compatible endpoint); Dependabot already tracks github-actions
+  updates weekly.
+
+### Added
+
+- `ports.base` entries may share one value as aliases for a single host
+  port (e.g. `{app: 8000, public_api: 8000}` when both variables address
+  one listener). Aliases are allocated once per worktree and stay equal;
+  the `.env` recovery check accepts shared alias values and still rejects
+  split aliases or collisions across distinct ports. Port names mapping to
+  the same `<NAME>_PORT` variable (e.g. `api-v2` and `api_v2`) are
+  rejected at validation.
 
 ### Fixed
+
+- Error reports now use the innermost meaningful error type (instead of the
+  generic `fmt.wrapError` wrapper) when grouping in Sentry, so issues from
+  unrelated commands no longer look alike. The reported message and
+  scrubbing behavior are unchanged.
 
 - Error reports now include a PII-free exception stacktrace and a crashed
   main thread (module, function, line; no locals, source context, user,
@@ -36,6 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gateway is enabled); `remove` leaves a user-set `APP_URL`.
 
 ### Added
+
+- Dashboard log pane now has two tabs: `console` (raw command output
+  from `u`/`d`/`l`/`x`, auto-shown when output lands, `t` toggles) and
+  `dashboard` (the event lines the pane always had). Docker/podman
+  runners stream entry/compose output through a ctx sink
+  (`runner.WithOutput`/`OutputFrom`/`FeedLine`); new backends should tee
+  through it (see `docs/PLUGINS.md`).
 
 - Automatic releases: every merge to `main` tags a patch bump
   (`vX.Y.Z` → `vX.Y.Z+1`) and publishes the GoReleaser release in the
@@ -168,6 +198,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    kill-switch `WRK3_NO_TELEMETRY`, DSN override `WRK3_SENTRY_DSN`. Scrubbed
    allowlist: error type, sanitized message, command name, version, OS/arch
    only — never paths, branches, ports, emails, IPs, or secrets.
+
+### Added
+
+- Concurrency and readiness semantics pinned down: regression tests now
+  prove `up`/`down` execute worktrees in parallel (one worker per
+  worktree, `sync.WaitGroup`; a failing worktree marks itself failed
+  without aborting siblings) and that every entry command (`setup`/`run`,
+  via `sh -c`) is awaited to completion before the worktree moves on —
+  a `run` entry that polls an API (health check) blocks `up` until it
+  exits. Docs clarify the readiness nuance: the built-in compose step is
+  `up -d --build` (returns *started*, not *healthy*), so gate readiness
+  in `entry.setup` (`docker compose up --wait --build`) or `entry.run`;
+  configured `health.checks` remain display-only.
 
 ## [0.10.0] - 2026-09-16
 

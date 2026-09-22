@@ -116,6 +116,16 @@ type Runner interface {
     Exec(ctx context.Context, worktreePath string, cmd []string, env map[string]string) error
     Status(ctx context.Context, worktreePath string) (Status, error)
 }
+
+// Long commands (Up/Down/Exec) should tee output to the ctx sink when
+// present so the dashboard console tab stays live:
+//
+//     sink := runner.OutputFrom(ctx)           // nil when no sink
+//     runner.FeedLine(sink, line)              // one raw line, blanks skipped
+//     out := runner.Prefixed(sink, "[slug] ")  // nil-safe prefix
+//
+// Without a sink, buffer as before. Status/Logs probes stay quiet.
+
 ```
 
 Semantics (match `internal/runner/docker.go` / `internal/runner/podman.go`):

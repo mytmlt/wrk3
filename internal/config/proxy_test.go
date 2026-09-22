@@ -55,17 +55,18 @@ func TestProxyDefaultsWhenAbsent(t *testing.T) {
 }
 
 func TestProxyEnabledValidation(t *testing.T) {
-	cfg := writeProxyConfig(t, proxyBase+"proxy:\n  enabled: true\n  domain: WRK3.Test\n  addr: 127.0.0.1:80\n")
+	cfg := writeProxyConfig(t, proxyBase+"proxy:\n  enabled: true\n  domain: WRK3.Test\n  addr: 127.0.0.1:8080\n")
 	if cfg.ProxyDomain() != "wrk3.test" {
 		t.Errorf("Domain not normalized: %q", cfg.Proxy.Domain)
 	}
-	if got := cfg.ProxyURL("pr-1"); got != "http://pr-1.wrk3.test" {
-		t.Errorf("port 80 URL = %q", got)
+	if got := cfg.ProxyURL("pr-1"); got != "http://pr-1.wrk3.test:8080" {
+		t.Errorf("proxy URL = %q", got)
 	}
 	for _, body := range []string{
 		proxyBase + "proxy:\n  enabled: true\n  domain: \"bad domain\"\n",
 		proxyBase + "proxy:\n  enabled: true\n  addr: \"noport\"\n",
 		proxyBase + "proxy:\n  enabled: true\n  addr: \"127.0.0.1:99999\"\n",
+		proxyBase + "proxy:\n  enabled: true\n  addr: \"127.0.0.1:80\"\n",
 	} {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "wrk3.yaml")

@@ -44,13 +44,12 @@ stacked otherwise) with `[n]` numbers and `x of y` counts on every list:
 - **Details (top-right, preview)** — selected/cursor worktree
   (`branch/slug/status/health/ports/url/path/project`), follows the worktree
   cursor and multi-select.
-- **[3]-Logs (bottom-right, large, focusable)** — operation output; focus it
-  (arrows/`1`/`2`/`3`) and scroll with `j/k`/`↑`/`↓` (plus
-  `pgup`/`pgdn`/`home`/`end` from any pane).
+- **[3]-Logs (bottom-right, large, focusable)** — two tabs: `console` (command output from `u`/`d`/`l`/`x`, auto-shown when output lands) and `dashboard` (event lines). Focus with arrows/`1`/`2`/`3`, toggle with `t`, scroll with `j/k`/`↑`/`↓` (plus `pgup`/`pgdn`/`home`/`end` from any pane).
 
 | Keys | Action |
 | ---- | ------ |
-| `j/k` or `↑/↓` | move cursor (scrolls the log when LOG is focused) |
+| `j/k` or `↑/↓` | move cursor (scrolls the active log tab when LOG is focused) |
+| `t` | toggle log tabs (`console` command output / `dashboard` events) |
 | `space` | select (multi-select; `u`/`d`/`x` fall back to the cursor row) |
 | `1`/`2`/`3` or `←`/`→` | switch pane (worktrees/branches/log) |
 | `tab` | switch project |

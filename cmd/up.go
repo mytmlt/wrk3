@@ -49,7 +49,7 @@ var upCmd = &cobra.Command{
 
 // upOne runs setup entries, compose up, then the run entry.
 func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func(string, ...any)) error {
-	if err := ensureWorktreeEnv(r, rec); err != nil {
+	if err := ensureWorktreeEnv(r, rec, r.cfg.URLSpecs()); err != nil {
 		return err
 	}
 	rn, err := r.runnerFor(rec)

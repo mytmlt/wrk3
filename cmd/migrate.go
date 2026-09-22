@@ -29,6 +29,38 @@ func assignPorts(alloc ports.Allocator, recs []ports.WorktreeRecord) (map[string
 	return alloc.FindFreeAllocation(takenWithMain(alloc, recs), osPortFree)
 }
 
+// assignAllocation returns host and URL port allocations for a new worktree.
+// Host ports allocate first, then URL ports, sharing one taken set so
+// cross-collisions are prevented.
+func assignAllocation(r *resolved, recs []ports.WorktreeRecord) (ports.EnvAllocation, error) {
+	alloc := r.cfg.Allocator()
+	taken := takenWithMain(alloc, recs)
+	hostPorts, err := alloc.FindFreeAllocation(taken, osPortFree)
+	if err != nil {
+		return ports.EnvAllocation{}, fmt.Errorf("ports: %w", err)
+	}
+	for _, p := range hostPorts {
+		taken[p] = struct{}{}
+	}
+	specs := r.cfg.URLSpecs()
+	if len(specs) == 0 {
+		return ports.EnvAllocation{Ports: hostPorts}, nil
+	}
+	for _, rec := range recs {
+		if rec.Urls == nil {
+			continue
+		}
+		for _, p := range rec.Urls {
+			taken[p] = struct{}{}
+		}
+	}
+	urlPorts, err := ports.AllocateURLs(specs, taken, osPortFree)
+	if err != nil {
+		return ports.EnvAllocation{}, fmt.Errorf("urls: %w", err)
+	}
+	return ports.EnvAllocation{Ports: hostPorts, URLs: urlPorts}, nil
+}
+
 // previewPorts is the state-only counterpart of assignPorts for display
 // paths (status/dashboard): no blocking bind checks in renders.
 func previewPorts(alloc ports.Allocator, recs []ports.WorktreeRecord) (map[string]int, error) {
@@ -100,7 +132,7 @@ func migrateLegacyMainCollisions(r *resolved, recs []ports.WorktreeRecord) (upda
 		// Ensure .env only when the worktree dir exists: stale records
 		// (dir missing) still migrate state, but must not create dirs.
 		if st, statErr := os.Stat(out[ci].AbsPath); statErr == nil && st.IsDir() {
-			if err := ensureWorktreeEnv(r, out[ci]); err != nil {
+			if err := ensureWorktreeEnv(r, out[ci], r.cfg.URLSpecs()); err != nil {
 				return recs, nil, nil, err
 			}
 		}
