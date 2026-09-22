@@ -3,6 +3,7 @@
 package runner
 
 import (
+	"errors"
 	"os"
 	"syscall"
 
@@ -29,8 +30,8 @@ func tryLockFile(f *os.File) error {
 // isLockContention reports whether err means the lock is held by someone
 // else (as opposed to a hard failure).
 func isLockContention(err error) bool {
-	errno, ok := err.(syscall.Errno)
-	return ok && errno == windows.ERROR_LOCK_VIOLATION
+	var errno syscall.Errno
+	return errors.As(err, &errno) && errno == windows.ERROR_LOCK_VIOLATION
 }
 
 // unlockFile releases a lock previously acquired by tryLockFile.

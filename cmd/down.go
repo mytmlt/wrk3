@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/spf13/cobra"
@@ -83,11 +84,7 @@ func runDownTargets(ctx context.Context, r *resolved, targets []ports.WorktreeRe
 }
 
 func downOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func(string, ...any)) error {
-	if err := ensureWorktreeEnv(r, rec, r.cfg.URLSpecs()); err != nil {
-		return err
-	}
-	rn, err := r.runnerFor(rec)
-	if err != nil {
+	if err := os.MkdirAll(rec.AbsPath, 0o755); err != nil {
 		return fmt.Errorf("down %q: %w", rec.Branch, err)
 	}
 	lock, err := runner.LockCompose(ctx, rec.AbsPath)
@@ -95,6 +92,13 @@ func downOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf fu
 		return fmt.Errorf("down %q: %w", rec.Branch, err)
 	}
 	defer func() { _ = runner.UnlockCompose(lock) }()
+	if err := ensureWorktreeEnv(r, rec, r.cfg.URLSpecs()); err != nil {
+		return err
+	}
+	rn, err := r.runnerFor(rec)
+	if err != nil {
+		return fmt.Errorf("down %q: %w", rec.Branch, err)
+	}
 	env := envForWorktree(r.cfg, rec)
 	if s := r.cfg.Entry.Stop; s != "" {
 		logf("[%s] stop: %s", rec.Slug, s)
