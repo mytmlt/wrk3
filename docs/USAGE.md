@@ -227,6 +227,11 @@ then label-based `podman ps` fallbacks over the same project candidates.
 Both `com.docker.compose.project` (docker-compat) and
 `io.podman.compose.project` (native) label keys are probed.
 
+Local (`runner.type: local`) has no compose stack: `up`/`down` run
+`entry.setup`/`run`/`stop` on the host and skip compose. Status probes
+return `unknown` (no process supervision), so stored lifecycle is not
+clobbered. `logs` needs `entry.logs`.
+
 ## Dashboard (TUI)
 
 `wrk3 dashboard` (shorthand `wrk3 db`) opens an interactive view over the current repo plus every
@@ -329,7 +334,7 @@ Each test builds a throwaway git repo in a temp dir, writes a minimal
 | Symptom | Likely cause / fix |
 | ------- | ------------------ |
 | `unknown source type "x" (available sources: [git])` | Typo in `source.type`; only `git` ships in v1. |
-| `unknown runner type "x" (available runners: [docker podman ...])` | Only `docker` and `podman` are implemented; stubs return `not implemented`. |
+| `unknown runner type "x" (available runners: [docker local podman ...])` | `docker`, `local`, and `podman` ship; stubs return `not implemented`. |
 | `project.worktreeBase must not be empty` | `project.worktreeBase` is required. |
 | `no wrk3.yaml found ...` | Not inside a repo checkout, or config named differently — `cd` in or pass `-f <path>`. |
 | `unknown worktree "foo"` | Name/slug not in state — check `wrk3 status`. |

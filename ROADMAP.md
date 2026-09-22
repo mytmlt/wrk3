@@ -16,13 +16,10 @@ developer answer — never invented.
 - [x] `git` source: `fetch` / `add` / `worktree list` over parallel worktrees.
 - [x] `docker` runner: `compose -p <prefix>-<slug>` per worktree, isolated ports + `.env`.
 - [x] `podman` runner: same shape via native `podman compose`.
+- [x] `local` runner: host `entry.setup` / `entry.run` / `entry.stop` with no compose.
 - [x] `source.git.copy`: seed gitignored local-state files into new worktrees.
 
 ## Next
-
-- [ ] Bare-machine / local runner: run `entry.setup` / `entry.run` /
-  `entry.stop` directly on the host (no compose) for apps with no
-  container stack.
 - [ ] `portainer` runner: implement the stub behind the `Runner`
   interface (currently `not implemented`).
 - [ ] `nomad` runner: implement the stub behind the `Runner` interface.

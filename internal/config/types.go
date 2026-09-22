@@ -1,7 +1,7 @@
 // Package config loads and validates wrk3.yaml.
 //
 // Config shape mirrors docs/CONFIGURATION.md (project worktreeBase,
-// source git, runner docker/podman, entry setup/run/stop/logs,
+// source git, runner docker/podman/local, entry setup/run/stop/logs,
 // ports base+ranges with the required `app` port plus any custom names).
 //
 // Path decision: worktreeBase is resolved relative to the config file
@@ -259,6 +259,20 @@ func (c *Config) ComposeFiles() []string {
 		return c.Runner.Docker.ComposeFiles
 	}
 	return nil
+}
+
+// UsesCompose reports whether the selected runner drives a compose
+// engine (docker or podman). The local runner does not.
+func (c *Config) UsesCompose() bool {
+	if c == nil {
+		return false
+	}
+	switch c.Runner.Type {
+	case "docker", "podman":
+		return true
+	default:
+		return false
+	}
 }
 
 // Load reads and validates the config at path.

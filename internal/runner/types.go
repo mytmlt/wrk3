@@ -2,7 +2,8 @@
 //
 // v1 ships the docker and podman runners (compose -p <prefix>-<slug>,
 // or -p <slug> when the prefix is empty, with
-// make entry commands, cwd=worktreePath, env=allocated ports).
+// make entry commands, cwd=worktreePath, env=allocated ports) and the
+// local runner (host entry commands, no compose).
 // Portainer/Nomad stubs return "not implemented". New Runner types
 // register in registry.go; unknown types error listing available
 // options.

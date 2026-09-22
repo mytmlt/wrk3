@@ -118,13 +118,12 @@ func (r *DockerRunner) composeArgs(sub ...string) []string {
 	return buildComposeArgs(r.ProjectName(), r.opts.ComposeFiles, sub...)
 }
 
-// buildEnv merges base (typically os.Environ()) with COMPOSE_PROJECT_NAME
-// and extra. Existing keys are replaced in place (no duplicates);
-// new keys from extra are appended sorted by key for determinism.
-// COMPOSE_PROJECT_NAME is always forced to project so callers cannot
-// break project isolation via env.
-func buildEnv(base []string, project string, extra map[string]string) []string {
-	merged := make([]string, 0, len(base)+len(extra)+1)
+// mergeEnv merges base (typically os.Environ()) with extra. Existing
+// keys are replaced in place (no duplicates); new keys from extra are
+// appended sorted by key for determinism. Empty keys and keys containing
+// "=" are skipped.
+func mergeEnv(base []string, extra map[string]string) []string {
+	merged := make([]string, 0, len(base)+len(extra))
 	index := map[string]int{}
 	for _, kv := range base {
 		k := kv
@@ -155,13 +154,25 @@ func buildEnv(base []string, project string, extra map[string]string) []string {
 		index[k] = len(merged)
 		merged = append(merged, kv)
 	}
-	kv := "COMPOSE_PROJECT_NAME=" + project
-	if j, ok := index["COMPOSE_PROJECT_NAME"]; ok {
-		merged[j] = kv
-	} else {
-		merged = append(merged, kv)
-	}
 	return merged
+}
+
+// buildEnv merges base with extra, then forces COMPOSE_PROJECT_NAME to
+// project so callers cannot break project isolation via env.
+func buildEnv(base []string, project string, extra map[string]string) []string {
+	merged := mergeEnv(base, extra)
+	kv := "COMPOSE_PROJECT_NAME=" + project
+	for i, existing := range merged {
+		k := existing
+		if j := strings.IndexByte(existing, '='); j >= 0 {
+			k = existing[:j]
+		}
+		if k == "COMPOSE_PROJECT_NAME" {
+			merged[i] = kv
+			return merged
+		}
+	}
+	return append(merged, kv)
 }
 
 // environ builds the process environment for docker invocations.

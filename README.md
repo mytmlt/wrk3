@@ -211,7 +211,7 @@ Full field reference, port table, `.env` mapping, and multi-project patterns:
 
 Project goal: turn **any codebase** into a `wrk3.yaml` that runs the app
 the way its developers run it locally — see [ROADMAP.md](ROADMAP.md)
-for where the `docker` / `podman` / `portainer` / `nomad` / bare-machine runners stand.
+for where the `docker` / `podman` / `local` / `portainer` / `nomad` runners stand.
 
 ## How it works
 
@@ -229,8 +229,8 @@ for where the `docker` / `podman` / `portainer` / `nomad` / bare-machine runners
    `source.git.remote`, else `origin`), skipping already registered or
    checked-out branches.
 2. `wrk3 up` → runs `entry.setup` commands (`sh -c`, `cwd=worktree`,
-    `env=ports`), then `compose -p <prefix>-<slug> up` via the configured
-    engine (`docker` or `podman`), then
+    `env=ports`),     then `compose -p <prefix>-<slug> up` via the configured
+    engine (`docker` or `podman`; skipped for `local`), then
     `entry.run` — in parallel across worktrees via errgroup with prefixed logs.
     Bare `up`/`down` apply to all worktrees including the implicit main
     checkout (repo root, reserved port index 0 — the `ports.base` allocation,

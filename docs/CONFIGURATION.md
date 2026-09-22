@@ -27,6 +27,7 @@ runner:
   # podman:                             # alternative backend (runner.type: podman)
   #   composeFiles: [docker-compose.yml]
   #   projectPrefix: demo
+  # local: no extra keys (runner.type: local; host entry.* only, no compose)
 entry:
   setup: ["docker compose up --wait --build"]  # run in order before compose up (use `podman compose ...` with runner.type: podman)
   run: "docker compose logs -f"                # required; run after compose up
@@ -75,11 +76,12 @@ broader than `--mine`, which matches git commit authorship).
 
 | Path | Required | Notes |
 | ---- | -------- | ----- |
-| `runner.type` | yes | `docker` or `podman` (both ship). `portainer`/`nomad` exist as stubs → `not implemented`. Unknown values error listing available runners. |
+| `runner.type` | yes | `docker`, `podman`, or `local` (all ship). `portainer`/`nomad` exist as stubs → `not implemented`. Unknown values error listing available runners. |
 | `runner.docker.composeFiles` | yes (docker) | At least one compose file, resolved inside each worktree. Compose files must not set `container_name:` — it is global on the daemon and bypasses `-p <prefix>-<slug>` isolation, so `up` fails fast naming the offending file/services. Compose generates `<project>-<service>-1` automatically. |
 | `runner.docker.projectPrefix` | no (docker) | Compose project is `<prefix>-<slug>` → free volume/network isolation. Empty, missing, or whitespace-only means slug-only (`<slug>`); slug-only names can collide across repos sharing a daemon. |
 | `runner.podman.composeFiles` | yes (podman) | Same as `runner.docker.composeFiles`, for `podman compose`. `up` runs the same `container_name:` preflight. |
 | `runner.podman.projectPrefix` | no (podman) | Same as `runner.docker.projectPrefix`, for `podman compose` (empty => slug-only). |
+| `runner.local` | n/a | No extra keys. Host-only: `up`/`down` skip compose and run `entry.setup`/`run`/`stop` via `sh -c` with `cwd=worktree`, `env=allocated ports`. `status` reports `unknown` (no process probe, never fails hard). `logs` uses `entry.logs` when set. |
 | `entry.setup` | no | Ordered list, each run via `sh -c` with `cwd=worktree`, `env=allocated ports`. Empty strings skipped. |
 | `entry.run` | yes | Long-running command started after compose up (e.g. dev server). Run via `sh -c` with `cwd=worktree`, `env=allocated ports`. |
 | `entry.stop` | yes | Run via `sh -c` before `compose down` by `down` (failures warn, never block teardown). |

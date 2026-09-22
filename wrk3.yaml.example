@@ -18,11 +18,12 @@ runner:
     # slug-only (e.g. `projectPrefix: ""`). Slug-only names can collide
     # across repos sharing a daemon.
     projectPrefix: demo
-  # Alternative backend (set runner.type: podman and use `podman compose`
-  # in entry.*):
-  # podman:
-  #   composeFiles: [docker-compose.yml]
-  #   projectPrefix: demo
+  # Alternative backends:
+  # runner.type: podman  (use `podman compose` in entry.*)
+  #   podman:
+  #     composeFiles: [docker-compose.yml]
+  #     projectPrefix: demo
+  # runner.type: local  (no compose; host entry.* only, no extra keys)
 entry:
   setup: ["docker compose up --wait --build"]
   run: "docker compose logs -f"

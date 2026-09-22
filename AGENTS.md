@@ -25,7 +25,7 @@ hermetic (temp git repos, temp dirs — no network).
 - `internal/config/` — `wrk3.yaml`/`wrk3.yml` load + validation + upward
   discovery (`discover.go`; `docs/CONFIGURATION.md` is the field reference).
 - `internal/source/` — `Source` iface + `registry.go` + `git.go`.
-- `internal/runner/` — `Runner` iface + `registry.go` + `docker.go` + `podman.go`
+- `internal/runner/` — `Runner` iface + `registry.go` + `docker.go` + `podman.go` + `local.go`
   (`portainer`/`nomad` are intentional `not implemented` stubs).
 - `internal/ports/` — `allocated = base + index*step` allocator, `.env`
   writer, `<worktreeBase>/.wrk3-state.json` state file.

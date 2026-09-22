@@ -54,6 +54,9 @@ func TestValidateTable(t *testing.T) {
 		{"unknown runner.type", func(s string) string {
 			return strings.Replace(s, "type: docker", "type: swarm", 1)
 		}, "unknown runner type"},
+		{"local happy", func(s string) string {
+			return strings.Replace(s, "type: docker", "type: local", 1)
+		}, ""},
 		{"empty composeFiles", func(s string) string {
 			return strings.Replace(s, "composeFiles: [docker-compose.yml]", "composeFiles: []", 1)
 		}, "composeFiles"},
@@ -286,5 +289,30 @@ ports:
 				t.Errorf("ProjectName = %q, want feat-x", got)
 			}
 		})
+	}
+}
+
+func TestUsesCompose(t *testing.T) {
+	if (*Config)(nil).UsesCompose() {
+		t.Fatal("nil config UsesCompose = true")
+	}
+	docker := validBase
+	cfg, err := Load(writeConfig(t, docker))
+	if err != nil {
+		t.Fatalf("Load docker: %v", err)
+	}
+	if !cfg.UsesCompose() {
+		t.Fatal("docker UsesCompose = false")
+	}
+	localBody := strings.Replace(validBase, "type: docker", "type: local", 1)
+	cfg, err = Load(writeConfig(t, localBody))
+	if err != nil {
+		t.Fatalf("Load local: %v", err)
+	}
+	if cfg.UsesCompose() {
+		t.Fatal("local UsesCompose = true")
+	}
+	if got := cfg.ComposeFiles(); got != nil {
+		t.Errorf("local ComposeFiles() = %v, want nil", got)
 	}
 }

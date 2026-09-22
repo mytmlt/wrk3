@@ -5,9 +5,8 @@
 - `Source` (`internal/source/types.go`) — where worktrees come from
   (`git` ships).
 - `Runner` (`internal/runner/types.go`) — where worktrees execute
-  (`docker` and `podman` ship; `portainer`/`nomad` are intentional
-  `not implemented`
-  stubs — good starting points to copy).
+  (`docker`, `podman`, and `local` ship; `portainer`/`nomad` are
+  intentional `not implemented` stubs — good starting points to copy).
 - `Forge` (`internal/forge/forge.go`) — where PR state comes from
   (`github` ships via the `gh` CLI; powers `fetch`/`add`/`dashboard`
   `--myprs`).

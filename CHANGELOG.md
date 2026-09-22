@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `local` runner (`runner.type: local`): host-only `entry.setup`/`run`/`stop`
+  with no compose stack. `up`/`down` skip compose; `status` stays `unknown`
+  (no process probe, never fails hard); `logs` uses `entry.logs` when set.
+  The dogfood `wrk3.yaml` now uses it so dashboard `up` on this repo no
+  longer fails looking for a missing `docker-compose.yml`.
+
 ### Fixed
 
 - Error reports now use the innermost meaningful error type (instead of the
