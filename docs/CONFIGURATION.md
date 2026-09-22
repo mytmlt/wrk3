@@ -116,6 +116,18 @@ The dashboard DETAILS preview lists the per-check breakdown
 Like `entry.*`, `run` strings execute from your `wrk3.yaml` — only use
 configs you trust.
 
+Health checks are display-only by design, so they never gate `up` or
+`down`. If you want `up` to wait until the API inside the container is
+actually answering, gate readiness in the entry commands themselves:
+the built-in compose step is `up -d --build`, which returns once
+containers are *started* (not *healthy*). Use `entry.setup` with
+`docker compose up --wait --build` (the example config's default) when
+services declare a `healthcheck:`, or put a polling/retry loop in
+`entry.run` (e.g.
+`until curl -sf http://localhost:${APP_PORT}/healthz; do sleep 1; done`) —
+wrk3 runs every entry string via `sh -c` in the worktree and waits for
+it to exit before moving on.
+
 ## Ports and `.env`
 
 - Each `add` keeps a monotonic index (`max(index)+1`, floored at 1 —
