@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -43,8 +44,28 @@ func TestCLIMissingConfigErrors(t *testing.T) {
 	oldFile := fileFlag
 	fileFlag = ""
 	defer func() { fileFlag = oldFile }()
-	if _, err := ResolveConfigPath(); err == nil {
+	_, err := ResolveConfigPath()
+	if err == nil {
 		t.Error("ResolveConfigPath in empty dir = nil, want error")
+	}
+	if !IsUsageError(err) {
+		t.Errorf("ResolveConfigPath err = %v, want usage error", err)
+	}
+}
+
+func TestIsUsageError(t *testing.T) {
+	if IsUsageError(nil) {
+		t.Error("nil is not a usage error")
+	}
+	if !IsUsageError(errConfigNotFound) {
+		t.Error("errConfigNotFound should be a usage error")
+	}
+	wrapped := fmt.Errorf("%w; or --project <name>", errConfigNotFound)
+	if !IsUsageError(wrapped) {
+		t.Error("wrapped errConfigNotFound should be a usage error")
+	}
+	if IsUsageError(fmt.Errorf("docker compose failed")) {
+		t.Error("unrelated error should not be a usage error")
 	}
 }
 

@@ -29,7 +29,9 @@ func main() {
 	}()
 
 	if err := cmd.Execute(); err != nil {
-		telemetry.ReportIfEnabled(cmd.NameOfLastCommand(), err)
+		if !cmd.IsUsageError(err) {
+			telemetry.ReportIfEnabled(cmd.NameOfLastCommand(), err)
+		}
 		telemetry.Flush()
 		os.Exit(1)
 	}

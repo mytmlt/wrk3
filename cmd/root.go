@@ -5,6 +5,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -16,6 +17,9 @@ import (
 	"github.com/mytmlt/wrk3/internal/source"
 	"github.com/mytmlt/wrk3/internal/update"
 )
+
+// errConfigNotFound is returned when no wrk3.yaml/yml is found from cwd.
+var errConfigNotFound = errors.New("no wrk3.yaml found (walked up from cwd); pass -f <path>")
 
 var fileFlag string
 
@@ -72,9 +76,15 @@ func ResolveConfigPath() (string, error) {
 			// DiscoverFile with explicit never returns empty; defensive.
 			return "", fmt.Errorf("config file %q not found", fileFlag)
 		}
-		return "", fmt.Errorf("no wrk3.yaml found (walked up from cwd); pass -f <path>")
+		return "", errConfigNotFound
 	}
 	return found, nil
+}
+
+// IsUsageError reports expected user errors (missing config) that should
+// print to stderr but not be reported as crashes.
+func IsUsageError(err error) bool {
+	return errors.Is(err, errConfigNotFound)
 }
 
 func init() {

@@ -230,7 +230,9 @@ Both `com.docker.compose.project` (docker-compat) and
 ## Dashboard (TUI)
 
 `wrk3 dashboard` (shorthand `wrk3 db`) opens an interactive view over the current repo plus every
-registered project (`tab` switches projects). It polls worktree state and
+registered project (`tab` switches projects). With no local `wrk3.yaml` it
+starts from the most recently seen registered project (`--project` / `-f`
+still override). It polls worktree state and
 remote branches (default every 15s, `--poll 0` disables), shows the slim worktree
 list (SLUG + health STATUS with `x of y` counts), full branch/ports/URL
 details in the DETAILS preview (clickable `URL`: gateway URL when `proxy.enabled`,
@@ -331,7 +333,7 @@ Each test builds a throwaway git repo in a temp dir, writes a minimal
 | `unknown source type "x" (available sources: [git])` | Typo in `source.type`; only `git` ships in v1. |
 | `unknown runner type "x" (available runners: [docker podman ...])` | Only `docker` and `podman` are implemented; stubs return `not implemented`. |
 | `project.worktreeBase must not be empty` | `project.worktreeBase` is required. |
-| `no wrk3.yaml found ...` | Not inside a repo checkout, or config named differently — `cd` in or pass `-f <path>`. |
+| `no wrk3.yaml found ...` | Not inside a repo checkout, or config named differently — `cd` in or pass `-f <path>`. `dashboard` also falls back to the most recently seen registered project (`--project <name>`). |
 | `unknown worktree "foo"` | Name/slug not in state — check `wrk3 status`. |
 | `stale` / `?` in status | Worktree directory deleted out-of-band; `remove --force` to clean state, or re-`add`. |
 | deleted `.wrk3-state.json` | Self-heals: next `status`/`ls`/`up`/`down`/dashboard run re-adopts on-disk worktrees (ports from `.env` when intact). |

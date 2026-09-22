@@ -20,7 +20,9 @@ wrk3 dashboard   # or: wrk3 db
 ```
 
 The dashboard is the fastest way to drive `wrk3` — one TUI over the
-current repo plus every registered project (`tab` switches). It polls
+current repo plus every registered project (`tab` switches). Run it from
+any directory: with no local `wrk3.yaml` it opens the most recently seen
+registered project. It polls
 worktree state and remote branches (default every 15s, `--poll 0`
 disables), and runs the same operations as the CLI without leaving the
 screen.

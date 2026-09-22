@@ -23,6 +23,7 @@ import (
 
 	"github.com/mytmlt/wrk3/internal/config"
 	"github.com/mytmlt/wrk3/internal/ports"
+	"github.com/mytmlt/wrk3/internal/project"
 	"github.com/mytmlt/wrk3/internal/source"
 	"github.com/mytmlt/wrk3/internal/telemetry"
 )
@@ -41,6 +42,9 @@ var dashboardCmd = &cobra.Command{
 	Aliases: []string{"db"},
 	Short:   "Interactive TUI: worktrees, branches, ports, up/down/reload/pull/add/remove",
 	Long: `Open an interactive dashboard for this repo (plus registered projects).
+
+When cwd has no wrk3.yaml, starts from the most recently seen registered
+project (` + "`--project`" + ` / ` + "`-f`" + ` still override).
 
 Polls worktree state and remote branches, shows the worktree table with
 ports, and runs up/down/reload/pull/add/remove without leaving the TUI. The CLI keeps
@@ -67,6 +71,9 @@ the next poll or manual refresh (r).`,
 }
 
 // resolveDashboardInitialPath honors --project NAME (registry) over -f/cwd.
+// With neither, an upward wrk3.yaml scan wins; if that finds nothing the
+// most recently seen registered project is used so `wrk3 dashboard` works
+// from any directory after a project has been added.
 func resolveDashboardInitialPath(cmd *cobra.Command) (string, error) {
 	if dashboardProjectArg != "" {
 		if fileFlag != "" {
@@ -83,7 +90,48 @@ func resolveDashboardInitialPath(cmd *cobra.Command) (string, error) {
 		return p.ConfigPath, nil
 	}
 	_ = cmd
-	return ResolveConfigPath()
+	if fileFlag != "" {
+		return ResolveConfigPath()
+	}
+	found, err := config.DiscoverFile("", "")
+	if err != nil {
+		return "", err
+	}
+	if found != "" {
+		return found, nil
+	}
+	return latestRegisteredConfigPath()
+}
+
+// latestRegisteredConfigPath returns the most recently seen registry
+// entry. Empty/unreadable registry surfaces as the usual missing-config
+// usage error (dashboard still needs at least one project).
+func latestRegisteredConfigPath() (string, error) {
+	store, err := newProjectStore()
+	if err != nil {
+		return "", errConfigNotFound
+	}
+	projects, err := store.List()
+	if err != nil {
+		return "", fmt.Errorf("list projects: %w", err)
+	}
+	if len(projects) == 0 {
+		return "", fmt.Errorf("%w; or --project <name>", errConfigNotFound)
+	}
+	return latestRegistryProject(projects).ConfigPath, nil
+}
+
+func latestRegistryProject(projects []project.Project) project.Project {
+	if len(projects) == 0 {
+		return project.Project{}
+	}
+	best := projects[0]
+	for _, p := range projects[1:] {
+		if p.LastSeen.After(best.LastSeen) {
+			best = p
+		}
+	}
+	return best
 }
 
 // loadDashboardDescs merges the initial config with the registry list.
@@ -2448,7 +2496,7 @@ func init() {
 	dashboardCmd.Flags().BoolVar(&dashboardMine, "mine", false, "only your branches (tip or branch-exclusive history matches git config user)")
 	dashboardCmd.Flags().StringSliceVar(&dashboardAuthors, "author", nil, "only branches matching author substring in tip or history (repeatable)")
 	dashboardCmd.Flags().BoolVar(&dashboardMyPRS, "myprs", false, "only branches with an open PR involving you (GitHub remotes only, via gh)")
-	dashboardCmd.Flags().StringVar(&dashboardProjectArg, "project", "", "project name from registry (default: local project in cwd)")
+	dashboardCmd.Flags().StringVar(&dashboardProjectArg, "project", "", "project name from registry (default: cwd wrk3.yaml, else most recently seen)")
 	_ = dashboardCmd.RegisterFlagCompletionFunc("project", completeProjectNames)
 	_ = dashboardCmd.RegisterFlagCompletionFunc("remote", completeRemotes)
 	rootCmd.AddCommand(dashboardCmd)
