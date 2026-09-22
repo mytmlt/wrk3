@@ -12,11 +12,11 @@ func TestShouldPersistLive(t *testing.T) {
 		stored, live string
 		want         bool
 	}{
-		// Running always wins, even over transitional/terminal states.
+		// Running persists (clears stopped/failed) but never clobbers transitional states.
 		{StatusStopped, StatusRunning, true},
 		{StatusFailed, StatusRunning, true},
-		{StatusSettingUp, StatusRunning, true},
-		{StatusStopping, StatusRunning, true},
+		{StatusSettingUp, StatusRunning, false},
+		{StatusStopping, StatusRunning, false},
 		{StatusRunning, StatusRunning, false},
 		{"", StatusRunning, true},
 		// Stopped clears running/failed but never clobbers in-progress work.
@@ -41,8 +41,8 @@ func TestResolveDisplayStatus(t *testing.T) {
 	if got := ResolveDisplayStatus(StatusFailed, StatusRunning, nil); got != StatusRunning {
 		t.Errorf("live running must win over failed, got %q", got)
 	}
-	if got := ResolveDisplayStatus(StatusSettingUp, StatusRunning, nil); got != StatusRunning {
-		t.Errorf("live running must win over setting up, got %q", got)
+	if got := ResolveDisplayStatus(StatusSettingUp, StatusRunning, nil); got != StatusSettingUp {
+		t.Errorf("setting up must win over live running probe, got %q", got)
 	}
 	if got := ResolveDisplayStatus(StatusSettingUp, StatusStopped, nil); got != StatusSettingUp {
 		t.Errorf("setting up must win over stopped probe, got %q", got)
