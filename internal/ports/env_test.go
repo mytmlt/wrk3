@@ -1,6 +1,7 @@
 package ports
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -488,5 +489,307 @@ func TestReadPorts_MissingOrInvalid(t *testing.T) {
 	}
 	if _, ok := ReadPorts(bad, base); ok {
 		t.Error("invalid port must not recover")
+	}
+}
+
+func TestRewriteURL_PreservesSchemeHostPath(t *testing.T) {
+	u, _ := url.Parse("http://localhost:8000/path?q=1#frag")
+	got := RewriteURL(u, 8001)
+	want := "http://localhost:8001/path?q=1#frag"
+	if got != want {
+		t.Errorf("RewriteURL = %q, want %q", got, want)
+	}
+}
+
+func TestRewriteURL_HTTPS(t *testing.T) {
+	u, _ := url.Parse("https://app.example.com:443/api/v1")
+	got := RewriteURL(u, 8443)
+	want := "https://app.example.com:8443/api/v1"
+	if got != want {
+		t.Errorf("RewriteURL = %q, want %q", got, want)
+	}
+}
+
+func TestURLValues_NilInputs(t *testing.T) {
+	if got := URLValues(nil, nil); got != nil {
+		t.Errorf("URLValues(nil,nil) = %v, want nil", got)
+	}
+}
+
+func TestURLValues_RewritesURLs(t *testing.T) {
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000")},
+		{Var: "BASE_URL", BaseURL: ptrURL("http://localhost:9000")},
+	}
+	urlPorts := map[string]int{"APP_URL": 8001, "BASE_URL": 9001}
+	got := URLValues(urlPorts, specs)
+	if got["APP_URL"] != "http://localhost:8001" {
+		t.Errorf("APP_URL = %q, want http://localhost:8001", got["APP_URL"])
+	}
+	if got["BASE_URL"] != "http://localhost:9001" {
+		t.Errorf("BASE_URL = %q, want http://localhost:9001", got["BASE_URL"])
+	}
+}
+
+func TestRenderFull_WithURLs(t *testing.T) {
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000")},
+	}
+	got, err := RenderFull(map[string]int{"app": 8000}, map[string]int{"APP_URL": 8001}, specs)
+	if err != nil {
+		t.Fatalf("RenderFull = %v", err)
+	}
+	if !strings.Contains(got, "APP_PORT=8000\n") {
+		t.Errorf("missing APP_PORT=8000.\n%s", got)
+	}
+	if !strings.Contains(got, "APP_URL=http://localhost:8001\n") {
+		t.Errorf("missing APP_URL=http://localhost:8001.\n%s", got)
+	}
+}
+
+func TestEnsureExt_WithURLs_FreshFile(t *testing.T) {
+	dir := t.TempDir()
+	wt := filepath.Join(dir, "feature-foo")
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+	}
+	added, err := EnsureExt(wt, map[string]int{"app": 8000}, map[string]int{"APP_URL": 8001}, specs)
+	if err != nil {
+		t.Fatalf("EnsureExt = %v", err)
+	}
+	if len(added) == 0 {
+		t.Errorf("EnsureExt added nothing for fresh file")
+	}
+	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(got)
+	if !strings.Contains(s, "APP_PORT=8000\n") {
+		t.Errorf("missing APP_PORT=8000.\n%s", s)
+	}
+	if !strings.Contains(s, "APP_URL=http://localhost:8001\n") {
+		t.Errorf("missing APP_URL=http://localhost:8001.\n%s", s)
+	}
+}
+
+func TestEnsureExt_WithURLs_RewritesExisting(t *testing.T) {
+	dir := t.TempDir()
+	wt := filepath.Join(dir, "feature-foo")
+	if err := os.MkdirAll(wt, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wt, EnvFileName), []byte("APP_PORT=8000\nAPP_URL=http://localhost:9999\nSECRET=xyz\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+	}
+	added, err := EnsureExt(wt, map[string]int{"app": 8000}, map[string]int{"APP_URL": 8001}, specs)
+	if err != nil {
+		t.Fatalf("EnsureExt = %v", err)
+	}
+	if len(added) != 0 {
+		t.Errorf("EnsureExt added = %v, want none (rewritten in place)", added)
+	}
+	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(got)
+	if !strings.Contains(s, "SECRET=xyz\n") {
+		t.Errorf("secret lost.\n%s", s)
+	}
+	if !strings.Contains(s, "APP_URL=http://localhost:8001\n") {
+		t.Errorf("APP_URL not rewritten.\n%s", s)
+	}
+	if strings.Contains(s, "APP_URL=http://localhost:9999") {
+		t.Errorf("stale APP_URL left intact.\n%s", s)
+	}
+	if got, want := strings.Count(s, "APP_URL="), 1; got != want {
+		t.Errorf("APP_URL= count = %d, want %d.\n%s", got, want, s)
+	}
+}
+
+func TestEnsureExt_WithURLs_MissingAppendsUnderMarker(t *testing.T) {
+	dir := t.TempDir()
+	wt := filepath.Join(dir, "feature-foo")
+	if err := os.MkdirAll(wt, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wt, EnvFileName), []byte("SECRET=xyz\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+	}
+	added, err := EnsureExt(wt, map[string]int{"app": 8000}, map[string]int{"APP_URL": 8001}, specs)
+	if err != nil {
+		t.Fatalf("EnsureExt = %v", err)
+	}
+	if len(added) == 0 {
+		t.Errorf("EnsureExt added nothing")
+	}
+	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(got)
+	if !strings.HasPrefix(s, "SECRET=xyz\n") {
+		t.Errorf("user lines must stay first.\n%s", s)
+	}
+	if !strings.Contains(s, managedHeader+"\n") {
+		t.Errorf("missing managed marker.\n%s", s)
+	}
+	if !strings.Contains(s, "APP_URL=http://localhost:8001\n") {
+		t.Errorf("missing APP_URL not appended.\n%s", s)
+	}
+}
+
+func TestStripManagedExt_StripsURLVars(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, EnvFileName)
+	content := "# Generated by wrk3 — do not edit.\nSECRET=xyz\nAPP_PORT=8000\nAPP_URL=http://localhost:8001\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000")},
+	}
+	deleted, err := StripManagedExt(path, map[string]int{"app": 8000}, map[string]int{"APP_URL": 8001}, specs)
+	if err != nil {
+		t.Fatalf("StripManagedExt = %v", err)
+	}
+	if deleted {
+		t.Fatalf("StripManagedExt deleted file with user keys")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "SECRET=xyz\n" {
+		t.Errorf("got %q, want SECRET=xyz only", got)
+	}
+}
+
+func TestStripManagedExt_DeletesWhenOnlyManaged(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, EnvFileName)
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000")},
+	}
+	content, err := RenderFull(map[string]int{"app": 8000}, map[string]int{"APP_URL": 8001}, specs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deleted, err := StripManagedExt(path, map[string]int{"app": 8000}, map[string]int{"APP_URL": 8001}, specs)
+	if err != nil {
+		t.Fatalf("StripManagedExt = %v", err)
+	}
+	if !deleted {
+		t.Errorf("StripManagedExt = false, want true for managed-only file")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("expected .env deleted, stat err = %v", err)
+	}
+}
+
+func TestReadURLs_RecoversAllocation(t *testing.T) {
+	dir := t.TempDir()
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+		{Var: "BASE_URL", BaseURL: ptrURL("http://localhost:9000"), Range: [2]int{9000, 9099}},
+	}
+	if _, err := EnsureExt(dir, map[string]int{"app": 8000}, map[string]int{"APP_URL": 8001, "BASE_URL": 9001}, specs); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := ReadURLs(dir, specs)
+	if !ok {
+		t.Fatal("expected recovery, got not-ok")
+	}
+	if got["APP_URL"] != 8001 || got["BASE_URL"] != 9001 {
+		t.Errorf("got %v, want APP_URL=8001 BASE_URL=9001", got)
+	}
+}
+
+func TestReadURLs_MissingOrInvalid(t *testing.T) {
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+	}
+	empty := t.TempDir()
+	if _, ok := ReadURLs(empty, specs); ok {
+		t.Error("missing .env must not recover")
+	}
+	partial := t.TempDir()
+	if err := os.WriteFile(partial+"/.env", []byte("BASE_URL=http://localhost:9000\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ReadURLs(partial, specs); ok {
+		t.Error("partial .env must not recover")
+	}
+	noPort := t.TempDir()
+	if err := os.WriteFile(noPort+"/.env", []byte("APP_URL=http://localhost\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ReadURLs(noPort, specs); ok {
+		t.Error("missing port must not recover")
+	}
+	outOfRange := t.TempDir()
+	if err := os.WriteFile(outOfRange+"/.env", []byte("APP_URL=http://localhost:9000\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ReadURLs(outOfRange, specs); ok {
+		t.Error("port outside range must not recover")
+	}
+	badPort := t.TempDir()
+	if err := os.WriteFile(badPort+"/.env", []byte("APP_URL=http://localhost:abc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ReadURLs(badPort, specs); ok {
+		t.Error("invalid port must not recover")
+	}
+}
+
+func TestEnsureInheritedExt_WithURLs_SeedsSecrets(t *testing.T) {
+	dir := t.TempDir()
+	seedDir := filepath.Join(dir, "main")
+	wt := filepath.Join(dir, "feature-foo")
+	if err := os.MkdirAll(seedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seedContent := "SECRET=topsecret\nAPP_URL=http://localhost:8000\n"
+	seedPath := filepath.Join(seedDir, EnvFileName)
+	if err := os.WriteFile(seedPath, []byte(seedContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+	}
+	added, err := EnsureInheritedExt(wt, seedPath, map[string]int{"app": 8001}, map[string]int{"APP_URL": 8001}, specs)
+	if err != nil {
+		t.Fatalf("EnsureInheritedExt = %v", err)
+	}
+	if len(added) == 0 {
+		t.Errorf("EnsureInheritedExt added nothing")
+	}
+	got, err := os.ReadFile(filepath.Join(wt, EnvFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(got)
+	if !strings.Contains(s, "SECRET=topsecret\n") {
+		t.Errorf("secret not inherited.\n%s", s)
+	}
+	if !strings.Contains(s, "APP_PORT=8001\n") {
+		t.Errorf("own port allocation missing.\n%s", s)
+	}
+	if !strings.Contains(s, "APP_URL=http://localhost:8001\n") {
+		t.Errorf("URL allocation missing.\n%s", s)
+	}
+	if strings.Contains(s, "APP_URL=http://localhost:8000") && !strings.Contains(s, "APP_URL=http://localhost:8001") {
+		t.Errorf("seed URL leaked.\n%s", s)
 	}
 }

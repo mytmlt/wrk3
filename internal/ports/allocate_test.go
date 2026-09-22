@@ -1,6 +1,7 @@
 package ports
 
 import (
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -214,5 +215,151 @@ func TestIsPortFree_RejectsBadPorts(t *testing.T) {
 		if IsPortFree(p) {
 			t.Errorf("IsPortFree(%d) = true, want false", p)
 		}
+	}
+}
+
+func ptrURL(u string) *url.URL {
+	parsed, _ := url.Parse(u)
+	return parsed
+}
+
+func TestAllocateURLs_EmptySpecs(t *testing.T) {
+	got, err := AllocateURLs(nil, nil, nil)
+	if err != nil {
+		t.Fatalf("AllocateURLs(nil) = %v, want nil", err)
+	}
+	if got != nil {
+		t.Errorf("AllocateURLs(nil) = %v, want nil", got)
+	}
+}
+
+func TestAllocateURLs_TakesBasePort(t *testing.T) {
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+	}
+	got, err := AllocateURLs(specs, nil, nil)
+	if err != nil {
+		t.Fatalf("AllocateURLs = %v", err)
+	}
+	if got["APP_URL"] != 8000 {
+		t.Errorf("APP_URL = %d, want 8000", got["APP_URL"])
+	}
+}
+
+func TestAllocateURLs_SkipsTaken(t *testing.T) {
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+	}
+	taken := map[int]struct{}{8000: {}}
+	got, err := AllocateURLs(specs, taken, nil)
+	if err != nil {
+		t.Fatalf("AllocateURLs = %v", err)
+	}
+	if got["APP_URL"] != 8001 {
+		t.Errorf("APP_URL = %d, want 8001 (8000 taken)", got["APP_URL"])
+	}
+}
+
+func TestAllocateURLs_GapReuse(t *testing.T) {
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+	}
+	taken := map[int]struct{}{8000: {}, 8002: {}}
+	got, err := AllocateURLs(specs, taken, nil)
+	if err != nil {
+		t.Fatalf("AllocateURLs = %v", err)
+	}
+	if got["APP_URL"] != 8001 {
+		t.Errorf("APP_URL = %d, want lowest free 8001", got["APP_URL"])
+	}
+}
+
+func TestAllocateURLs_SkipsOSOccupied(t *testing.T) {
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+	}
+	isFree := func(p int) bool { return p != 8000 }
+	got, err := AllocateURLs(specs, nil, isFree)
+	if err != nil {
+		t.Fatalf("AllocateURLs = %v", err)
+	}
+	if got["APP_URL"] != 8001 {
+		t.Errorf("APP_URL = %d, want 8001 (8000 OS-occupied)", got["APP_URL"])
+	}
+}
+
+func TestAllocateURLs_MultipleSpecs(t *testing.T) {
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+		{Var: "BASE_URL", BaseURL: ptrURL("http://localhost:9000"), Range: [2]int{9000, 9099}},
+	}
+	got, err := AllocateURLs(specs, nil, nil)
+	if err != nil {
+		t.Fatalf("AllocateURLs = %v", err)
+	}
+	if got["APP_URL"] != 8000 || got["BASE_URL"] != 9000 {
+		t.Errorf("got %v, want APP_URL=8000 BASE_URL=9000", got)
+	}
+}
+
+func TestAllocateURLs_CrossCollisionAvoided(t *testing.T) {
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8001}},
+		{Var: "BASE_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8001}},
+	}
+	got, err := AllocateURLs(specs, nil, nil)
+	if err != nil {
+		t.Fatalf("AllocateURLs = %v", err)
+	}
+	if got["APP_URL"] == got["BASE_URL"] {
+		t.Errorf("cross-collision: APP_URL=BASE_URL=%d", got["APP_URL"])
+	}
+	if got["APP_URL"] != 8000 || got["BASE_URL"] != 8001 {
+		t.Errorf("got %v, want APP_URL=8000 BASE_URL=8001", got)
+	}
+}
+
+func TestAllocateURLs_HostPortCollisionAvoided(t *testing.T) {
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+	}
+	taken := map[int]struct{}{8000: {}, 8001: {}, 8002: {}}
+	got, err := AllocateURLs(specs, taken, nil)
+	if err != nil {
+		t.Fatalf("AllocateURLs = %v", err)
+	}
+	if got["APP_URL"] != 8003 {
+		t.Errorf("APP_URL = %d, want 8003 (8000-8002 taken)", got["APP_URL"])
+	}
+}
+
+func TestAllocateURLs_ExhaustionNamesVar(t *testing.T) {
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8001}},
+	}
+	taken := map[int]struct{}{8000: {}, 8001: {}}
+	_, err := AllocateURLs(specs, taken, nil)
+	if err == nil {
+		t.Fatal("AllocateURLs = nil, want exhaustion error")
+	}
+	if !strings.Contains(err.Error(), `"APP_URL"`) || !strings.Contains(err.Error(), "[8000,8001]") {
+		t.Errorf("error %q should name var and range", err.Error())
+	}
+}
+
+func TestTakenFromURLRecords_Union(t *testing.T) {
+	recs := []WorktreeRecord{
+		{Branch: "a", Urls: map[string]int{"APP_URL": 8000}},
+		{Branch: "b", Urls: map[string]int{"APP_URL": 8001, "BASE_URL": 9000}},
+		{Branch: "c"}, // no URLs
+	}
+	taken := TakenFromURLRecords(recs)
+	for _, p := range []int{8000, 8001, 9000} {
+		if _, ok := taken[p]; !ok {
+			t.Errorf("taken missing %d", p)
+		}
+	}
+	if _, ok := taken[8002]; ok {
+		t.Errorf("taken should not contain 8002")
 	}
 }

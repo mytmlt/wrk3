@@ -82,9 +82,15 @@ func mainRecord(r *resolved, recs []ports.WorktreeRecord) (*ports.WorktreeRecord
 	alloc := r.cfg.Allocator()
 	allocation := alloc.BaseAllocation()
 	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
+	urlBasePorts := r.cfg.URLBasePorts()
 	for _, rec := range recs {
 		if ports.AllocationsCollide(allocation, rec.Ports) {
 			return nil, fmt.Errorf("main worktree ports collide with worktree %q (main reserves the ports.base allocation)", rec.Branch)
+		}
+		if len(urlBasePorts) > 0 && len(rec.Urls) > 0 {
+			if ports.AllocationsCollide(urlBasePorts, rec.Urls) {
+				return nil, fmt.Errorf("main worktree URL ports collide with worktree %q", rec.Branch)
+			}
 		}
 		if rec.ComposeProject == composeProject {
 			return nil, fmt.Errorf("main worktree compose project %q collides with worktree %q", composeProject, rec.Branch)
@@ -96,6 +102,7 @@ func mainRecord(r *resolved, recs []ports.WorktreeRecord) (*ports.WorktreeRecord
 		AbsPath:        repoRoot,
 		Index:          mainWorktreeIndex,
 		Ports:          allocation,
+		Urls:           urlBasePorts,
 		ComposeProject: composeProject,
 	}, nil
 }
@@ -207,11 +214,13 @@ func recordsForDisplay(cfg *config.Config) ([]ports.WorktreeRecord, error) {
 // port section, seeding non-managed keys (secrets) from the repo-root
 // checkout's .env when the file is missing. It applies to every worktree —
 // managed worktrees as well as the implicit main checkout (for which the
-// seed is itself, so only ensure happens). Managed <NAME>_PORT keys are
-// always rewritten to rec's allocation; user-owned keys stay intact.
-func ensureWorktreeEnv(r *resolved, rec ports.WorktreeRecord) error {
+// seed is itself, so only ensure happens). Managed <NAME>_PORT keys and
+// configured URL vars are always rewritten to rec's allocation; user-owned
+// keys stay intact.
+func ensureWorktreeEnv(r *resolved, rec ports.WorktreeRecord, urlSpecs []ports.URLSpec) error {
 	seed := filepath.Join(r.cfg.RepoPath(), ports.EnvFileName)
-	if _, err := ports.EnsureInherited(rec.AbsPath, seed, rec.Ports); err != nil {
+	alloc := ports.EnvAllocation{Ports: rec.Ports, URLs: rec.Urls}
+	if _, err := ports.EnsureInheritedExt(rec.AbsPath, seed, alloc.Ports, alloc.URLs, urlSpecs); err != nil {
 		return fmt.Errorf("write .env for worktree %q: %w", rec.Branch, err)
 	}
 	return nil

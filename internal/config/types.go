@@ -14,11 +14,13 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 
@@ -34,6 +36,7 @@ type Config struct {
 	Runner  RunnerConfig  `yaml:"runner"`
 	Entry   EntryConfig   `yaml:"entry"`
 	Ports   PortsConfig   `yaml:"ports"`
+	Urls    []URLConfig   `yaml:"urls"`
 	Proxy   ProxyConfig   `yaml:"proxy"`
 	Health  HealthConfig  `yaml:"health"`
 	rawPath string
@@ -133,6 +136,15 @@ type HealthCheck struct {
 // probed automatically when the stack defines healthchecks.
 type HealthConfig struct {
 	Checks []HealthCheck `yaml:"checks"`
+}
+
+// URLConfig describes one config-driven URL with a port range.
+// Var is the .env variable name (e.g. "APP_URL"); Base is the URL
+// with an explicit port; Range is [min, max] inclusive.
+type URLConfig struct {
+	Var   string  `yaml:"var"`
+	Base  string  `yaml:"base"`
+	Range [2]int `yaml:"range"`
 }
 
 // EffectiveTimeout parses Timeout, defaulting to 10s. Validation bounds
@@ -261,6 +273,47 @@ func (c *Config) ComposeFiles() []string {
 	return nil
 }
 
+// HasURLs reports whether any URL vars are configured.
+func (c *Config) HasURLs() bool {
+	return len(c.Urls) > 0
+}
+
+// URLSpecs converts configured URL entries to ports.URLSpec values.
+// The config must already be validated.
+func (c *Config) URLSpecs() []ports.URLSpec {
+	if len(c.Urls) == 0 {
+		return nil
+	}
+	specs := make([]ports.URLSpec, 0, len(c.Urls))
+	for _, u := range c.Urls {
+		parsed, _ := url.Parse(u.Base)
+		specs = append(specs, ports.URLSpec{
+			Var:     u.Var,
+			BaseURL: parsed,
+			Range:   u.Range,
+		})
+	}
+	return specs
+}
+
+// URLBasePorts returns a map of URL var → base port (from the base URL)
+// for the implicit main worktree allocation.
+func (c *Config) URLBasePorts() map[string]int {
+	if len(c.Urls) == 0 {
+		return nil
+	}
+	out := make(map[string]int, len(c.Urls))
+	for _, u := range c.Urls {
+		parsed, _ := url.Parse(u.Base)
+		if p := parsed.Port(); p != "" {
+			if n, err := strconv.Atoi(p); err == nil {
+				out[u.Var] = n
+			}
+		}
+	}
+	return out
+}
+
 // Load reads and validates the config at path.
 func Load(path string) (*Config, error) {
 	raw, err := os.ReadFile(path)
@@ -350,6 +403,9 @@ func (c *Config) Validate() error {
 	if err := validateGitCopy(c.Source.Git.Copy); err != nil {
 		return err
 	}
+	if err := c.validateURLs(); err != nil {
+		return err
+	}
 	if err := c.validateProxy(); err != nil {
 		return err
 	}
@@ -387,6 +443,82 @@ func validateHealth(h HealthConfig) error {
 		}
 	}
 	return nil
+}
+
+// validateURLs checks url entries: non-empty unique var names that are
+// valid .env identifiers, parseable base URLs with explicit ports
+// (1–65535), valid ranges [min,max] 1–65535, base port inside range.
+// Vars must not collide with managed <NAME>_PORT keys.
+func (c *Config) validateURLs() error {
+	if len(c.Urls) == 0 {
+		return nil
+	}
+	seenVar := make(map[string]int, len(c.Urls))
+	portVars := make(map[string]struct{})
+	for name := range c.Ports.Base {
+		portVars[ports.EnvVarForPort(name)] = struct{}{}
+	}
+	for i, u := range c.Urls {
+		v := strings.TrimSpace(u.Var)
+		if v == "" {
+			return fmt.Errorf("urls[%d].var must not be empty", i)
+		}
+		if _, dup := seenVar[v]; dup {
+			return fmt.Errorf("urls[%d].var %q is duplicated", i, v)
+		}
+		seenVar[v] = i
+		if _, collision := portVars[v]; collision {
+			return fmt.Errorf("urls[%d].var %q collides with managed port key", i, v)
+		}
+		if !isValidEnvVar(v) {
+			return fmt.Errorf("urls[%d].var %q is not a valid .env variable name", i, v)
+		}
+		parsed, err := url.Parse(strings.TrimSpace(u.Base))
+		if err != nil {
+			return fmt.Errorf("urls[%d].base %q: %w", i, u.Base, err)
+		}
+		if parsed.Scheme == "" || parsed.Host == "" {
+			return fmt.Errorf("urls[%d].base %q: must be a valid absolute URL", i, u.Base)
+		}
+		p := parsed.Port()
+		if p == "" {
+			return fmt.Errorf("urls[%d].base %q: must have an explicit port", i, u.Base)
+		}
+		n, err := strconv.Atoi(p)
+		if err != nil || n <= 0 || n > 65535 {
+			return fmt.Errorf("urls[%d].base %q: invalid port %q", i, u.Base, p)
+		}
+		if u.Range[0] <= 0 || u.Range[0] > 65535 || u.Range[1] <= 0 || u.Range[1] > 65535 {
+			return fmt.Errorf("urls[%d].range [%d,%d]: ports must be 1–65535", i, u.Range[0], u.Range[1])
+		}
+		if u.Range[0] > u.Range[1] {
+			return fmt.Errorf("urls[%d].range [%d,%d]: min must be <= max", i, u.Range[0], u.Range[1])
+		}
+		if n < u.Range[0] || n > u.Range[1] {
+			return fmt.Errorf("urls[%d].base port %d outside its range [%d,%d]", i, n, u.Range[0], u.Range[1])
+		}
+	}
+	return nil
+}
+
+// isValidEnvVar reports whether s is a valid .env variable name:
+// starts with a letter, contains only letters, digits, and underscores.
+func isValidEnvVar(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		if i == 0 {
+			if !unicode.IsLetter(r) && r != '_' {
+				return false
+			}
+		} else {
+			if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // validateProxy defaults empty domain/addr and validates them when the

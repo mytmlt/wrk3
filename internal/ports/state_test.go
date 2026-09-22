@@ -99,3 +99,74 @@ func TestStatePath(t *testing.T) {
 		t.Errorf("StatePath() = %q", got)
 	}
 }
+
+func TestState_RoundTripWithURLs(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, StateFileName)
+	records := []WorktreeRecord{
+		{
+			Branch:         "feature/foo",
+			Slug:           "feature-foo",
+			AbsPath:        filepath.Join(dir, "feature-foo"),
+			Index:          0,
+			Ports:          map[string]int{"app": 8000},
+			Urls:           map[string]int{"APP_URL": 8000},
+			ComposeProject: "demo-feature-foo",
+			Status:         "running",
+		},
+		{
+			Branch:         "feature/bar",
+			Slug:           "feature-bar",
+			AbsPath:        filepath.Join(dir, "feature-bar"),
+			Index:          1,
+			Ports:          map[string]int{"app": 8001},
+			Urls:           map[string]int{"APP_URL": 8001, "BASE_URL": 9000},
+			ComposeProject: "demo-feature-bar",
+			Status:         "stopped",
+		},
+	}
+	if err := Save(path, records); err != nil {
+		t.Fatalf("Save() = %v", err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() = %v", err)
+	}
+	if len(loaded) != len(records) {
+		t.Fatalf("Load() len = %d, want %d", len(loaded), len(records))
+	}
+	for i := range records {
+		if loaded[i].Urls == nil && len(records[i].Urls) > 0 {
+			t.Errorf("record %d Urls is nil, want %v", i, records[i].Urls)
+			continue
+		}
+		for varName, want := range records[i].Urls {
+			if loaded[i].Urls[varName] != want {
+				t.Errorf("record %d URL %q = %d, want %d", i, varName, loaded[i].Urls[varName], want)
+			}
+		}
+	}
+}
+
+func TestState_LoadOldFormatWithoutUrls(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, StateFileName)
+	// Old format state without urls field must load without error.
+	raw := `[
+  {"branch":"feat-a","slug":"feat-a","absPath":"` + filepath.Join(dir, "feat-a") + `","index":0,"ports":{"app":8000},"composeProject":"demo-feat-a","status":"stopped"}
+]
+`
+	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() = %v", err)
+	}
+	if len(loaded) != 1 {
+		t.Fatalf("Load() len = %d, want 1", len(loaded))
+	}
+	if loaded[0].Urls != nil {
+		t.Errorf("expected nil Urls for old format, got %v", loaded[0].Urls)
+	}
+}

@@ -2,9 +2,11 @@ package ports
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -76,6 +78,54 @@ func ManagedValues(ports map[string]int) (map[string]string, error) {
 		out[EnvVarForPort(name)] = fmt.Sprintf("%d", v)
 	}
 	return out, nil
+}
+
+// RewriteURL replaces the port in baseURL with port, preserving scheme,
+// host, and path. baseURL must have an explicit port.
+func RewriteURL(baseURL *url.URL, port int) string {
+	host := baseURL.Hostname()
+	p := strconv.Itoa(port)
+	urlStr := baseURL.Scheme + "://" + host + ":" + p + baseURL.Path
+	if baseURL.RawQuery != "" {
+		urlStr += "?" + baseURL.RawQuery
+	}
+	if baseURL.Fragment != "" {
+		urlStr += "#" + baseURL.Fragment
+	}
+	return urlStr
+}
+
+// URLValues maps configured URL vars to their rewritten URL values.
+// Each var gets the rewritten URL with its allocated port.
+func URLValues(urlPorts map[string]int, specs []URLSpec) map[string]string {
+	if len(urlPorts) == 0 || len(specs) == 0 {
+		return nil
+	}
+	specByVar := make(map[string]URLSpec, len(specs))
+	for _, s := range specs {
+		specByVar[s.Var] = s
+	}
+	out := make(map[string]string, len(urlPorts))
+	for v, port := range urlPorts {
+		s, ok := specByVar[v]
+		if !ok {
+			continue
+		}
+		out[v] = RewriteURL(s.BaseURL, port)
+	}
+	return out
+}
+
+// desiredEnv builds the combined desired map from port and URL allocations.
+func desiredEnv(ports map[string]int, urlPorts map[string]int, specs []URLSpec) (map[string]string, error) {
+	desired, err := ManagedValues(ports)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range URLValues(urlPorts, specs) {
+		desired[k] = v
+	}
+	return desired, nil
 }
 
 // managedHeader marks the appended block in pre-existing .env files.
@@ -202,6 +252,13 @@ func rewriteAssignmentLine(line, key, want string) (out string, changed bool) {
 // Render builds the .env file content for ports. Every entry in ports
 // becomes <NAME>_PORT (sorted by port name for stable output).
 func Render(ports map[string]int) (string, error) {
+	return RenderFull(ports, nil, nil)
+}
+
+// RenderFull builds the .env file content for ports and URL vars.
+// Port entries become <NAME>_PORT (sorted by port name); URL vars
+// become <VAR>=<rewritten URL> (sorted by var name).
+func RenderFull(ports map[string]int, urlPorts map[string]int, specs []URLSpec) (string, error) {
 	if len(ports) == 0 {
 		return "", fmt.Errorf("render .env: no ports allocated")
 	}
@@ -214,6 +271,17 @@ func Render(ports map[string]int) (string, error) {
 	b.WriteString(generatedHeader + "\n")
 	for _, name := range names {
 		fmt.Fprintf(&b, "%s=%d\n", EnvVarForPort(name), ports[name])
+	}
+	urlVals := URLValues(urlPorts, specs)
+	if len(urlVals) > 0 {
+		urlNames := make([]string, 0, len(urlVals))
+		for k := range urlVals {
+			urlNames = append(urlNames, k)
+		}
+		sort.Strings(urlNames)
+		for _, k := range urlNames {
+			fmt.Fprintf(&b, "%s=%s\n", k, urlVals[k])
+		}
 	}
 	return b.String(), nil
 }
@@ -302,13 +370,18 @@ func checkPorts(ports map[string]int) error {
 // never modified or deleted. It returns the keys appended (rewrites of
 // existing managed keys are not listed).
 func Ensure(worktreePath string, ports map[string]int) (added []string, err error) {
+	return EnsureExt(worktreePath, ports, nil, nil)
+}
+
+// EnsureExt is like Ensure but also handles URL vars from urlPorts/specs.
+func EnsureExt(worktreePath string, ports map[string]int, urlPorts map[string]int, specs []URLSpec) (added []string, err error) {
 	if worktreePath == "" {
 		return nil, fmt.Errorf("write .env: empty worktree path")
 	}
 	if err := checkPorts(ports); err != nil {
 		return nil, err
 	}
-	desired, err := ManagedValues(ports)
+	desired, err := desiredEnv(ports, urlPorts, specs)
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +394,7 @@ func Ensure(worktreePath string, ports map[string]int) (added []string, err erro
 		return nil, fmt.Errorf("read .env %q: %w", path, err)
 	}
 	if os.IsNotExist(err) {
-		content, err := Render(ports)
+		content, err := RenderFull(ports, urlPorts, specs)
 		if err != nil {
 			return nil, err
 		}
@@ -385,13 +458,18 @@ func trimBlankEnds(lines []string) []string {
 // and an existing worktree .env is ensured (managed keys overwritten), never
 // reseeded. A seedPath equal to the worktree .env is ignored (self-seed).
 func EnsureInherited(worktreePath, seedPath string, ports map[string]int) (added []string, err error) {
+	return EnsureInheritedExt(worktreePath, seedPath, ports, nil, nil)
+}
+
+// EnsureInheritedExt is like EnsureInherited but also handles URL vars.
+func EnsureInheritedExt(worktreePath, seedPath string, ports map[string]int, urlPorts map[string]int, specs []URLSpec) (added []string, err error) {
 	if worktreePath == "" {
 		return nil, fmt.Errorf("write .env: empty worktree path")
 	}
 	if err := checkPorts(ports); err != nil {
 		return nil, err
 	}
-	desired, err := ManagedValues(ports)
+	desired, err := desiredEnv(ports, urlPorts, specs)
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +478,7 @@ func EnsureInherited(worktreePath, seedPath string, ports map[string]int) (added
 	}
 	path := filepath.Join(worktreePath, EnvFileName)
 	if _, err := os.Stat(path); err == nil {
-		return Ensure(worktreePath, ports)
+		return EnsureExt(worktreePath, ports, urlPorts, specs)
 	} else if !os.IsNotExist(err) {
 		return nil, fmt.Errorf("stat .env %q: %w", path, err)
 	}
@@ -426,7 +504,7 @@ func EnsureInherited(worktreePath, seedPath string, ports map[string]int) (added
 		}
 	}
 	if strings.TrimSpace(seed) == "" {
-		content, err := Render(ports)
+		content, err := RenderFull(ports, urlPorts, specs)
 		if err != nil {
 			return nil, err
 		}
@@ -493,7 +571,12 @@ func ReadPorts(worktreePath string, base map[string]int) (recovered map[string]i
 // blank lines remains, the file is deleted. It returns true when the file
 // was deleted. Missing files are a no-op returning false.
 func StripManaged(path string, ports map[string]int) (bool, error) {
-	desired, err := ManagedValues(ports)
+	return StripManagedExt(path, ports, nil, nil)
+}
+
+// StripManagedExt is like StripManaged but also strips managed URL vars.
+func StripManagedExt(path string, ports map[string]int, urlPorts map[string]int, specs []URLSpec) (bool, error) {
+	desired, err := desiredEnv(ports, urlPorts, specs)
 	if err != nil {
 		return false, err
 	}
@@ -523,4 +606,52 @@ func StripManaged(path string, ports map[string]int) (bool, error) {
 		return false, fmt.Errorf("write .env %q: %w", path, err)
 	}
 	return false, nil
+}
+
+// ReadURLs recovers URL port allocations from the .env at
+// filepath.Join(worktreePath, EnvFileName): for every URLSpec it reads
+// the <VAR> variable, parses its URL value, and extracts the port.
+// Returns the recovered var→port map and ok=false when any var is missing,
+// has no URL with an explicit port, or the port is outside its configured
+// range.
+func ReadURLs(worktreePath string, specs []URLSpec) (recovered map[string]int, ok bool) {
+	if len(specs) == 0 {
+		return nil, true
+	}
+	raw, err := os.ReadFile(filepath.Join(worktreePath, EnvFileName))
+	if err != nil {
+		return nil, false
+	}
+	out := make(map[string]int, len(specs))
+	for _, spec := range specs {
+		found := false
+		for _, line := range strings.Split(string(raw), "\n") {
+			v, match := assignmentValue(line, spec.Var)
+			if !match {
+				continue
+			}
+			u, err := url.Parse(v)
+			if err != nil {
+				return nil, false
+			}
+			p := u.Port()
+			if p == "" {
+				return nil, false
+			}
+			n, err := strconv.Atoi(p)
+			if err != nil || n <= 0 || n > 65535 {
+				return nil, false
+			}
+			if n < spec.Range[0] || n > spec.Range[1] {
+				return nil, false
+			}
+			out[spec.Var] = n
+			found = true
+			break
+		}
+		if !found {
+			return nil, false
+		}
+	}
+	return out, true
 }
