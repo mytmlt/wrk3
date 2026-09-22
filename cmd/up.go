@@ -65,6 +65,11 @@ func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func
 			return fmt.Errorf("up %q: %w", rec.Branch, err)
 		}
 	}
+	lock, err := runner.LockCompose(ctx, rec.AbsPath)
+	if err != nil {
+		return fmt.Errorf("up %q: %w", rec.Branch, err)
+	}
+	defer func() { _ = runner.UnlockCompose(lock) }()
 	env := envForWorktree(r.cfg, rec)
 	for _, s := range r.cfg.Entry.Setup {
 		if s == "" {

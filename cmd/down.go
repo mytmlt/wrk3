@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mytmlt/wrk3/internal/ports"
+	"github.com/mytmlt/wrk3/internal/runner"
 )
 
 var downCmd = &cobra.Command{
@@ -89,6 +90,11 @@ func downOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf fu
 	if err != nil {
 		return fmt.Errorf("down %q: %w", rec.Branch, err)
 	}
+	lock, err := runner.LockCompose(ctx, rec.AbsPath)
+	if err != nil {
+		return fmt.Errorf("down %q: %w", rec.Branch, err)
+	}
+	defer func() { _ = runner.UnlockCompose(lock) }()
 	env := envForWorktree(r.cfg, rec)
 	if s := r.cfg.Entry.Stop; s != "" {
 		logf("[%s] stop: %s", rec.Slug, s)
