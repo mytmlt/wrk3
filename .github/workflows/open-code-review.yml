@@ -9,16 +9,13 @@ name: OpenCodeReview
 # llm_protocol: openai-responses (OCR appends /responses to the base URL).
 # The x-opencode-session header mirrors a working local `ocr` config and is
 # required by the /go/v1 gateway; {ocr_session_key} is expanded per request.
-# Runs on collaborator PRs; no fork-PR handling (see pull_request_target docs
-# if forks ever need reviews).
+# Runs on all same-repo PRs with no actor filter, so bot-authored PRs
+# (e.g. superplanehq[bot]) are reviewed too; no fork-PR handling (see
+# pull_request_target docs if forks ever need reviews).
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-
-concurrency:
-  group: open-code-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 concurrency:
   group: open-code-review-${{ github.event.pull_request.number }}
@@ -32,7 +29,6 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     timeout-minutes: 15
     steps:
       - uses: alibaba/open-code-review@bccbc15f785269400735d5255540c231e6c02b6d # v1.12.9

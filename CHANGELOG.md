@@ -28,6 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- OpenCodeReview workflow (`.github/workflows/open-code-review.yml`) had
+  duplicate `concurrency` and `timeout-minutes` keys, which made the
+  workflow invalid so no PR — human- or bot-authored (e.g.
+  `superplanehq[bot]`, as in PR #84) — received an AI review. Removed the
+  duplicates; the `pull_request` trigger has no actor filter, so reviews
+  now run on all same-repo PRs.
+
+### Fixed
+
 - Configured `urls` entries whose base port matches a `ports.base` value
   now track that host service instead of scanning past it: e.g. `BASE_URL`
   `http://localhost:8000` reuses the `app` listener's port (`APP_PORT`)
