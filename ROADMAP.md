@@ -17,14 +17,17 @@ developer answer — never invented.
 - [x] `docker` runner: `compose -p <prefix>-<slug>` per worktree, isolated ports + `.env`.
 - [x] `podman` runner: same shape via native `podman compose`.
 - [x] `source.git.copy`: seed gitignored local-state files into new worktrees.
+- [x] Internal task definition: analyze compose into an IR and render
+  compose / swarm / Portainer / host without changing source (`wrk3 task`).
 
 ## Next
 
 - [ ] Bare-machine / local runner: run `entry.setup` / `entry.run` /
   `entry.stop` directly on the host (no compose) for apps with no
-  container stack.
+  container stack — the host task plan is the conversion layer.
 - [ ] `portainer` runner: implement the stub behind the `Runner`
-  interface (currently `not implemented`).
+  interface (currently `not implemented`); stacks can be built from the
+  task IR (`wrk3 task --format portainer`).
 - [ ] `nomad` runner: implement the stub behind the `Runner` interface.
 - [ ] Onboarding coverage: compose + bare-machine onboarding for the common
   stacks (Node, Python, Go, Rust, Ruby) so a first-pass config works,

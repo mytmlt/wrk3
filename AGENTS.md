@@ -32,6 +32,8 @@ hermetic (temp git repos, temp dirs — no network).
 - `internal/forge/` — `gh`-based PR filtering (`--myprs`).
 - `internal/proxy/` — stdlib local gateway (`<slug>.<domain>` → app port).
 - `internal/project/` — `~/.config/wrk3/projects.yaml` registry.
+- `internal/task/` — environment-independent task IR: compose analysis plus
+  renderers for compose / swarm / Portainer / host (`wrk3 task`).
 - `cmd/dashboard*.go` — bubbletea TUI.
 
 ## Rules

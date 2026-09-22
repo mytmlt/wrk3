@@ -33,6 +33,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Internal task definition (`internal/task`): wrk3 analyzes the project's
+  docker compose files into an environment-independent IR and renders it
+  for compose, Docker Swarm (`docker stack deploy`), Portainer (stack JSON),
+  or the host (native processes + `docker run` for image-only services) —
+  source compose files are never modified. `wrk3 task`
+  (`--format yaml|json|compose|swarm|portainer|host`, `--swarm` for a
+  Portainer swarm payload) prints the result. Host plans convert back
+  into the same IR (`FromHost`) so a machine-native run can be expressed
+  as compose again.
+
 - Automatic releases: every merge to `main` tags a patch bump
   (`vX.Y.Z` → `vX.Y.Z+1`) and publishes the GoReleaser release in the
   same automation run (auto-tagging). No manual tagging

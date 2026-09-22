@@ -200,7 +200,7 @@ func TestComplete_NoArgsSuppressFiles(t *testing.T) {
 	cmds := map[string]*cobra.Command{
 		"status": statusCmd, "fetch": fetchCmd,
 		"version": versionCmd, "update": updateCmd, "ls": lsCmd,
-		"log": logCmd, "dashboard": dashboardCmd,
+		"log": logCmd, "dashboard": dashboardCmd, "task": taskCmd,
 		"project": projectCmd, "project ls": projectLsCmd,
 		"proxy": proxyCmd, "proxy up": proxyUpCmd, "proxy down": proxyDownCmd,
 		"proxy status": proxyStatusCmd, "proxy hosts-sync": proxyHostsSyncCmd,

@@ -224,6 +224,14 @@ Current use:
 Managed by `wrk3 telemetry enable|disable|status`. Missing or empty file
 means both fields are false.
 
+## Task definition
+
+`wrk3 task` analyzes `runner.docker.composeFiles` /
+`runner.podman.composeFiles` (compose-spec default names when the list is
+empty) into an internal definition and prints a rendering (`--format
+yaml|json|compose|swarm|portainer|host`). Source compose files are not
+modified. See [USAGE.md](USAGE.md#task-definition).
+
 ## Local configs
 
 Start from `wrk3.yaml.example` (committed template). Copy it to `wrk3.yaml`

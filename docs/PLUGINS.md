@@ -12,6 +12,11 @@
   (`github` ships via the `gh` CLI; powers `fetch`/`add`/`dashboard`
   `--myprs`).
 
+Compose analysis for other environments lives in `internal/task` (not a
+plugin): `LoadCompose` / `FromHost` build the IR; `ToCompose` / `ToSwarm` /
+`ToPortainer` / `ToHost` render it without rewriting source files. New
+runners that accept a stack file can consume that IR (`wrk3 task`).
+
 There is no dynamic plugin loading: a "plugin" is a new backend
 implementation compiled into the binary. `cmd/` must only depend on the
 `Source`/`Runner` interfaces — never import a concrete `git`/`docker`

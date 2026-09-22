@@ -85,6 +85,9 @@ alongside — `wrk3 add` in another terminal shows up on the next poll or
   `-p <prefix>-<slug>` per worktree behind a `Runner` interface
   (`docker` and `podman` ship; `portainer`/`nomad` stubs
   return `not implemented`).
+- **Task definition** — `wrk3 task` analyzes compose into an internal IR
+  and renders it for compose, Swarm, Portainer, or the host without
+  changing the source tree.
 - **Range ports with gap reuse** — per-service `ranges` scanned from `base`
   upward by 1 (lowest free wins, OS-occupied skipped, exhaustion names the
   service), ensured in each worktree's `.env` (managed `<NAME>_PORT` keys

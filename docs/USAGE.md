@@ -26,9 +26,9 @@ what you typed — already-typed names are not re-suggested);
 `remove` refuses); `ls --project` completes registry project names.
 `exec` completes the worktree only in first position — after that the
 inner command keeps normal file/command completion. Commands taking no
-positional args (`status`, `fetch`, `log`, `ls`, `dashboard`,
-`version`, `update`, `project`, `proxy up/down/status/hosts-sync`)
-suppress file completion so TAB only offers flags. Completion never
+  positional args (`status`, `fetch`, `log`, `ls`, `dashboard`,
+  `version`, `update`, `project`, `task`, `proxy up/down/status/hosts-sync`)
+  suppress file completion so TAB only offers flags. Completion never
 fetches from the network — it uses the last `fetch` results.
 
 ## Switching branches/worktrees
@@ -77,6 +77,10 @@ wrk3 up                             # bare = all worktrees including main, in pa
 wrk3 reload feature-a | wrk3 reload # entry.reload commands (bare = all including main, in parallel)
 wrk3 pull feature-a | wrk3 pull     # git pull in one worktree (bare = all including main, in parallel; --rebase/--ff-only)
 wrk3 git-status | wrk3 git-status feature-a  # git status per worktree (bare = all including main, in parallel; --short adds the file list; gs alias)
+wrk3 task                           # analyze compose → internal task definition (stdout; source unchanged)
+wrk3 task --format swarm            # same IR as a docker stack deploy YAML
+wrk3 task --format portainer        # Portainer stack JSON (add --swarm for swarm stacks)
+wrk3 task --format host             # host process plan (native app + docker run for image-only deps)
 wrk3 status                         # this config (full table, includes main)
 wrk3 ls                             # this config (minimal WORKTREE/BRANCH/STATUS/PORTS, includes main)
 wrk3 ls --project myapp             # worktrees in a registered project, from anywhere
@@ -106,6 +110,25 @@ Copy includes: `source.git.copy` lists repo-relative files/dirs (globs,
 `storage/*.sqlite`. Listing `.env` itself is rejected (wrk3 manages that
 file and will not copy it). Missing sources skip with a warning and existing files
 are never overwritten (dirs merge); `add --local` adoption never copies.
+
+## Task definition
+
+`wrk3 task` reads the compose files from `wrk3.yaml` (`runner.*.composeFiles`,
+or the compose-spec default names when that list is empty), builds an
+internal definition, and prints a rendering. The source tree is never
+modified — redirect stdout if you want a derived file for Portainer or
+`docker stack deploy`.
+
+| `--format` | Output |
+| ---------- | ------ |
+| `yaml` (default) / `json` | Internal definition (services, ports, mounts, env). |
+| `compose` | Normalized compose YAML (`container_name` dropped). |
+| `swarm` | Compose v3.8 stack file (`overlay` networks, `deploy.restart_policy`, no `network_mode` / `depends_on`). Build-only services get a `<name>_<service>:latest` image placeholder. |
+| `portainer` | JSON `{Name, StackFileContent, Env}` for a Portainer stack. `--swarm` uses the swarm file as `StackFileContent`. `Env` lists `${VAR}` interpolation names. |
+| `host` | Process plan: services with `build` run as host processes; image-only services become `docker run` argv (still no compose project). |
+
+The host plan converts back into the same IR, so a machine-native run can
+be expressed as compose again without editing the original files.
 
 Branch slugs: `feature/foo` → `feature-foo` (max 50 chars). `add`/`up`/`down`
 accept branch names or slugs interchangeably; `status` shows

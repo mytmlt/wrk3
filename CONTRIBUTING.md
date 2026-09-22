@@ -22,7 +22,7 @@ Project layout:
 
 - `cmd/` — thin cobra commands; depend on `internal/*` **interfaces only**
   (one compose-options exception in `cmd/common.go`, see `docs/PLUGINS.md`)
-- `internal/project|source|runner|ports|config|forge|proxy` — registry + implementations
+- `internal/project|source|runner|ports|config|forge|proxy|task` — registry + implementations
 - `docs/` — user docs
 
 `opencode.json` is an optional editor integration (prompt templates) — safe to ignore.
