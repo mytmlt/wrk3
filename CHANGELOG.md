@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- OpenCodeReview bot (`.github/workflows/open-code-review.yml`, pinned
+  to `alibaba/open-code-review@v1.12.9`): posts inline + sticky summary
+  review comments on collaborator PRs as `github-actions[bot]`.
+  Requires repo secrets `OCR_LLM_URL`, `OCR_LLM_TOKEN`, `OCR_LLM_MODEL`
+  (OpenAI-compatible endpoint); Dependabot already tracks github-actions
+  updates weekly.
+
+### Added
+
 - `ports.base` entries may share one value as aliases for a single host
   port (e.g. `{app: 8000, public_api: 8000}` when both variables address
   one listener). Aliases are allocated once per worktree and stay equal;

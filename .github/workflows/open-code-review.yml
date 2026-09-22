@@ -1,0 +1,33 @@
+name: OpenCodeReview
+
+# AI code review bot: posts inline + summary PR comments via github-actions[bot].
+# Requires repo secrets: OCR_LLM_URL, OCR_LLM_TOKEN, OCR_LLM_MODEL.
+# The endpoint must be OpenAI-compatible (or set llm_protocol: anthropic).
+# Runs on collaborator PRs; no forkPR handling (see pull_request_target docs
+# if forks ever need reviews).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: alibaba/open-code-review@v1.12.9
+        with:
+          llm_url: ${{ secrets.OCR_LLM_URL }}
+          llm_auth_token: ${{ secrets.OCR_LLM_TOKEN }}
+          llm_model: ${{ secrets.OCR_LLM_MODEL }}
+          llm_protocol: openai
+          language: English
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          sticky_summary: 'true'
+          incremental: 'false'
+          upload_artifacts: 'true'
+          effort: medium
