@@ -46,3 +46,6 @@ jobs:
           incremental: 'false'
           upload_artifacts: 'true'
           effort: medium
+          # Inline only critical + high; medium and below go to summary
+          # (fail-open: never dropped). 'medium' routes medium AND low.
+          route_severity_below: 'medium'
