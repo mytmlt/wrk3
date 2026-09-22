@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/spf13/cobra"
 
 	"github.com/mytmlt/wrk3/internal/ports"
+	"github.com/mytmlt/wrk3/internal/runner"
 )
 
 var downCmd = &cobra.Command{
@@ -82,6 +84,14 @@ func runDownTargets(ctx context.Context, r *resolved, targets []ports.WorktreeRe
 }
 
 func downOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func(string, ...any)) error {
+	if err := os.MkdirAll(rec.AbsPath, 0o755); err != nil {
+		return fmt.Errorf("down %q: %w", rec.Branch, err)
+	}
+	lock, err := runner.LockCompose(ctx, rec.AbsPath)
+	if err != nil {
+		return fmt.Errorf("down %q: %w", rec.Branch, err)
+	}
+	defer func() { _ = runner.UnlockCompose(lock) }()
 	if err := ensureWorktreeEnv(r, rec, r.cfg.URLSpecs()); err != nil {
 		return err
 	}

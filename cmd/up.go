@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/spf13/cobra"
@@ -49,6 +50,14 @@ var upCmd = &cobra.Command{
 
 // upOne runs setup entries, compose up, then the run entry.
 func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func(string, ...any)) error {
+	if err := os.MkdirAll(rec.AbsPath, 0o755); err != nil {
+		return fmt.Errorf("up %q: %w", rec.Branch, err)
+	}
+	lock, err := runner.LockCompose(ctx, rec.AbsPath)
+	if err != nil {
+		return fmt.Errorf("up %q: %w", rec.Branch, err)
+	}
+	defer func() { _ = runner.UnlockCompose(lock) }()
 	if err := ensureWorktreeEnv(r, rec, r.cfg.URLSpecs()); err != nil {
 		return err
 	}
