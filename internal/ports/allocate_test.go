@@ -51,36 +51,64 @@ func TestFindFreeAllocation_SkipsOSOccupied(t *testing.T) {
 	}
 }
 
-func TestFindFreeAllocation_CrossServiceCollisionAvoided(t *testing.T) {
+func TestFindFreeAllocation_SharedBaseIsAlias(t *testing.T) {
+	// Names sharing one base value are aliases for a single host port:
+	// every member receives the same allocation and moves in lockstep.
 	a := Allocator{
-		Base:   map[string]int{"app": 8000, "web": 8000},
+		Base:   map[string]int{"app": 8000, "public_api": 8000},
+		Ranges: map[string][2]int{"app": {8000, 8001}, "public_api": {8000, 8001}},
+	}
+	if err := a.Validate(); err != nil {
+		t.Fatalf("Validate() alias base = %v, want nil", err)
+	}
+	got, err := a.FindFreeAllocation(nil, nil)
+	if err != nil {
+		t.Fatalf("FindFreeAllocation = %v", err)
+	}
+	if got["app"] != 8000 || got["public_api"] != 8000 {
+		t.Errorf("got %v, want app=public_api=8000 (alias lockstep)", got)
+	}
+	// Taken base moves the whole alias group together.
+	moved, err := a.FindFreeAllocation(map[int]struct{}{8000: {}}, nil)
+	if err != nil {
+		t.Fatalf("FindFreeAllocation = %v", err)
+	}
+	if moved["app"] != 8001 || moved["public_api"] != 8001 {
+		t.Errorf("got %v, want app=public_api=8001 (alias lockstep)", moved)
+	}
+}
+
+func TestFindFreeAllocation_DistinctGroupsAvoidCollision(t *testing.T) {
+	// Distinct base values are distinct host ports even when ranges
+	// overlap: the second group skips the port taken by the first.
+	a := Allocator{
+		Base:   map[string]int{"app": 8000, "web": 8001},
 		Ranges: map[string][2]int{"app": {8000, 8001}, "web": {8000, 8001}},
 	}
 	got, err := a.FindFreeAllocation(nil, nil)
 	if err != nil {
 		t.Fatalf("FindFreeAllocation = %v", err)
 	}
-	if got["app"] == got["web"] {
-		t.Errorf("cross-service collision: app=web=%d", got["app"])
-	}
 	if got["app"] != 8000 || got["web"] != 8001 {
-		t.Errorf("got %v, want app=8000 web=8001 (name tiebreak)", got)
+		t.Errorf("got %v, want app=8000 web=8001", got)
 	}
 }
 
 func TestFindFreeAllocation_NarrowRangeFirst(t *testing.T) {
-	// Heterogeneous overlap: web has the earlier deadline, so it goes
-	// first; plain sorted order (app first) would falsely exhaust web.
+	// Heterogeneous overlap with distinct bases: web's only feasible port
+	// is 8001 and 8000 is taken, so web must go first; plain base order
+	// (app first) would take 8001 for app and falsely exhaust web.
 	a := Allocator{
-		Base:   map[string]int{"app": 8000, "web": 8000},
-		Ranges: map[string][2]int{"app": {8000, 8001}, "web": {8000, 8000}},
+		Base:   map[string]int{"app": 8000, "web": 8001},
+		Ranges: map[string][2]int{"app": {8000, 8002}, "web": {8001, 8001}},
 	}
-	got, err := a.FindFreeAllocation(nil, nil)
+	taken := map[int]struct{}{8000: {}}
+	got, err := a.FindFreeAllocation(taken, nil)
 	if err != nil {
 		t.Fatalf("FindFreeAllocation = %v", err)
 	}
-	if got["web"] != 8000 || got["app"] != 8001 {
-		t.Errorf("got %v, want web=8000 app=8001", got)
+	if got["web"] != 8001 || got["app"] != 8002 {
+		t.Errorf("got %v, want web=8001 app=8002", got)
 	}
 }
 
@@ -183,13 +211,47 @@ func TestAllocator_Validate(t *testing.T) {
 		t.Errorf("Validate() with unknown range = nil, want error")
 	}
 	dupBase := Allocator{
-		Base:   map[string]int{"app": 8000, "web": 8000},
-		Ranges: map[string][2]int{"app": {8000, 8099}, "web": {8000, 8099}},
+		Base:   map[string]int{"app": 8000, "public_api": 8000},
+		Ranges: map[string][2]int{"app": {8000, 8099}, "public_api": {8000, 8099}},
 	}
-	if err := dupBase.Validate(); err == nil {
-		t.Errorf("Validate() with duplicate base values = nil, want error")
-	} else if !strings.Contains(err.Error(), "share value 8000") {
-		t.Errorf("duplicate-base error %q should name the shared value", err.Error())
+	if err := dupBase.Validate(); err != nil {
+		t.Errorf("Validate() with shared base values (aliases) = %v, want nil", err)
+	}
+	envCollision := Allocator{
+		Base:   map[string]int{"app": 8000, "api-v2": 8001, "api_v2": 8002},
+		Ranges: map[string][2]int{"app": {8000, 8099}, "api-v2": {8001, 8099}, "api_v2": {8002, 8099}},
+	}
+	if err := envCollision.Validate(); err == nil {
+		t.Errorf("Validate() with names mapping to the same .env variable = nil, want error")
+	} else if !strings.Contains(err.Error(), "same .env variable") {
+		t.Errorf("env-collision error %q should name the shared variable", err.Error())
+	}
+}
+
+func TestFindFreeAllocation_AliasRangeIntersection(t *testing.T) {
+	// Alias members with different ranges share the intersection: the
+	// group ceiling is the smallest member max.
+	a := Allocator{
+		Base:   map[string]int{"app": 8000, "public_api": 8000},
+		Ranges: map[string][2]int{"app": {8000, 8005}, "public_api": {8000, 8010}},
+	}
+	got, err := a.FindFreeAllocation(map[int]struct{}{8000: {}, 8001: {}}, nil)
+	if err != nil {
+		t.Fatalf("FindFreeAllocation = %v", err)
+	}
+	if got["app"] != 8002 || got["public_api"] != 8002 {
+		t.Errorf("got %v, want app=public_api=8002", got)
+	}
+	// Exhausting the tighter member range exhausts the group.
+	alias := Allocator{
+		Base:   map[string]int{"app": 8000, "public_api": 8000},
+		Ranges: map[string][2]int{"app": {8000, 8000}, "public_api": {8000, 8010}},
+	}
+	taken := map[int]struct{}{8000: {}}
+	if _, err := alias.FindFreeAllocation(taken, nil); err == nil {
+		t.Error("FindFreeAllocation with exhausted alias range = nil, want error")
+	} else if !strings.Contains(err.Error(), "app") || !strings.Contains(err.Error(), "public_api") {
+		t.Errorf("alias exhaustion error %q should name the group", err.Error())
 	}
 }
 

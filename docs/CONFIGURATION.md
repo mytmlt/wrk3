@@ -85,7 +85,7 @@ broader than `--mine`, which matches git commit authorship).
 | `entry.stop` | yes | Run via `sh -c` before `compose down` by `down` (failures warn, never block teardown). |
 | `entry.logs` | no | When set, `logs` runs it via `sh -c` instead of `compose logs`; when empty, `compose logs` is used. |
 | `entry.reload` | no | Ordered list run by `reload` (CLI + dashboard `l`), each via `sh -c` with `cwd=worktree`, `env=allocated ports`. Empty strings skipped. `reload` errors when nothing is set. |
-| `ports.base` | no | Defaults to `{app: 8000}`. `app` is required; add more names when the stack binds extra host ports. Each base must sit inside its `ports.ranges` entry. |
+| `ports.base` | no | Defaults to `{app: 8000}`. `app` is required; add more names when the stack binds extra host ports. Each base must sit inside its `ports.ranges` entry. Two names may share one value as aliases for a single host port (e.g. `{app: 8000, public_api: 8000}` when both vars address one listener): aliases are allocated once and stay equal in every worktree. Names mapping to the same `<NAME>_PORT` variable (e.g. `api-v2` and `api_v2`) are rejected. |
 | `ports.ranges` | no | Defaults to `{app: [8000, 8099]}`. Per-service `[min, max]` inclusive; `app` required; every `base` key needs a range (1–65535, `min <= max`). Legacy `ports.step` is a hard error: delete it and add `ranges` instead. |
 | `proxy.enabled` | no | Default `false`. When `true`, `up`/`add`/dashboard ensure the local gateway (best-effort, never fails the command) and runner env gains `APP_URL` (not written into the worktree `.env`). |
 | `proxy.domain` | no | Default `localhost` → `http://<slug>.localhost:<port>`. Lowercased, hostname chars only. `.localhost` needs no setup in Chrome/Firefox/Edge (RFC 6761); Safari and non-browser clients need `wrk3 proxy hosts-sync`. Avoid `.local` (mDNS/Bonjour conflicts on macOS). |
@@ -154,7 +154,10 @@ it to exit before moving on.
   so a tracked or copied `.env` that leaked the main checkout's ports is
   rewritten to this worktree's allocation on next use. (`status`/`ls`
   stay read-only and never touch `.env`.)
-- Managed keys: one `<NAME>_PORT` per `ports.base` entry. App URLs such
+- Managed keys: one `<NAME>_PORT` per `ports.base` entry. Names sharing one
+  `ports.base` value are aliases for a single host port (e.g. `app` and
+  `public_api` both `8000`): every worktree assigns them the same port so
+  they stay in lockstep. App URLs such
   as `BASE_URL` and a user-set `APP_URL` are never managed: they copy
   verbatim from the repo-root `.env` seed into fresh worktrees. When
   `proxy.enabled`, runner env still receives `APP_URL`

@@ -118,8 +118,9 @@ func collidesTaken(taken map[int]struct{}, p map[string]int) bool {
 }
 
 // recoveredReusable reports whether .env-recovered ports can be reused:
-// same keys as base, each value inside its range, distinct values within
-// the set (no self-collision across services), no collision with main
+// same keys as base, each value inside its range, alias-consistent values
+// (names sharing one base value must share one recovered value; distinct
+// base values must stay distinct), no collision with main
 // or taken state, and OS-free (bind probe).
 func recoveredReusable(alloc ports.Allocator, base, recovered map[string]int, taken map[int]struct{}, mainPorts map[string]int) bool {
 	if len(recovered) != len(base) {
@@ -149,12 +150,41 @@ func recoveredReusable(alloc ports.Allocator, base, recovered map[string]int, ta
 	if ports.AllocationsCollide(mainPorts, recovered) || collidesTaken(taken, recovered) {
 		return false
 	}
-	seen := make(map[int]struct{}, len(recovered))
-	for _, v := range recovered {
-		if _, dup := seen[v]; dup {
-			return false
+	// Alias consistency: names sharing one base value share one host port,
+	// so their recovered values must match; distinct base values must map
+	// to distinct host ports.
+	aliasOf := make(map[string]int, len(recovered))
+	if base != nil {
+		for name := range recovered {
+			if b, ok := base[name]; ok {
+				aliasOf[name] = b
+			} else {
+				aliasOf[name] = -1
+			}
 		}
-		seen[v] = struct{}{}
+	}
+	seen := make(map[int]string, len(recovered))
+	for name, v := range recovered {
+		if other, dup := seen[v]; dup {
+			if base == nil || aliasOf[name] != aliasOf[other] {
+				return false
+			}
+			continue
+		}
+		seen[v] = name
+	}
+	if base != nil {
+		byBase := make(map[int]int, len(recovered))
+		for name, v := range recovered {
+			b := aliasOf[name]
+			if prev, ok := byBase[b]; ok {
+				if prev != v {
+					return false
+				}
+				continue
+			}
+			byBase[b] = v
+		}
 	}
 	for _, v := range recovered {
 		if !osPortFree(v) {
