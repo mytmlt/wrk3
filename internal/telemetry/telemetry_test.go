@@ -1,7 +1,9 @@
 package telemetry
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -338,5 +340,76 @@ func TestBeforeSend_DropsWhenDisabledOrEmpty(t *testing.T) {
 	event.Message = "something went wrong"
 	if got := beforeSend(event, nil); got != nil {
 		t.Error("beforeSend should drop when kill-switch is on")
+	}
+}
+
+func TestErrorTypeName(t *testing.T) {
+	base := errSentinel("something went wrong")
+	once := fmt.Errorf("wrapped: %w", base)
+	twice := fmt.Errorf("outer: %w", once)
+	execErr := &exec.ExitError{}
+	execWrapped := fmt.Errorf("command failed: %w", execErr)
+
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			name: "bare sentinel",
+			err:  base,
+			want: "telemetry.errSentinel",
+		},
+		{
+			name: "wrapped once",
+			err:  once,
+			want: "telemetry.errSentinel",
+		},
+		{
+			name: "wrapped multiple levels",
+			err:  twice,
+			want: "telemetry.errSentinel",
+		},
+		{
+			name: "exec exit wrapped in message",
+			err:  execWrapped,
+			want: "*exec.ExitError",
+		},
+		{
+			name: "nil error",
+			err:  nil,
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := errorTypeName(tt.err); got != tt.want {
+				t.Errorf("errorTypeName(%v) = %q, want %q", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewErrorEvent_UnwrappedType(t *testing.T) {
+	err := fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", errSentinel("something went wrong")))
+	event := newErrorEvent("status", err)
+	if event == nil {
+		t.Fatal("newErrorEvent returned nil")
+	}
+	if len(event.Exception) != 1 {
+		t.Fatalf("Exception len = %d, want 1", len(event.Exception))
+	}
+	if got := event.Exception[0].Type; got != "telemetry.errSentinel" {
+		t.Errorf("Exception[0].Type = %q, want telemetry.errSentinel", got)
+	}
+	et, ok := event.Extra["error_type"].(string)
+	if !ok {
+		t.Fatalf("Extra[error_type] = %T, want string", event.Extra["error_type"])
+	}
+	if et != "telemetry.errSentinel" {
+		t.Errorf("Extra[error_type] = %q, want telemetry.errSentinel", et)
+	}
+	if event.Message != "outer: inner: something went wrong" {
+		t.Errorf("Message = %q, want full wrapped text", event.Message)
 	}
 }
