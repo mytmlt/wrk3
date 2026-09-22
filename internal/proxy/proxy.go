@@ -20,10 +20,12 @@ import (
 
 // Defaults for wrk3.yaml proxy.addr/proxy.domain. Port 8080 avoids the
 // sudo needed to bind :80; domain localhost auto-resolves in
-// Chrome/Firefox/Edge (Safari/curl need hosts-sync).
+// Chrome/Firefox/Edge (Safari/curl need hosts-sync). Ports 1-1023 are
+// rewritten to DefaultAddr's port so the gateway never requires root.
 const (
-	DefaultDomain = "localhost"
-	DefaultAddr   = "127.0.0.1:8080"
+	DefaultDomain     = "localhost"
+	DefaultAddr       = "127.0.0.1:8080"
+	privilegedPortMax = 1023
 )
 
 // PidFileName tracks the gateway daemon under worktreeBase.
@@ -110,6 +112,51 @@ func GatewayPort(addr string) int {
 		return 0
 	}
 	return n
+}
+
+// ListenAddr is the addr wrk3 actually binds. Ports 1-1023 are rewritten
+// to DefaultAddr's port on the same host so the gateway works without
+// root. Empty addr becomes DefaultAddr. Invalid addrs pass through for
+// Validate to reject.
+func ListenAddr(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return DefaultAddr
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil || n <= 0 || n > 65535 {
+		return addr
+	}
+	if n > privilegedPortMax {
+		return addr
+	}
+	_, defPort, err := net.SplitHostPort(DefaultAddr)
+	if err != nil {
+		defPort = "8080"
+	}
+	if strings.TrimSpace(host) == "" {
+		host = "127.0.0.1"
+	}
+	return net.JoinHostPort(host, defPort)
+}
+
+// Listen binds tcp on ListenAddr(addr). note is set when the configured
+// port was privileged and rewritten.
+func Listen(addr string) (ln net.Listener, bound, note string, err error) {
+	want := strings.TrimSpace(addr)
+	bound = ListenAddr(want)
+	if want != "" && bound != want {
+		note = fmt.Sprintf("proxy.addr %s needs root; listening on %s", want, bound)
+	}
+	ln, err = net.Listen("tcp", bound)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("proxy listen %s: %w", bound, err)
+	}
+	return ln, bound, note, nil
 }
 
 // URLForSlug builds the public URL for a worktree. Port 80 is omitted.

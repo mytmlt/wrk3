@@ -47,6 +47,41 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+func TestListenAddr(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"", DefaultAddr},
+		{"127.0.0.1:8080", "127.0.0.1:8080"},
+		{"127.0.0.1:80", "127.0.0.1:8080"},
+		{"0.0.0.0:443", "0.0.0.0:8080"},
+		{"[::1]:80", "[::1]:8080"},
+		{"192.168.1.9:1023", "192.168.1.9:8080"},
+		{"192.168.1.9:1024", "192.168.1.9:1024"},
+		{"noport", "noport"},
+		{"127.0.0.1:99999", "127.0.0.1:99999"},
+	}
+	for _, tc := range cases {
+		if got := ListenAddr(tc.in); got != tc.want {
+			t.Errorf("ListenAddr(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestListenBinds(t *testing.T) {
+	ln, bound, note, err := Listen("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen(:0) = %v", err)
+	}
+	defer ln.Close()
+	if bound != "127.0.0.1:0" {
+		t.Errorf("bound = %q, want 127.0.0.1:0", bound)
+	}
+	if note != "" {
+		t.Errorf("note = %q, want empty", note)
+	}
+}
+
 func TestURLForSlug(t *testing.T) {
 	if got := URLForSlug("pr-101", "localhost", "127.0.0.1:8080"); got != "http://pr-101.localhost:8080" {
 		t.Errorf("URL = %q", got)

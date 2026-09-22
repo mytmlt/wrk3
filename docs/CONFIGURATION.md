@@ -89,7 +89,7 @@ broader than `--mine`, which matches git commit authorship).
 | `ports.ranges` | no | Defaults to `{app: [8000, 8099]}`. Per-service `[min, max]` inclusive; `app` required; every `base` key needs a range (1–65535, `min <= max`). Legacy `ports.step` is a hard error: delete it and add `ranges` instead. |
 | `proxy.enabled` | no | Default `false`. When `true`, `up`/`add`/dashboard ensure the local gateway (best-effort, never fails the command) and runner env gains `APP_URL` (not written into the worktree `.env`). |
 | `proxy.domain` | no | Default `localhost` → `http://<slug>.localhost:<port>`. Lowercased, hostname chars only. `.localhost` needs no setup in Chrome/Firefox/Edge (RFC 6761); Safari and non-browser clients need `wrk3 proxy hosts-sync`. Avoid `.local` (mDNS/Bonjour conflicts on macOS). |
-| `proxy.addr` | no | Default `127.0.0.1:8080`. Gateway listen addr, must be `host:port` with port 1-65535 (`:80` needs root, so a high port is the default). |
+| `proxy.addr` | no | Default `127.0.0.1:8080`. Gateway listen addr, must be `host:port` with port 1-65535. Ports 1-1023 (including `:80`) are rewritten to port 8080 on the same host so the gateway never needs root. |
 | `health.checks` | no | Optional list of `{name, run, timeout}` probes (see below). Empty/missing means no shell checks; compose container health is still probed automatically. |
 | `health.checks[].name` | yes (per check) | Non-empty, unique per config. Shown in the dashboard DETAILS pane (`api: pass`). |
 | `health.checks[].run` | yes (per check) | Shell string run via `sh -c` with `cwd=worktree`, `env=allocated ports` (like `entry.*`). Exit 0 = pass. |
@@ -191,7 +191,9 @@ header per request against `<worktreeBase>/.wrk3-state.json`, so
   `dnsmasq` + `/etc/resolver/localhost` for a wildcard.
 - HTTP only (no local TLS in v1); unknown slugs answer `404`, unreachable
   backends `502`. Pid/log live next to state:
-  `<worktreeBase>/.wrk3-proxy.{pid,log}`.
+  `<worktreeBase>/.wrk3-proxy.{pid,log}`. Ports 1-1023 in `proxy.addr`
+  (including `:80`) listen on port 8080 instead so the process never needs
+  root; `APP_URL` and status URLs use that port.
 
 ## Config discovery + project registry
 

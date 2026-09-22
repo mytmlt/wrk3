@@ -23,6 +23,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/mytmlt/wrk3/internal/ports"
+	"github.com/mytmlt/wrk3/internal/proxy"
 	"github.com/mytmlt/wrk3/internal/runner"
 	"github.com/mytmlt/wrk3/internal/source"
 )
@@ -112,7 +113,8 @@ type PortsConfig struct {
 // Disabled by default; when enabled `up` ensures the gateway and runner
 // env gains APP_URL. Domain defaults to "localhost"
 // (zero-config in Chrome/Firefox/Edge; Safari/curl need hosts-sync) and
-// addr defaults to "127.0.0.1:8080" (port 80 needs root).
+// addr defaults to "127.0.0.1:8080" (ports below 1024 are rewritten
+// to that port so the gateway never needs root).
 type ProxyConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	Domain  string `yaml:"domain"`
@@ -197,12 +199,14 @@ func (c *Config) ProxyDomain() string {
 	return strings.ToLower(strings.Trim(strings.TrimSpace(c.Proxy.Domain), "."))
 }
 
-// ProxyAddr returns the effective gateway listen addr.
+// ProxyAddr returns the effective gateway listen addr. Privileged ports
+// (1-1023) are rewritten to proxy.DefaultAddr's port so URLs and the
+// listener stay in sync without root.
 func (c *Config) ProxyAddr() string {
 	if strings.TrimSpace(c.Proxy.Addr) == "" {
-		return "127.0.0.1:8080"
+		return proxy.DefaultAddr
 	}
-	return strings.TrimSpace(c.Proxy.Addr)
+	return proxy.ListenAddr(c.Proxy.Addr)
 }
 
 // ProxyURL returns http://<slug>.<domain>[:port] for a worktree.
@@ -399,7 +403,7 @@ func (c *Config) validateProxy() error {
 		c.Proxy.Domain = strings.ToLower(strings.Trim(strings.TrimSpace(c.Proxy.Domain), "."))
 	}
 	if strings.TrimSpace(c.Proxy.Addr) == "" {
-		c.Proxy.Addr = "127.0.0.1:8080"
+		c.Proxy.Addr = proxy.DefaultAddr
 	} else {
 		c.Proxy.Addr = strings.TrimSpace(c.Proxy.Addr)
 	}

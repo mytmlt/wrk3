@@ -76,6 +76,9 @@ func newErrorEvent(command string, err error) *sentry.Event {
 	if err == nil {
 		return nil
 	}
+	if isExpectedEnvError(err) {
+		return nil
+	}
 	msg := Scrub(err)
 	if msg == "" {
 		return nil
@@ -198,4 +201,15 @@ func isGenericWrap(name string) bool {
 		return true
 	}
 	return false
+}
+
+// isExpectedEnvError reports user-environment failures that are not
+// wrk3 bugs (e.g. binding a privileged port without root).
+func isExpectedEnvError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "bind: permission denied") ||
+		strings.Contains(msg, "bind: access is denied")
 }

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The local gateway no longer tries to bind privileged ports (1-1023, e.g.
+  `:80`). Those addresses are rewritten to port 8080 on the same host so
+  `proxy run` / `up` / dashboard work without root, URLs stay in sync with
+  the listener, and bind permission-denied failures are not reported as
+  crashes. A listen that still does not come up is a warning, not a
+  successful start.
+
 - Error reports now use the innermost meaningful error type (instead of the
   generic `fmt.wrapError` wrapper) when grouping in Sentry, so issues from
   unrelated commands no longer look alike. The reported message and

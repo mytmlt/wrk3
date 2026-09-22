@@ -390,6 +390,19 @@ func TestErrorTypeName(t *testing.T) {
 	}
 }
 
+func TestNewErrorEvent_DropsBindPermissionDenied(t *testing.T) {
+	err := fmt.Errorf("proxy listen 127.0.0.1:80: listen tcp 127.0.0.1:80: bind: permission denied")
+	if event := newErrorEvent("run", err); event != nil {
+		t.Fatalf("newErrorEvent returned event for bind permission denied: %+v", event)
+	}
+	if event := newErrorEvent("run", fmt.Errorf("listen tcp :80: bind: access is denied")); event != nil {
+		t.Fatalf("newErrorEvent returned event for bind access is denied: %+v", event)
+	}
+	if event := newErrorEvent("run", errSentinel("something went wrong")); event == nil {
+		t.Fatal("newErrorEvent dropped a real error")
+	}
+}
+
 func TestNewErrorEvent_UnwrappedType(t *testing.T) {
 	err := fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", errSentinel("something went wrong")))
 	event := newErrorEvent("status", err)

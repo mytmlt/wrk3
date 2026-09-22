@@ -111,6 +111,9 @@ func ensureProxyForCfg(cfg *config.Config) (warn string) {
 	for i := 0; i < 10 && !proxyRunning(cfg); i++ {
 		time.Sleep(100 * time.Millisecond)
 	}
+	if !proxyRunning(cfg) {
+		return "proxy gateway not started (listen failed); worktrees still reachable via localhost ports"
+	}
 	return ""
 }
 
@@ -386,10 +389,12 @@ var proxyRunCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		addr := r.cfg.ProxyAddr()
-		ln, err := net.Listen("tcp", addr)
+		ln, addr, note, err := proxy.Listen(r.cfg.Proxy.Addr)
 		if err != nil {
-			return fmt.Errorf("proxy listen %s: %w", addr, err)
+			return err
+		}
+		if note != "" {
+			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: "+note)
 		}
 		pid := proxyPid{PID: os.Getpid(), Addr: addr, Domain: r.cfg.ProxyDomain()}
 		raw, _ := json.Marshal(pid)

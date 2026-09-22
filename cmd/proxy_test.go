@@ -30,6 +30,18 @@ func TestProxyEnvForSlugEnabled(t *testing.T) {
 	}
 }
 
+func TestProxyEnvForSlugPrivilegedAddr(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfig(t, repo)
+	cfg.Proxy.Enabled = true
+	cfg.Proxy.Domain = "localhost"
+	cfg.Proxy.Addr = "127.0.0.1:80"
+	got := proxyEnvForSlug(cfg, "pr-1")
+	if got[ports.EnvAppURL] != "http://pr-1.localhost:8080" {
+		t.Errorf("APP_URL = %v, want unprivileged port", got)
+	}
+}
+
 func makeRecord(branch, slug string) ports.WorktreeRecord {
 	return ports.WorktreeRecord{Branch: branch, Slug: slug, Ports: map[string]int{"app": 8000}}
 }

@@ -59,8 +59,14 @@ func TestProxyEnabledValidation(t *testing.T) {
 	if cfg.ProxyDomain() != "wrk3.test" {
 		t.Errorf("Domain not normalized: %q", cfg.Proxy.Domain)
 	}
-	if got := cfg.ProxyURL("pr-1"); got != "http://pr-1.wrk3.test" {
-		t.Errorf("port 80 URL = %q", got)
+	if cfg.Proxy.Addr != "127.0.0.1:80" {
+		t.Errorf("stored Addr = %q, want configured 127.0.0.1:80", cfg.Proxy.Addr)
+	}
+	if cfg.ProxyAddr() != "127.0.0.1:8080" {
+		t.Errorf("ProxyAddr = %q, want unprivileged 127.0.0.1:8080", cfg.ProxyAddr())
+	}
+	if got := cfg.ProxyURL("pr-1"); got != "http://pr-1.wrk3.test:8080" {
+		t.Errorf("privileged port URL = %q", got)
 	}
 	for _, body := range []string{
 		proxyBase + "proxy:\n  enabled: true\n  domain: \"bad domain\"\n",
