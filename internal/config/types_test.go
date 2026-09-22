@@ -102,6 +102,23 @@ func TestValidateTable(t *testing.T) {
 		{"bad proxy addr", func(s string) string {
 			return s + "proxy:\n  enabled: true\n  addr: \"noport\"\n"
 		}, "proxy.addr"},
+		{"local happy no ports", func(s string) string {
+			s = strings.Replace(s, "type: docker", "type: local", 1)
+			s = strings.Replace(s, "  docker:\n    composeFiles: [docker-compose.yml]\n    projectPrefix: demo\n", "", 1)
+			s = strings.Replace(s, "ports:\n  base: {app: 8000}\n  ranges:\n    app: [8000, 8099]\n", "", 1)
+			return s
+		}, ""},
+		{"local with ports", func(s string) string {
+			s = strings.Replace(s, "type: docker", "type: local", 1)
+			s = strings.Replace(s, "  docker:\n    composeFiles: [docker-compose.yml]\n    projectPrefix: demo\n", "", 1)
+			return s
+		}, ""},
+		{"local proxy needs app port", func(s string) string {
+			s = strings.Replace(s, "type: docker", "type: local", 1)
+			s = strings.Replace(s, "  docker:\n    composeFiles: [docker-compose.yml]\n    projectPrefix: demo\n", "", 1)
+			s = strings.Replace(s, "ports:\n  base: {app: 8000}\n  ranges:\n    app: [8000, 8099]\n", "", 1)
+			return s + "proxy:\n  enabled: true\n"
+		}, "proxy.enabled requires ports.base"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -117,6 +134,25 @@ func TestValidateTable(t *testing.T) {
 					}
 					if cfg.Ports.Ranges["app"] != [2]int{8000, 8099} {
 						t.Errorf("default ranges app = %v, want [8000 8099]", cfg.Ports.Ranges["app"])
+					}
+				}
+				if c.name == "local happy no ports" {
+					if cfg.HasPorts() || cfg.UsesCompose() {
+						t.Errorf("local without ports: HasPorts=%v UsesCompose=%v", cfg.HasPorts(), cfg.UsesCompose())
+					}
+					if got := cfg.ComposeProjectName("feat"); got != "" {
+						t.Errorf("ComposeProjectName = %q, want empty", got)
+					}
+					if len(cfg.Ports.Base) != 0 {
+						t.Errorf("local default ports = %v, want empty", cfg.Ports.Base)
+					}
+				}
+				if c.name == "local with ports" {
+					if !cfg.HasPorts() || cfg.UsesCompose() {
+						t.Errorf("local with ports: HasPorts=%v UsesCompose=%v", cfg.HasPorts(), cfg.UsesCompose())
+					}
+					if cfg.Ports.Base["app"] != 8000 {
+						t.Errorf("local with ports app = %v, want 8000", cfg.Ports.Base)
 					}
 				}
 				if cfg.EffectiveRemote() != "origin" {

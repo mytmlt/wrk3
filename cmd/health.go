@@ -99,7 +99,7 @@ func probeStatusCells(cfg *config.Config, recs []ports.WorktreeRecord) []statusC
 		i, rec := i, rec
 		g.Go(func() error {
 			if _, err := os.Stat(rec.AbsPath); err != nil {
-				cells[i] = statusCell{slug: rec.Slug, branch: rec.Branch, status: "stale", ports: "?", project: rec.ComposeProject}
+				cells[i] = statusCell{slug: rec.Slug, branch: rec.Branch, status: "stale", ports: "?", project: dashEmpty(rec.ComposeProject)}
 				return nil
 			}
 			portText := portsCell(rec.Ports)
@@ -110,7 +110,7 @@ func probeStatusCells(cfg *config.Config, recs []ports.WorktreeRecord) []statusC
 				branch:  rec.Branch,
 				status:  withHealthSuffix(cfg, rec, lifecycle),
 				ports:   portText,
-				project: rec.ComposeProject,
+				project: dashEmpty(rec.ComposeProject),
 			}
 			return nil
 		})

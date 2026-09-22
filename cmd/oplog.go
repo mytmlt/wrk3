@@ -121,6 +121,9 @@ func (l *loggedRunner) base() syslog.Entry {
 func (l *loggedRunner) Up(ctx context.Context, worktreePath string, env map[string]string) error {
 	start := time.Now()
 	err := l.inner.Up(ctx, worktreePath, env)
+	if l.project == "" {
+		return err
+	}
 	e := l.base()
 	e.Op = "compose-up"
 	e.Cmd = fmt.Sprintf("compose up -d --build (project=%s)", l.project)
@@ -138,10 +141,12 @@ func (l *loggedRunner) Up(ctx context.Context, worktreePath string, env map[stri
 	return err
 }
 
-// Down runs compose down, persisting command, cwd, duration, error.
 func (l *loggedRunner) Down(ctx context.Context, worktreePath string, env map[string]string) error {
 	start := time.Now()
 	err := l.inner.Down(ctx, worktreePath, env)
+	if l.project == "" {
+		return err
+	}
 	e := l.base()
 	e.Op = "compose-down"
 	e.Cmd = fmt.Sprintf("compose down (project=%s)", l.project)

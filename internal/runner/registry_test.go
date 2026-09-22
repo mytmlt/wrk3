@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-func TestAvailableIsDockerAndPodman(t *testing.T) {
+func TestAvailableIsDockerLocalPodman(t *testing.T) {
 	got := Available()
-	if len(got) != 2 || got[0] != "docker" || got[1] != "podman" {
-		t.Fatalf("Available() = %v, want [docker podman]", got)
+	if len(got) != 3 || got[0] != "docker" || got[1] != "local" || got[2] != "podman" {
+		t.Fatalf("Available() = %v, want [docker local podman]", got)
 	}
 }
 
@@ -44,16 +44,29 @@ func TestResolvePodman(t *testing.T) {
 	}
 }
 
+func TestResolveLocal(t *testing.T) {
+	f, err := Resolve("local")
+	if err != nil {
+		t.Fatalf("Resolve(local): %v", err)
+	}
+	if f == nil {
+		t.Fatal("Resolve(local) returned nil factory")
+	}
+	if r := f(Options{}); r == nil {
+		t.Fatal("local factory returned nil Runner")
+	}
+}
+
 func TestResolveUnknownListsOptions(t *testing.T) {
 	_, err := Resolve("portainer")
 	if err == nil {
-		t.Fatal("Resolve(portainer) should fail (ships docker and podman only)")
+		t.Fatal("Resolve(portainer) should fail (ships docker, local, and podman only)")
 	}
 	msg := err.Error()
 	if !strings.Contains(msg, `"portainer"`) {
 		t.Errorf("error %q should name the unknown type", msg)
 	}
-	if !strings.Contains(msg, "docker") || !strings.Contains(msg, "podman") {
+	if !strings.Contains(msg, "docker") || !strings.Contains(msg, "local") || !strings.Contains(msg, "podman") {
 		t.Errorf("error %q should list available runners", msg)
 	}
 }

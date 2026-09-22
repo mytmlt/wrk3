@@ -36,7 +36,8 @@ func (a Allocator) rangesOrDefault() map[string][2]int {
 // Validate checks that base is non-empty, holds the required `app` port,
 // and has valid values, and that every base entry has a valid range
 // containing its base. Extra port names are allowed for stacks that bind
-// additional host ports.
+// additional host ports. Empty base and ranges (no ports) is valid for
+// CLI/local runners.
 func (a Allocator) Validate() error {
 	base := a.Base
 	if base == nil {
@@ -45,6 +46,9 @@ func (a Allocator) Validate() error {
 	ranges := a.Ranges
 	if ranges == nil {
 		ranges = DefaultRanges()
+	}
+	if len(a.Base) == 0 && len(a.Ranges) == 0 {
+		return nil
 	}
 	if len(base) == 0 {
 		return fmt.Errorf("ports base: must list at least one port")

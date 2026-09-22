@@ -52,13 +52,13 @@ func printResolvedStatus(w *tabwriter.Writer, cfg *config.Config) error {
 	for _, cell := range probeStatusCells(cfg, recs) {
 		if cfg.Proxy.Enabled {
 			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				cell.slug, cell.branch, cell.status, cell.ports, cell.project, cfg.ProxyURL(cell.slug)); err != nil {
+				cell.slug, cell.branch, cell.status, cell.ports, dashEmpty(cell.project), cfg.ProxyURL(cell.slug)); err != nil {
 				return fmt.Errorf("write output: %w", err)
 			}
 			continue
 		}
 		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			cell.slug, cell.branch, cell.status, cell.ports, cell.project); err != nil {
+			cell.slug, cell.branch, cell.status, cell.ports, dashEmpty(cell.project)); err != nil {
 			return fmt.Errorf("write output: %w", err)
 		}
 	}
@@ -110,7 +110,7 @@ func liveStatusWithOrigin(cfg *config.Config, stateP, origin string, rec ports.W
 // app first (e.g. "app=8000,db=5432,web=3000"). Returns "?" when empty.
 func portsCell(m map[string]int) string {
 	if len(m) == 0 {
-		return "?"
+		return "-"
 	}
 	names := make([]string, 0, len(m))
 	for name := range m {
@@ -133,6 +133,14 @@ func portsCell(m map[string]int) string {
 		parts = append(parts, fmt.Sprintf("%s=%d", name, m[name]))
 	}
 	return strings.Join(parts, ",")
+}
+
+// dashEmpty renders empty display cells as "-" (no ports / no compose project).
+func dashEmpty(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 func init() {

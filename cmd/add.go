@@ -26,7 +26,7 @@ var (
 
 var addCmd = &cobra.Command{
 	Use:               "add [branch...] | --select | --local | --remote <name> [--mine] [--myprs]",
-	Short:             "worktree add + port assign + .env ensure (bare = select)",
+	Short:             "worktree add (+ ports/.env when configured; bare = select)",
 	ValidArgsFunction: completeAddBranches,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		r, err := resolveConfig()
@@ -553,7 +553,7 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 	if err != nil {
 		return nil, fmt.Errorf("add worktree %q: %w", branch, err)
 	}
-	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
+	composeProject := r.cfg.ComposeProjectName(slug)
 	if err := create(path); err != nil {
 		return nil, fmt.Errorf("add worktree %q: %w", branch, err)
 	}
@@ -605,7 +605,7 @@ func adoptOne(r *resolved, recs *[]ports.WorktreeRecord, alloc *ports.Allocator,
 	if err != nil {
 		return nil, fmt.Errorf("adopt worktree %q: %w", branch, err)
 	}
-	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
+	composeProject := r.cfg.ComposeProjectName(slug)
 	if err := ensureWorktreeEnv(r, ports.WorktreeRecord{
 		Branch: branch, Slug: slug, AbsPath: path, Ports: allocation,
 	}); err != nil {

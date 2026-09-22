@@ -56,4 +56,13 @@ func TestResolveDisplayStatus(t *testing.T) {
 	if got := ResolveDisplayStatus("", "", errTest); got != "unknown" {
 		t.Errorf("probe error without stored must be unknown, got %q", got)
 	}
+	if got := ResolveDisplayStatus(StatusRunning, "unknown", nil); got != StatusRunning {
+		t.Errorf("unknown probe must keep stored running, got %q", got)
+	}
+	if got := ResolveDisplayStatus(StatusStopped, "unknown", nil); got != StatusStopped {
+		t.Errorf("unknown probe must keep stored stopped, got %q", got)
+	}
+	if got := ResolveDisplayStatus("", "unknown", nil); got != StatusStopped {
+		t.Errorf("unknown probe without stored must be stopped, got %q", got)
+	}
 }

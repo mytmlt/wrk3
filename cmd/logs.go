@@ -33,7 +33,7 @@ var logsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if s := r.cfg.Entry.Logs; s != "" && !logsFollow {
+		if s := r.cfg.Entry.Logs; s != "" {
 			if err := rn.Exec(cmd.Context(), rec.AbsPath, shellCmd(s), envForWorktree(r.cfg, *rec)); err != nil {
 				return fmt.Errorf("logs %q: %w", rec.Branch, err)
 			}

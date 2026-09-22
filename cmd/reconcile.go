@@ -59,9 +59,9 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 		if existing := findRecord(all, slug); existing != nil && existing.Branch != branch {
 			return recs, nil, false, fmt.Errorf("reconcile worktree %q: slug %q collides with branch %q", branch, slug, existing.Branch)
 		}
-		composeProject := r.cfg.ComposeOptions(slug).ProjectName()
+		composeProject := r.cfg.ComposeProjectName(slug)
 		for _, rec := range all {
-			if rec.ComposeProject == composeProject {
+			if composeProject != "" && rec.ComposeProject == composeProject {
 				return recs, nil, false, fmt.Errorf("reconcile worktree %q: compose project %q collides with worktree %q", branch, composeProject, rec.Branch)
 			}
 		}

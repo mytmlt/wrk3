@@ -5,7 +5,7 @@
 - `Source` (`internal/source/types.go`) — where worktrees come from
   (`git` ships).
 - `Runner` (`internal/runner/types.go`) — where worktrees execute
-  (`docker` and `podman` ship; `portainer`/`nomad` are intentional
+  (`docker`, `podman`, and `local` ship; `portainer`/`nomad` are intentional
   `not implemented`
   stubs — good starting points to copy).
 - `Forge` (`internal/forge/forge.go`) — where PR state comes from
@@ -118,11 +118,17 @@ type Runner interface {
 }
 ```
 
-Semantics (match `internal/runner/docker.go` / `internal/runner/podman.go`):
+Semantics (match `internal/runner/docker.go` / `internal/runner/podman.go`
+/ `internal/runner/local.go`):
 
-- `Up` — start the worktree (compose: `up -d --build`).
+- `Up` — start the worktree (compose: `up -d --build`; local: no-op,
+  `cmd/up` already ran `entry.setup`/`entry.run` via `Exec`).
   `Down` removes containers/networks but preserves volumes; volume
-  reclamation belongs to the `remove` path (`down -v` there).
+  reclamation belongs to the `remove` path (`down -v` there). Local `Down`
+  is a no-op (`entry.stop` already ran via `Exec`).
+- `Status` — probe the runtime. Compose runners report running/stopped
+  from `compose ps`; `local` returns `unknown` (nothing to probe) so
+  display keeps the stored up/down lifecycle.
 - `Exec` — run `cmd` as a host process with `cwd=worktreePath` and
   `env` applied. Used for `entry.setup`/`run`/`stop` strings, which
   `cmd/common.go: shellCmd` wraps as `sh -c "<entry string>"` — execute

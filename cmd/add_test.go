@@ -408,3 +408,30 @@ func TestValidateCreateFlags_RejectsBulkModes(t *testing.T) {
 		t.Errorf("error = %v, want explicit-names hint", err)
 	}
 }
+
+func TestCreateWorktreeRecord_LocalNoPorts(t *testing.T) {
+	src := &createTestSource{}
+	repo := initMainTestRepo(t)
+	cfg := writeLocalTestConfig(t, repo)
+	r := &resolved{cfg: cfg, src: src, base: cfg.AbsWorktreeBase(), stateP: cfg.StatePath()}
+	var recs []ports.WorktreeRecord
+	alloc := cfg.Allocator()
+	if _, err := createWorktreeRecord(r, &recs, &alloc, "feature/cli", func(path string) error {
+		return src.Add(cfg.RepoPath(), "feature/cli", path, "origin")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("recs = %d, want 1", len(recs))
+	}
+	if len(recs[0].Ports) != 0 {
+		t.Errorf("Ports = %v, want empty", recs[0].Ports)
+	}
+	if recs[0].ComposeProject != "" {
+		t.Errorf("ComposeProject = %q, want empty", recs[0].ComposeProject)
+	}
+	envPath := filepath.Join(recs[0].AbsPath, ".env")
+	if _, err := os.Stat(envPath); !os.IsNotExist(err) {
+		t.Errorf("must not write .env for local/no-ports, err=%v", err)
+	}
+}

@@ -42,3 +42,11 @@ Opt-in real-daemon scenarios gated on `WRK3_E2E_DOCKER=1` (skipped in
 |----|----------|---------|
 | D01 | `add` → `up` → `status` (exit 0) → `down` on the alpine stack | `TestE2E_DockerUpDown` |
 | D02 | two worktrees `up` together, both visible in `docker ps`, `down` both | `TestE2E_DockerParallel` |
+
+## L — Local / CLI-only
+
+No docker. Isolation is the worktree directory.
+
+| ID | Scenario | Go test |
+|----|----------|---------|
+| L01 | `add` → `up` → `status` (running, no ports/.env) → `logs` → `down` (stopped) | `TestE2E_LocalAddUpStatusDown` |

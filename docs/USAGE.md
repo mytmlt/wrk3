@@ -72,7 +72,7 @@ wrk3 add feature-a                  # adopts the on-disk worktree when one exist
 wrk3 add feat/new-feature           # unknown name: refresh remote, then prompt to create from origin/<default> ([y/N])
 wrk3 add feat/new-feature --create  # same, without prompting (for scripts: no prompt, no hang on EOF)
 wrk3 add feat/new-feature --no-create # fail fast on unknown names instead of prompting
-wrk3 up feature-a                   # setup entries + compose up + run entry
+wrk3 up feature-a                   # setup + run (compose up for docker/podman)
 wrk3 up                             # bare = all worktrees including main, in parallel (errgroup)
 wrk3 reload feature-a | wrk3 reload # entry.reload commands (bare = all including main, in parallel)
 wrk3 pull feature-a | wrk3 pull     # git pull in one worktree (bare = all including main, in parallel; --rebase/--ff-only)
@@ -100,6 +100,12 @@ wrk3 proxy open feature-a           # open the worktree URL in a browser
 sudo wrk3 proxy hosts-sync          # 127.0.0.1 entries for Safari/curl (Chrome/FF/Edge need nothing)
 ```
 
+CLI-only repos (`runner.type: local`): skip `ports` and compose files.
+`add` still creates isolated worktrees; `up` runs setup+run (e.g. a
+build) with no compose; `status` shows stored `running`/`stopped` (last
+up/down) with `-` for PORTS/COMPOSE_PROJECT; `logs` needs `entry.logs`
+or errors; `exec` with `cwd=worktree` is the main way to run a version.
+
 Copy includes: `source.git.copy` lists repo-relative files/dirs (globs,
 `**` supported) copied from the repo root into each new worktree on `add`
 — use it for gitignored files like `.env.local`, `certs/`, or
@@ -113,7 +119,8 @@ accept branch names or slugs interchangeably; `status` shows
 `proxy.enabled`), with `?` and
 `stale` when a worktree directory is missing. `PORTS` lists every
 allocated port as `name=value` (`app` first, rest alphabetical,
-e.g. `app=8000,web=3000`).
+  e.g. `app=8000,web=3000`). Empty ports (CLI/`local` with no `ports`
+  section) and empty compose project render as `-`.
 `up` marks targets `setting up` at start, then `running` on success or
 `failed` on error — so the table never claims `running` mid-setup. Live
 `running` always wins over stored state (including `setting up` /
@@ -146,8 +153,10 @@ breakdown (`api: pass, db: fail: ...`, containers as `container:<name>`).
 
 Main checkout: the repo root is always included implicitly (no state entry)
 in `up`/`down` (bare = all including main), `status`/`ls`/`git-status`, and as an
-`exec`/`logs` target by branch/slug. It uses reserved port index `0`
-(the `ports.base` allocation, e.g. `8000` with defaults) with the managed `.env` section ensured on `up`/`down`/`exec`;
+`exec`/`logs` target by branch/slug. With ports configured it uses reserved
+index `0` (the `ports.base` allocation, e.g. `8000` with defaults) with the
+managed `.env` section ensured on `up`/`down`/`exec`. Without ports (`local`
+CLI repos) main still appears in the table with PORTS/COMPOSE_PROJECT as `-`.
 `remove` refuses main and `remove --all` covers only managed worktrees.
 
 State recovery: the state file (`.wrk3-state.json` under `worktreeBase`)
@@ -329,7 +338,7 @@ Each test builds a throwaway git repo in a temp dir, writes a minimal
 | Symptom | Likely cause / fix |
 | ------- | ------------------ |
 | `unknown source type "x" (available sources: [git])` | Typo in `source.type`; only `git` ships in v1. |
-| `unknown runner type "x" (available runners: [docker podman ...])` | Only `docker` and `podman` are implemented; stubs return `not implemented`. |
+| `unknown runner type "x" (available runners: [docker local podman ...])` | Implemented runners are `docker`, `local`, and `podman`; stubs return `not implemented`. |
 | `project.worktreeBase must not be empty` | `project.worktreeBase` is required. |
 | `no wrk3.yaml found ...` | Not inside a repo checkout, or config named differently — `cd` in or pass `-f <path>`. |
 | `unknown worktree "foo"` | Name/slug not in state — check `wrk3 status`. |

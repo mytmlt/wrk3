@@ -2,7 +2,8 @@
 //
 // v1 ships the docker and podman runners (compose -p <prefix>-<slug>,
 // or -p <slug> when the prefix is empty, with
-// make entry commands, cwd=worktreePath, env=allocated ports).
+// make entry commands, cwd=worktreePath, env=allocated ports) and the
+// local runner (host entry commands, no compose, ports optional).
 // Portainer/Nomad stubs return "not implemented". New Runner types
 // register in registry.go; unknown types error listing available
 // options.
@@ -14,12 +15,14 @@ import "context"
 type State string
 
 const (
-	// StateRunning means at least one compose container is up.
+	// StateRunning means the worktree is up (compose containers running,
+	// or the last local up succeeded).
 	StateRunning State = "running"
-	// StateStopped means no compose containers are up.
+	// StateStopped means the worktree is down (no compose containers, or
+	// the last local down succeeded / never up).
 	StateStopped State = "stopped"
 	// StateUnknown means the state could not be determined
-	// (e.g. container engine unreachable).
+	// (e.g. container engine unreachable, or local with nothing to probe).
 	StateUnknown State = "unknown"
 )
 
@@ -46,14 +49,15 @@ type Options struct {
 }
 
 // Runner executes worktrees. Implementations must be safe for use from
-// Phase 5 CLI wiring: Up/Down run compose, Exec runs host entry
-// commands (e.g. make targets) with cwd=worktreePath and env=allocated
-// ports, Logs captures compose logs, Status probes compose ps.
+// Phase 5 CLI wiring: Up/Down start/stop the runtime (compose for
+// docker/podman; no-op for local), Exec runs host entry commands with
+// cwd=worktreePath and env=allocated ports, Logs captures runtime
+// logs, Status probes the runtime (unknown when there is nothing to probe).
 type Runner interface {
-	// Up starts the worktree (compose up -d --build).
+	// Up starts the worktree (compose up -d --build; no-op for local).
 	Up(ctx context.Context, worktreePath string, env map[string]string) error
 	// Down stops the worktree (compose down, volumes preserved;
-	// volume removal belongs to the remove path).
+	// volume removal belongs to the remove path; no-op for local).
 	Down(ctx context.Context, worktreePath string, env map[string]string) error
 	// Logs returns compose logs for the worktree. When follow is true
 	// it runs `compose logs -f` and blocks until ctx is cancelled.

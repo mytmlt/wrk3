@@ -8,8 +8,8 @@ func TestPortsCell(t *testing.T) {
 		ports map[string]int
 		want  string
 	}{
-		{"nil", nil, "?"},
-		{"empty", map[string]int{}, "?"},
+		{"nil", nil, "-"},
+		{"empty", map[string]int{}, "-"},
 		{"single app", map[string]int{"app": 8000}, "app=8000"},
 		{"multi sorted app first", map[string]int{"web": 3000, "app": 8000, "db": 5432}, "app=8000,db=5432,web=3000"},
 		{"no app sorts plain", map[string]int{"web": 3000, "db": 5432}, "db=5432,web=3000"},

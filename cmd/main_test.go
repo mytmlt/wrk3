@@ -58,6 +58,30 @@ ports:
 	return cfg
 }
 
+func writeLocalTestConfig(t *testing.T, repoRoot string) *config.Config {
+	t.Helper()
+	content := `project:
+  worktreeBase: .worktrees
+source:
+  type: git
+  git: {remote: origin, fetchPrune: true}
+runner:
+  type: local
+entry:
+  run: "echo run"
+  stop: "echo stop"
+`
+	path := filepath.Join(repoRoot, "wrk3.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
 func initMainTestRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -397,5 +421,39 @@ func TestEnsureWorktreeEnv_DoesNotWriteAppURL(t *testing.T) {
 	merged := envForWorktree(cfg, rec)
 	if merged[ports.EnvAppURL] != "http://feature-foo.localhost:8080" {
 		t.Errorf("runner env missing APP_URL: %v", merged)
+	}
+}
+
+func TestMainRecord_LocalNoPorts(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeLocalTestConfig(t, repo)
+	r := &resolved{cfg: cfg, src: &source.GitSource{}}
+	rec, err := mainRecord(r, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec == nil {
+		t.Fatal("expected main record, got nil")
+	}
+	if len(rec.Ports) != 0 {
+		t.Errorf("Ports = %v, want empty", rec.Ports)
+	}
+	if rec.ComposeProject != "" {
+		t.Errorf("ComposeProject = %q, want empty", rec.ComposeProject)
+	}
+}
+
+func TestEnsureWorktreeEnv_NoPortsSkips(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeLocalTestConfig(t, repo)
+	r := &resolved{cfg: cfg, src: &source.GitSource{}}
+	wt := t.TempDir()
+	if err := ensureWorktreeEnv(r, ports.WorktreeRecord{
+		Branch: "feature-foo", Slug: "feature-foo", AbsPath: wt,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(wt, ".env")); !os.IsNotExist(err) {
+		t.Errorf("local runner must not write .env when no ports allocated, err=%v", err)
 	}
 }

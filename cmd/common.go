@@ -72,8 +72,7 @@ func newSource(cfg *config.Config) (source.Source, error) {
 
 // newRunner builds the Runner backend for slug via registry.
 // Compose runners (docker/podman) carry compose files + prefix + slug
-// via Options; other backends receive empty Options (stubs return
-// not implemented).
+// via Options; local receives slug-only Options.
 func newRunner(cfg *config.Config, slug string) (runner.Runner, error) {
 	f, err := runner.Resolve(cfg.Runner.Type)
 	if err != nil {

@@ -23,6 +23,12 @@ runner:
   # podman:
   #   composeFiles: [docker-compose.yml]
   #   projectPrefix: demo
+  # CLI-only repos (no compose, ports optional):
+  # runner:
+  #   type: local
+  # entry:
+  #   run: "go build -o bin/app ."
+  #   stop: "true"
 entry:
   setup: ["docker compose up --wait --build"]
   run: "docker compose logs -f"

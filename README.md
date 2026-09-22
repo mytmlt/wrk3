@@ -4,12 +4,14 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 Run **multiple branches of the same repo in parallel** as git worktrees, each
-isolated with its own ports and container project — from any directory.
+isolated with its own directory — and, when the project needs it, its own
+ports and container project — from any directory.
 
-`wrk3` was built for stacks where one checkout = one full environment
-(e.g. a `docker compose` dev stack): point it at a repo, `add` two branches,
-`up`, and get two running copies on distinct ports and distinct compose
-projects.
+`wrk3` was built so most projects can run locally in parallel without much
+setup. For a `docker compose` stack: point it at a repo, `add` two branches,
+`up`, and get two running copies on distinct ports. For a CLI (like wrk3
+itself): `add` two branches and `up` builds each version in its own worktree
+— no ports, no compose.
 
 ![wrk3 dashboard](docs/dashboard.png)
 
@@ -205,13 +207,23 @@ ports:
     app: [8000, 8099]
 ```
 
+CLI-only (no compose, no ports) — isolation is the worktree dir:
+
+```yaml
+runner:
+  type: local
+entry:
+  run: "go build -o bin/app ."
+  stop: "true"
+```
+
 Full field reference, port table, `.env` mapping, and multi-project patterns:
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md). Command reference:
 [docs/USAGE.md](docs/USAGE.md).
 
 Project goal: turn **any codebase** into a `wrk3.yaml` that runs the app
 the way its developers run it locally — see [ROADMAP.md](ROADMAP.md)
-for where the `docker` / `podman` / `portainer` / `nomad` / bare-machine runners stand.
+for where the `docker` / `podman` / `local` / `portainer` / `nomad` runners stand.
 
 ## How it works
 
@@ -220,21 +232,21 @@ for where the `docker` / `podman` / `portainer` / `nomad` / bare-machine runners
    `<remote>/<default>` — `--create`/`--no-create` — when the name matches
     nothing), copies `source.git.copy`
     includes (if any), assigns the
-    next index (monotonic id) plus the lowest free range ports (gap reuse,
-    OS-aware), ensures managed port keys in
-    `.env` (allocation always wins; secrets and user keys stay), appends
+    next index (monotonic id) plus the lowest free range ports when
+    `ports` is configured (gap reuse, OS-aware), ensures managed port keys in
+    `.env` (allocation always wins; secrets and user keys stay) unless there
+    are no ports, appends
    `{branch, slug, absPath, index, ports, composeProject, status}` to
    `<worktreeBase>/.wrk3-state.json` (absolute paths → cwd-independent).
    `add --remote <name> [--mine]` bulk-creates from a remote (default:
    `source.git.remote`, else `origin`), skipping already registered or
    checked-out branches.
 2. `wrk3 up` → runs `entry.setup` commands (`sh -c`, `cwd=worktree`,
-    `env=ports`), then `compose -p <prefix>-<slug> up` via the configured
-    engine (`docker` or `podman`), then
-    `entry.run` — in parallel across worktrees via errgroup with prefixed logs.
+    `env=ports`), then for docker/podman `compose -p <prefix>-<slug> up`,
+    then `entry.run` — in parallel across worktrees via errgroup with prefixed logs.
+    `local` skips compose (setup + run is the whole up).
     Bare `up`/`down` apply to all worktrees including the implicit main
-    checkout (repo root, reserved port index 0 — the `ports.base` allocation,
-    managed `.env` section ensured on run);
+    checkout (repo root, reserved port index 0 when ports are configured);
     pass names to filter.
 3. `wrk3 status` → reconciles the state file against `git worktree list`
     (on-disk worktrees missing from state are adopted, ports recovered

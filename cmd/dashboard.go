@@ -787,8 +787,10 @@ func dashboardRemoveCmd(p *dashboardProject, opID int, branches []string, force 
 			if err := rn.Down(context.Background(), rec.AbsPath, envForWorktree(r.cfg, *rec)); err != nil {
 				logf("warning: compose down for %q: %v", rec.Branch, err)
 			}
-			if _, err := ports.StripManaged(filepath.Join(rec.AbsPath, ports.EnvFileName), rec.Ports); err != nil {
-				logf("warning: strip managed .env keys for %q: %v", rec.Branch, err)
+			if len(rec.Ports) > 0 {
+				if _, err := ports.StripManaged(filepath.Join(rec.AbsPath, ports.EnvFileName), rec.Ports); err != nil {
+					logf("warning: strip managed .env keys for %q: %v", rec.Branch, err)
+				}
 			}
 			if err := r.src.Remove(r.cfg.RepoPath(), rec.AbsPath, force); err != nil {
 				if !force {
@@ -2177,7 +2179,7 @@ func (m dashboardModel) detailPane(width, height int) string {
 		"ports:   " + rec.Ports,
 		"url:     " + dashboardURLFor(urlCfg, rec.Rec),
 		"path:    " + rec.Rec.AbsPath,
-		"project: " + rec.Rec.ComposeProject,
+		"project: " + dashEmpty(rec.Rec.ComposeProject),
 	}
 	lines = dashboardFitLines(lines, width, height)
 	return dashboardPaneStyle(false).Width(width).Render(

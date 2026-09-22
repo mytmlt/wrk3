@@ -33,6 +33,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `local` runner for CLI-only repos: `runner.type: local` runs
+  `entry.setup`/`entry.run`/`entry.stop` on the host with no compose
+  stack. Ports, `.env` management, `COMPOSE_PROJECT`, and `proxy` are
+  omitted unless `ports` is set (`status` shows `-` in those columns).
+  `up`/`down` skip compose; `status` keeps the stored lifecycle
+  (`running` means the last up succeeded / ready, not that a daemon is
+  alive); `logs` runs `entry.logs` or errors if unset. The wrk3 dogfood
+  config now uses this runner (`go build -o bin/wrk3 .`).
+
 - Automatic releases: every merge to `main` tags a patch bump
   (`vX.Y.Z` → `vX.Y.Z+1`) and publishes the GoReleaser release in the
   same automation run (auto-tagging). No manual tagging

@@ -81,12 +81,12 @@ func mainRecord(r *resolved, recs []ports.WorktreeRecord) (*ports.WorktreeRecord
 	}
 	alloc := r.cfg.Allocator()
 	allocation := alloc.BaseAllocation()
-	composeProject := r.cfg.ComposeOptions(slug).ProjectName()
+	composeProject := r.cfg.ComposeProjectName(slug)
 	for _, rec := range recs {
 		if ports.AllocationsCollide(allocation, rec.Ports) {
 			return nil, fmt.Errorf("main worktree ports collide with worktree %q (main reserves the ports.base allocation)", rec.Branch)
 		}
-		if rec.ComposeProject == composeProject {
+		if composeProject != "" && rec.ComposeProject == composeProject {
 			return nil, fmt.Errorf("main worktree compose project %q collides with worktree %q", composeProject, rec.Branch)
 		}
 	}
@@ -210,6 +210,9 @@ func recordsForDisplay(cfg *config.Config) ([]ports.WorktreeRecord, error) {
 // seed is itself, so only ensure happens). Managed <NAME>_PORT keys are
 // always rewritten to rec's allocation; user-owned keys stay intact.
 func ensureWorktreeEnv(r *resolved, rec ports.WorktreeRecord) error {
+	if len(rec.Ports) == 0 {
+		return nil
+	}
 	seed := filepath.Join(r.cfg.RepoPath(), ports.EnvFileName)
 	if _, err := ports.EnsureInherited(rec.AbsPath, seed, rec.Ports); err != nil {
 		return fmt.Errorf("write .env for worktree %q: %w", rec.Branch, err)

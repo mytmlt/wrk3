@@ -20,9 +20,11 @@ developer answer — never invented.
 
 ## Next
 
-- [ ] Bare-machine / local runner: run `entry.setup` / `entry.run` /
+- [x] Bare-machine / local runner: run `entry.setup` / `entry.run` /
   `entry.stop` directly on the host (no compose) for apps with no
-  container stack.
+  container stack. Ports, `.env`, and compose project are omitted unless
+  `ports` is set. `status` uses the stored up/down lifecycle
+  (`running` = last up succeeded).
 - [ ] `portainer` runner: implement the stub behind the `Runner`
   interface (currently `not implemented`).
 - [ ] `nomad` runner: implement the stub behind the `Runner` interface.

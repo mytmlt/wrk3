@@ -1,8 +1,9 @@
 // Package config loads and validates wrk3.yaml.
 //
 // Config shape mirrors docs/CONFIGURATION.md (project worktreeBase,
-// source git, runner docker/podman, entry setup/run/stop/logs,
-// ports base+ranges with the required `app` port plus any custom names).
+// source git, runner docker/podman/local, entry setup/run/stop/logs,
+// ports base+ranges — required `app` for compose runners, omitted for
+// local CLI repos with no bound ports).
 //
 // Path decision: worktreeBase is resolved relative to the config file
 // directory (the repo root — wrk3.yaml always lives there). Rationale:
@@ -233,7 +234,7 @@ func proxyURLFor(domain, addr, slug string) string {
 }
 
 // ComposeOptions builds runner.Options for slug from the selected
-// compose backend (docker or podman).
+// compose backend (docker or podman). Non-compose backends get slug only.
 func (c *Config) ComposeOptions(slug string) runner.Options {
 	if c.Runner.Type == "podman" {
 		return runner.Options{
@@ -242,11 +243,33 @@ func (c *Config) ComposeOptions(slug string) runner.Options {
 			Slug:          slug,
 		}
 	}
-	return runner.Options{
-		ComposeFiles:  append([]string(nil), c.Runner.Docker.ComposeFiles...),
-		ProjectPrefix: c.Runner.Docker.ProjectPrefix,
-		Slug:          slug,
+	if c.Runner.Type == "docker" {
+		return runner.Options{
+			ComposeFiles:  append([]string(nil), c.Runner.Docker.ComposeFiles...),
+			ProjectPrefix: c.Runner.Docker.ProjectPrefix,
+			Slug:          slug,
+		}
 	}
+	return runner.Options{Slug: slug}
+}
+
+// UsesCompose reports whether the selected runner drives a compose stack.
+func (c *Config) UsesCompose() bool {
+	return c.Runner.Type == "docker" || c.Runner.Type == "podman"
+}
+
+// HasPorts reports whether this config allocates host ports.
+func (c *Config) HasPorts() bool {
+	return len(c.Ports.Base) > 0
+}
+
+// ComposeProjectName returns the compose project for slug, or empty when
+// the runner has no compose stack.
+func (c *Config) ComposeProjectName(slug string) string {
+	if !c.UsesCompose() {
+		return ""
+	}
+	return c.ComposeOptions(slug).ProjectName()
 }
 
 // ComposeFiles returns the compose files of the selected compose backend
@@ -335,26 +358,45 @@ func (c *Config) Validate() error {
 	if strings.TrimSpace(c.Entry.Stop) == "" {
 		return fmt.Errorf("entry.stop must not be empty")
 	}
-	if c.Ports.Base == nil {
-		c.Ports.Base = ports.DefaultBase()
+	if err := c.normalizePorts(); err != nil {
+		return err
 	}
-	if c.Ports.Ranges == nil {
-		c.Ports.Ranges = ports.DefaultRanges()
+	if err := c.validateProxy(); err != nil {
+		return err
+	}
+	if c.Proxy.Enabled && c.Ports.Base[ports.PortApp] == 0 {
+		return fmt.Errorf("proxy.enabled requires ports.base %q", ports.PortApp)
+	}
+	if err := validateGitCopy(c.Source.Git.Copy); err != nil {
+		return err
+	}
+	if err := validateHealth(c.Health); err != nil {
+		return err
+	}
+	return nil
+}
+
+// normalizePorts defaults compose runners to app:8000/[8000,8099] and
+// leaves local/other runners with no ports unless ports is set. Legacy
+// ports.step is always rejected.
+func (c *Config) normalizePorts() error {
+	portsConfigured := c.Ports.Base != nil || c.Ports.Ranges != nil || c.Ports.Step != nil
+	if c.UsesCompose() || portsConfigured {
+		if c.Ports.Base == nil {
+			c.Ports.Base = ports.DefaultBase()
+		}
+		if c.Ports.Ranges == nil {
+			c.Ports.Ranges = ports.DefaultRanges()
+		}
+	} else {
+		c.Ports.Base = map[string]int{}
+		c.Ports.Ranges = map[string][2]int{}
 	}
 	if c.Ports.Step != nil {
 		return fmt.Errorf("ports.step was removed: delete `ports.step` and add per-service `ports.ranges` (e.g. ranges: {app: [8000, 8099]}); ports now increment by 1 with gap reuse")
 	}
 	if err := (ports.Allocator{Base: c.Ports.Base, Ranges: c.Ports.Ranges}).Validate(); err != nil {
 		return fmt.Errorf("ports: %w", err)
-	}
-	if err := validateGitCopy(c.Source.Git.Copy); err != nil {
-		return err
-	}
-	if err := c.validateProxy(); err != nil {
-		return err
-	}
-	if err := validateHealth(c.Health); err != nil {
-		return err
 	}
 	return nil
 }

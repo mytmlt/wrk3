@@ -1,10 +1,9 @@
 # Dogfood config: use wrk3 on the wrk3 repo itself for branch/worktree
-# management (`fetch`, `add`, `ls`). See AGENTS.md (Isolate step).
+# management (`fetch`, `add`, `ls`, `up`, `exec`). See AGENTS.md.
 #
-# This repo has no docker stack, so `up`/`down`/`logs` are not meaningful
-# here — the Go gate (`go build ./... && go vet ./... && go test
-# ./... -count=1`) is the verification loop instead, and `status` shows
-# `unknown` (nothing for the docker runner to probe; it never fails hard).
+# CLI-only: no compose stack and no bound ports. Isolation is the
+# worktree directory — `up` builds this checkout's binary, `exec` runs
+# with cwd=worktree (e.g. `wrk3 exec feat-a -- go test ./...`).
 project:
   worktreeBase: .worktrees
 source:
@@ -13,14 +12,7 @@ source:
     remote: origin
     fetchPrune: true
 runner:
-  type: docker
-  docker:
-    composeFiles: [docker-compose.yml]  # absent on purpose: no stack here
-    projectPrefix: wrk3
+  type: local
 entry:
-  run: "echo run (no stack here; use the Go gate)"
-  stop: "echo stop"
-ports:
-  base: {app: 8000}
-  ranges:
-    app: [8000, 8099]
+  run: "go build -o bin/wrk3 ."
+  stop: "true"

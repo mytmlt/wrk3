@@ -27,6 +27,12 @@ runner:
   # podman:                             # alternative backend (runner.type: podman)
   #   composeFiles: [docker-compose.yml]
   #   projectPrefix: demo
+  # CLI-only (no compose stack, no ports):
+  # runner:
+  #   type: local
+  # entry:
+  #   run: "go build -o bin/app ."
+  #   stop: "true"
 entry:
   setup: ["docker compose up --wait --build"]  # run in order before compose up (use `podman compose ...` with runner.type: podman)
   run: "docker compose logs -f"                # required; run after compose up
@@ -75,19 +81,20 @@ broader than `--mine`, which matches git commit authorship).
 
 | Path | Required | Notes |
 | ---- | -------- | ----- |
-| `runner.type` | yes | `docker` or `podman` (both ship). `portainer`/`nomad` exist as stubs → `not implemented`. Unknown values error listing available runners. |
+| `runner.type` | yes | `docker`, `podman`, or `local` (all ship). `portainer`/`nomad` exist as stubs → `not implemented`. Unknown values error listing available runners. |
 | `runner.docker.composeFiles` | yes (docker) | At least one compose file, resolved inside each worktree. Compose files must not set `container_name:` — it is global on the daemon and bypasses `-p <prefix>-<slug>` isolation, so `up` fails fast naming the offending file/services. Compose generates `<project>-<service>-1` automatically. |
 | `runner.docker.projectPrefix` | no (docker) | Compose project is `<prefix>-<slug>` → free volume/network isolation. Empty, missing, or whitespace-only means slug-only (`<slug>`); slug-only names can collide across repos sharing a daemon. |
 | `runner.podman.composeFiles` | yes (podman) | Same as `runner.docker.composeFiles`, for `podman compose`. `up` runs the same `container_name:` preflight. |
 | `runner.podman.projectPrefix` | no (podman) | Same as `runner.docker.projectPrefix`, for `podman compose` (empty => slug-only). |
-| `entry.setup` | no | Ordered list, each run via `sh -c` with `cwd=worktree`, `env=allocated ports`. Empty strings skipped. |
-| `entry.run` | yes | Long-running command started after compose up (e.g. dev server). Run via `sh -c` with `cwd=worktree`, `env=allocated ports`. |
-| `entry.stop` | yes | Run via `sh -c` before `compose down` by `down` (failures warn, never block teardown). |
-| `entry.logs` | no | When set, `logs` runs it via `sh -c` instead of `compose logs`; when empty, `compose logs` is used. |
+| `runner.local` | n/a | No extra fields. Host execution: `up` runs `entry.setup` then `entry.run` (no compose), `down` runs `entry.stop`, `status` uses the stored lifecycle (`running` = last up succeeded / ready, not "a daemon is alive"), `logs` runs `entry.logs` or errors if unset. Ports, `.env` management, `COMPOSE_PROJECT`, and `proxy` are omitted unless you set `ports`. |
+| `entry.setup` | no | Ordered list, each run via `sh -c` with `cwd=worktree`, `env=allocated ports` (empty env when no ports). Empty strings skipped. |
+| `entry.run` | yes | Command started after compose up (docker/podman) or as the local up body (e.g. `go build -o bin/app .`). Run via `sh -c` with `cwd=worktree`, `env=allocated ports`. |
+| `entry.stop` | yes | Run via `sh -c` by `down` before `compose down` (compose runners; failures warn, never block teardown). For `local`, this is the whole teardown. |
+| `entry.logs` | no | When set, `logs` runs it via `sh -c` instead of `compose logs`; when empty, compose runners use `compose logs` and `local` errors (`set entry.logs`). |
 | `entry.reload` | no | Ordered list run by `reload` (CLI + dashboard `l`), each via `sh -c` with `cwd=worktree`, `env=allocated ports`. Empty strings skipped. `reload` errors when nothing is set. |
-| `ports.base` | no | Defaults to `{app: 8000}`. `app` is required; add more names when the stack binds extra host ports. Each base must sit inside its `ports.ranges` entry. |
-| `ports.ranges` | no | Defaults to `{app: [8000, 8099]}`. Per-service `[min, max]` inclusive; `app` required; every `base` key needs a range (1–65535, `min <= max`). Legacy `ports.step` is a hard error: delete it and add `ranges` instead. |
-| `proxy.enabled` | no | Default `false`. When `true`, `up`/`add`/dashboard ensure the local gateway (best-effort, never fails the command) and runner env gains `APP_URL` (not written into the worktree `.env`). |
+| `ports.base` | no | Defaults to `{app: 8000}` for docker/podman. Omitted (no ports, no `.env` ensure) for `local` unless you set it. When set, `app` is required; add more names when the stack binds extra host ports. Each base must sit inside its `ports.ranges` entry. |
+| `ports.ranges` | no | Defaults to `{app: [8000, 8099]}` for docker/podman (and whenever `ports` is set). Per-service `[min, max]` inclusive; `app` required when ports are in use; every `base` key needs a range (1–65535, `min <= max`). Legacy `ports.step` is a hard error: delete it and add `ranges` instead. |
+| `proxy.enabled` | no | Default `false`. When `true`, `up`/`add`/dashboard ensure the local gateway (best-effort, never fails the command) and runner env gains `APP_URL` (not written into the worktree `.env`). Requires `ports.base.app`. |
 | `proxy.domain` | no | Default `localhost` → `http://<slug>.localhost:<port>`. Lowercased, hostname chars only. `.localhost` needs no setup in Chrome/Firefox/Edge (RFC 6761); Safari and non-browser clients need `wrk3 proxy hosts-sync`. Avoid `.local` (mDNS/Bonjour conflicts on macOS). |
 | `proxy.addr` | no | Default `127.0.0.1:8080`. Gateway listen addr, must be `host:port` with port 1-65535 (`:80` needs root, so a high port is the default). |
 | `health.checks` | no | Optional list of `{name, run, timeout}` probes (see below). Empty/missing means no shell checks; compose container health is still probed automatically. |
@@ -120,7 +127,8 @@ configs you trust.
 
 - Each `add` keeps a monotonic index (`max(index)+1`, floored at 1 —
   index `0` is reserved for the repo-root main checkout) but allocates
-  ports from ranges: per service scan `base, base+1, … ≤ max`, lowest
+  ports from ranges when `ports` is configured: per service scan
+  `base, base+1, … ≤ max`, lowest
   port wins (e.g. `8001` with `base: {app: 8000}`,
   `ranges: {app: [8000, 8099]}` since main holds `8000`). Freed ports
   are reused (gap reuse); ports occupied by another process are skipped
@@ -128,6 +136,9 @@ configs you trust.
   `no free port for "<svc>" in [min,max]`. Stale rows (dir missing,
   still in state) hold ports until `remove --force`. The allocation is
   ensured in the worktree's `.env` plus the state file.
+  For `runner.type: local` with no `ports` section, `add` still records
+  the worktree but allocates nothing, writes no `.env`, and `status`
+  shows `-` in PORTS and COMPOSE_PROJECT.
   Ensure means: wrk3 writes the current allocation into managed
   `<NAME>_PORT` keys (rewriting the existing assignment line when the
   key is already present; first assignment still wins) and appends only

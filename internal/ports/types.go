@@ -111,9 +111,12 @@ func ResolveDisplayStatus(stored, live string, liveErr error) string {
 	if StoredStatusOverridesLive(stored) {
 		return stored
 	}
-	if liveErr != nil {
+	if liveErr != nil || live == "" || live == "unknown" {
 		if stored != "" {
 			return stored
+		}
+		if live == "unknown" && liveErr == nil {
+			return StatusStopped
 		}
 		return "unknown"
 	}

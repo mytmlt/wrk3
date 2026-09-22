@@ -163,8 +163,14 @@ func TestAllocator_Validate(t *testing.T) {
 		t.Errorf("Validate() with missing port = nil, want error")
 	}
 	empty := Allocator{Base: map[string]int{}, Ranges: map[string][2]int{}}
-	if err := empty.Validate(); err == nil {
-		t.Errorf("Validate() with empty base = nil, want error")
+	if err := empty.Validate(); err != nil {
+		t.Errorf("Validate() with empty base+ranges = %v, want nil (no ports)", err)
+	}
+	if got, err := empty.FindFreeAllocation(nil, nil); err != nil || len(got) != 0 {
+		t.Errorf("FindFreeAllocation empty = %v, %v; want empty map", got, err)
+	}
+	if got := empty.BaseAllocation(); len(got) != 0 {
+		t.Errorf("BaseAllocation empty = %v, want empty map", got)
 	}
 	noRange := Allocator{Base: DefaultBase(), Ranges: map[string][2]int{}}
 	if err := noRange.Validate(); err == nil {

@@ -1,9 +1,10 @@
 # AGENTS.md — wrk3
 
 `wrk3` runs multiple branches of the same repo in parallel as git worktrees,
-each isolated with its own ports and container project. Single static Go
-binary (`Go ≥ 1.26`); runtime deps are `git` and a container engine
-(`docker` for the `docker` runner, `podman` for the `podman` runner).
+each isolated with its own directory (and, when needed, ports and a container
+project). Single static Go binary (`Go ≥ 1.26`); runtime deps are `git` and,
+for compose runners, a container engine (`docker` / `podman`). The `local`
+runner needs only `git`.
 
 ## Essential commands
 
@@ -26,7 +27,7 @@ hermetic (temp git repos, temp dirs — no network).
   discovery (`discover.go`; `docs/CONFIGURATION.md` is the field reference).
 - `internal/source/` — `Source` iface + `registry.go` + `git.go`.
 - `internal/runner/` — `Runner` iface + `registry.go` + `docker.go` + `podman.go`
-  (`portainer`/`nomad` are intentional `not implemented` stubs).
+  + `local.go` (`portainer`/`nomad` are intentional `not implemented` stubs).
 - `internal/ports/` — `allocated = base + index*step` allocator, `.env`
   writer, `<worktreeBase>/.wrk3-state.json` state file.
 - `internal/forge/` — `gh`-based PR filtering (`--myprs`).

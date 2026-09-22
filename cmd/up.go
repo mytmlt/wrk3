@@ -14,7 +14,7 @@ import (
 
 var upCmd = &cobra.Command{
 	Use:               "up [branch...]",
-	Short:             "setup + compose up + run (bare = all worktrees including main)",
+	Short:             "setup + run (compose up for docker/podman; bare = all including main)",
 	ValidArgsFunction: completeWorktrees,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		r, err := resolveConfig()
@@ -47,7 +47,7 @@ var upCmd = &cobra.Command{
 	},
 }
 
-// upOne runs setup entries, compose up, then the run entry.
+// upOne runs setup entries, optional compose up, then the run entry.
 func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func(string, ...any)) error {
 	if err := ensureWorktreeEnv(r, rec); err != nil {
 		return err
@@ -75,9 +75,14 @@ func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func
 			return fmt.Errorf("up %q setup %q: %w", rec.Branch, s, err)
 		}
 	}
-	logf("[%s] compose up (%s)", rec.Slug, rec.ComposeProject)
+	if r.cfg.UsesCompose() {
+		logf("[%s] compose up (%s)", rec.Slug, rec.ComposeProject)
+	}
 	if err := rn.Up(ctx, rec.AbsPath, env); err != nil {
-		return fmt.Errorf("up %q compose: %w", rec.Branch, err)
+		if r.cfg.UsesCompose() {
+			return fmt.Errorf("up %q compose: %w", rec.Branch, err)
+		}
+		return fmt.Errorf("up %q: %w", rec.Branch, err)
 	}
 	if s := r.cfg.Entry.Run; s != "" {
 		logf("[%s] run: %s", rec.Slug, s)
