@@ -116,10 +116,19 @@ func migrateLegacyMainCollisions(r *resolved, recs []ports.WorktreeRecord) (upda
 	out := append([]ports.WorktreeRecord(nil), recs...)
 
 	for _, ci := range colliding {
-		// taken excludes the record's own current allocation: it is being
-		// replaced, so it must not block its own fresh slot scan.
+		// taken excludes the record's own current host allocation: it is
+		// being replaced, so it must not block its own fresh slot scan.
+		// Its URL ports stay held (like main URL reservations and other
+		// records' URLs): they survive migration, so the fresh host must
+		// never land on them when ranges overlap.
 		taken := make(map[int]struct{}, len(out)+len(mainPorts))
 		for _, p := range mainPorts {
+			taken[p] = struct{}{}
+		}
+		for _, p := range r.cfg.URLBasePorts() {
+			taken[p] = struct{}{}
+		}
+		for p := range ports.TakenFromURLRecords(out) {
 			taken[p] = struct{}{}
 		}
 		for i, rec := range out {

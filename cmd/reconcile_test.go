@@ -646,6 +646,67 @@ func TestReconcileState_AdoptsTrackedURLsWithoutWarning(t *testing.T) {
 	}
 }
 
+func TestMigrateLegacyMainCollisions_AvoidsURLPorts(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfigWithURLs(t, repo)
+	r := &resolved{cfg: cfg, src: &source.GitSource{}}
+	// Host collides with main (app 8000) while the record's own tracked
+	// URLs sit on 8001. The fresh host must skip the held URL port and
+	// land on 8002, not collide with its own URLs.
+	recs := []ports.WorktreeRecord{
+		{
+			Branch: "a", Slug: "a", Index: 1,
+			AbsPath: filepath.Join(t.TempDir(), "missing-a"),
+			Ports:   map[string]int{"app": 8000},
+			Urls:    map[string]int{"BASE_URL": 8001, "ALLOWED_WS_ORIGINS": 8001},
+		},
+	}
+	updated, moved, _, err := migrateLegacyMainCollisions(r, recs)
+	if err != nil {
+		t.Fatalf("migrateLegacyMainCollisions = %v", err)
+	}
+	if len(moved) != 1 || moved[0] != "a" {
+		t.Fatalf("moved = %v, want [a]", moved)
+	}
+	if updated[0].Ports["app"] != 8002 {
+		t.Errorf("app = %d, want 8002 (skip main 8000 + held URL 8001)", updated[0].Ports["app"])
+	}
+}
+
+func TestReconcileState_RejectsUntrackedURLMatchingOwnHost(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfigWithUntrackedURL(t, repo)
+	r := &resolved{cfg: cfg, src: &source.GitSource{}, base: cfg.AbsWorktreeBase(), stateP: cfg.StatePath()}
+	wt := filepath.Join(repo, ".worktrees", "feature-u")
+	gitWorktreeAdd(t, repo, wt, "feature-u")
+	// EDITOR_URL is untracked (base :8001, no host base match) yet equals
+	// the orphan's own host port: only correctly tracked equality is
+	// exempt, so this must warn and allocate fresh (8003).
+	env := "APP_PORT=8002\nEDITOR_URL=http://localhost:8002\n"
+	if err := os.WriteFile(filepath.Join(wt, ".env"), []byte(env), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	updated, warns, dirty, err := reconcileState(r, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dirty || len(updated) != 1 {
+		t.Fatalf("updated = %+v, dirty=%v, want 1 adopted", updated, dirty)
+	}
+	if updated[0].Urls["EDITOR_URL"] != 8003 {
+		t.Errorf("EDITOR_URL = %d, want 8003 (fresh, not adopted)", updated[0].Urls["EDITOR_URL"])
+	}
+	found := false
+	for _, w := range warns {
+		if strings.Contains(w, "URL ports cannot be adopted") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("warns = %v, want URL adoption warning", warns)
+	}
+}
+
 func TestUnionBranches(t *testing.T) {
 	got := unionBranches([]string{"b", "a"}, []string{"c", "a"})
 	if len(got) != 3 || got[0] != "a" || got[1] != "b" || got[2] != "c" {
