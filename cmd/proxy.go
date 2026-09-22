@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -389,6 +391,9 @@ var proxyRunCmd = &cobra.Command{
 		addr := r.cfg.ProxyAddr()
 		ln, err := net.Listen("tcp", addr)
 		if err != nil {
+			if errors.Is(err, syscall.EACCES) || strings.Contains(err.Error(), "permission denied") {
+				return fmt.Errorf("proxy listen %s: %w\n\nTip: ports below 1024 require root; use a port >= 1024 or run with sudo", addr, err)
+			}
 			return fmt.Errorf("proxy listen %s: %w", addr, err)
 		}
 		pid := proxyPid{PID: os.Getpid(), Addr: addr, Domain: r.cfg.ProxyDomain()}

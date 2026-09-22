@@ -102,6 +102,9 @@ func TestValidateTable(t *testing.T) {
 		{"bad proxy addr", func(s string) string {
 			return s + "proxy:\n  enabled: true\n  addr: \"noport\"\n"
 		}, "proxy.addr"},
+		{"privileged proxy port", func(s string) string {
+			return s + "proxy:\n  enabled: true\n  addr: \"127.0.0.1:80\"\n"
+		}, "requires root"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

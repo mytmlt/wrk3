@@ -575,6 +575,9 @@ func validateProxyValues(domain, addr string) error {
 	if err != nil || n <= 0 || n > 65535 {
 		return fmt.Errorf("proxy.addr %q has invalid port", addr)
 	}
+	if n < 1024 {
+		return fmt.Errorf("proxy.addr port %d requires root; use a port >= 1024 or run with sudo", n)
+	}
 	return nil
 }
 
