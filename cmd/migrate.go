@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/mytmlt/wrk3/internal/ports"
 )
@@ -30,8 +31,12 @@ func assignPorts(alloc ports.Allocator, recs []ports.WorktreeRecord) (map[string
 }
 
 // assignAllocation returns host and URL port allocations for a new worktree.
-// Host ports allocate first, then URL ports, sharing one taken set so
-// cross-collisions are prevented.
+// Host ports allocate first, then URL ports. URL specs whose base port
+// matches a host base value track that host service (same port); other
+// URL groups scan for the lowest free port, sharing one taken set (main
+// host + main URL reservations, existing host/URL ports, fresh host
+// ports) so distinct groups never share a port. URL specs with the same
+// base port are aliases and share one port.
 func assignAllocation(r *resolved, recs []ports.WorktreeRecord) (ports.EnvAllocation, error) {
 	alloc := r.cfg.Allocator()
 	taken := takenWithMain(alloc, recs)
@@ -54,7 +59,14 @@ func assignAllocation(r *resolved, recs []ports.WorktreeRecord) (ports.EnvAlloca
 			taken[p] = struct{}{}
 		}
 	}
-	urlPorts, err := ports.AllocateURLs(specs, taken, osPortFree)
+	for _, p := range r.cfg.URLBasePorts() {
+		taken[p] = struct{}{}
+	}
+	base := r.cfg.Ports.Base
+	if base == nil {
+		base = ports.DefaultBase()
+	}
+	urlPorts, err := ports.AllocateURLsWithHost(specs, taken, ports.HostBaseToPort(base, hostPorts), osPortFree)
 	if err != nil {
 		return ports.EnvAllocation{}, fmt.Errorf("urls: %w", err)
 	}
@@ -133,6 +145,159 @@ func migrateLegacyMainCollisions(r *resolved, recs []ports.WorktreeRecord) (upda
 		// (dir missing) still migrate state, but must not create dirs.
 		if st, statErr := os.Stat(out[ci].AbsPath); statErr == nil && st.IsDir() {
 			if err := ensureWorktreeEnv(r, out[ci], r.cfg.URLSpecs()); err != nil {
+				return recs, nil, nil, err
+			}
+		}
+	}
+	return out, migrated, warns, nil
+}
+
+// migrateURLTracking repoints managed URL vars that track a host service
+// to the host's allocated port. A URL group whose base port equals a host
+// base value renders that service (e.g. BASE_URL http://localhost:8000
+// renders the app listener), so every member must equal the host's port.
+// Records allocated before host tracking scanned past the host port
+// (e.g. APP_PORT 8001 with BASE_URL ...:8002) are healed to the tracked
+// port; alias members move together. URL groups with no matching host
+// base are never touched, and records without URL allocations are
+// skipped. A tracked port colliding with another record is left alone
+// with a warning: state is never half-written.
+//
+// Records are processed in sorted branch order for determinism. Existing
+// non-tracking URLs are never renumbered. The worktree .env is ensured
+// (managed keys overwritten to the new allocation) only when the dir
+// exists: stale records still migrate state, but must not create dirs.
+func migrateURLTracking(r *resolved, recs []ports.WorktreeRecord) (updated []ports.WorktreeRecord, migrated []string, warns []string, err error) {
+	if r == nil || r.cfg == nil {
+		return recs, nil, nil, nil
+	}
+	specs := r.cfg.URLSpecs()
+	if len(specs) == 0 {
+		return recs, nil, nil, nil
+	}
+	base := r.cfg.Ports.Base
+	if base == nil {
+		base = ports.DefaultBase()
+	}
+	// Group spec indexes by shared base port (aliases).
+	byBase := make(map[int][]int, len(specs))
+	for i, s := range specs {
+		bp := s.BasePort()
+		byBase[bp] = append(byBase[bp], i)
+	}
+	// Main reservations (host + URL) for collision checks.
+	alloc := r.cfg.Allocator()
+	mainTaken := make(map[int]struct{})
+	for _, p := range alloc.BaseAllocation() {
+		mainTaken[p] = struct{}{}
+	}
+	for _, p := range r.cfg.URLBasePorts() {
+		mainTaken[p] = struct{}{}
+	}
+	out := append([]ports.WorktreeRecord(nil), recs...)
+	order := make([]int, 0, len(out))
+	for i := range out {
+		if len(out[i].Urls) > 0 {
+			order = append(order, i)
+		}
+	}
+	sort.Slice(order, func(a, b int) bool { return out[order[a]].Branch < out[order[b]].Branch })
+	for _, idx := range order {
+		hostMap := ports.HostBaseToPort(base, out[idx].Ports)
+		want := make(map[string]int, len(out[idx].Urls))
+		for k, v := range out[idx].Urls {
+			want[k] = v
+		}
+		var changed []string
+		for bp, members := range byBase {
+			hp, ok := hostMap[bp]
+			if !ok {
+				continue
+			}
+			inRange := true
+			for _, mi := range members {
+				rng := specs[mi].Range
+				if hp < rng[0] || hp > rng[1] {
+					inRange = false
+					break
+				}
+			}
+			if !inRange {
+				continue
+			}
+			for _, mi := range members {
+				v := specs[mi].Var
+				cur, present := want[v]
+				if !present || cur == hp {
+					continue
+				}
+				want[v] = hp
+				changed = append(changed, fmt.Sprintf("%s=%d", v, hp))
+			}
+		}
+		if len(changed) == 0 {
+			continue
+		}
+		// Collision check: tracked ports must not belong to main or any
+		// other record (host or URL). Own host ports are excluded: a
+		// tracked port always equals our own host port, which never
+		// collides with main (host migration runs first).
+		ownHost := make(map[int]struct{}, len(out[idx].Ports))
+		for _, p := range out[idx].Ports {
+			ownHost[p] = struct{}{}
+		}
+		blocked := false
+		for v, p := range want {
+			if out[idx].Urls[v] == p {
+				continue // unchanged var cannot newly collide
+			}
+			if _, ok := mainTaken[p]; ok {
+				if _, own := ownHost[p]; !own {
+					blocked = true
+					break
+				}
+			}
+			for j := range out {
+				if j == idx {
+					continue
+				}
+				for _, op := range out[j].Ports {
+					if op == p {
+						blocked = true
+						break
+					}
+				}
+				if blocked {
+					break
+				}
+				for _, op := range out[j].Urls {
+					if op == p {
+						blocked = true
+						break
+					}
+				}
+				if blocked {
+					break
+				}
+			}
+			if blocked {
+				break
+			}
+		}
+		if blocked {
+			warns = append(warns, fmt.Sprintf(
+				"worktree %q URLs not migrated to tracked host ports (collision): %s",
+				out[idx].Branch, strings.Join(changed, ", ")))
+			continue
+		}
+		sort.Strings(changed)
+		out[idx].Urls = want
+		migrated = append(migrated, out[idx].Branch)
+		warns = append(warns, fmt.Sprintf(
+			"migrated worktree %q URLs to tracked host ports: %s",
+			out[idx].Branch, strings.Join(changed, ", ")))
+		if st, statErr := os.Stat(out[idx].AbsPath); statErr == nil && st.IsDir() {
+			if err := ensureWorktreeEnv(r, out[idx], specs); err != nil {
 				return recs, nil, nil, err
 			}
 		}

@@ -87,6 +87,7 @@ broader than `--mine`, which matches git commit authorship).
 | `entry.reload` | no | Ordered list run by `reload` (CLI + dashboard `l`), each via `sh -c` with `cwd=worktree`, `env=allocated ports`. Empty strings skipped. `reload` errors when nothing is set. |
 | `ports.base` | no | Defaults to `{app: 8000}`. `app` is required; add more names when the stack binds extra host ports. Each base must sit inside its `ports.ranges` entry. Two names may share one value as aliases for a single host port (e.g. `{app: 8000, public_api: 8000}` when both vars address one listener): aliases are allocated once and stay equal in every worktree. Names mapping to the same `<NAME>_PORT` variable (e.g. `api-v2` and `api_v2`) are rejected. |
 | `ports.ranges` | no | Defaults to `{app: [8000, 8099]}`. Per-service `[min, max]` inclusive; `app` required; every `base` key needs a range (1–65535, `min <= max`). Legacy `ports.step` is a hard error: delete it and add `ranges` instead. |
+| `urls` | no | Optional list of `{var, base, range}` URL vars rewritten per worktree (e.g. `- {var: BASE_URL, base: http://localhost:8000, range: [8000, 8099]}`). `var` must be a unique valid `.env` name that does not collide with a managed `<NAME>_PORT` key; `base` must be an absolute URL with an explicit port inside `range` (`[min, max]`, 1–65535). A URL group whose base port matches a `ports.base` value tracks that host service and reuses its port (e.g. `BASE_URL` `http://localhost:8000` renders the `app` listener, so it equals `APP_PORT` in every worktree). Other URL groups take the lowest free port from their base (gap reuse, `127.0.0.1` bind probe, main URL reservations held) and never share with another distinct group. Specs sharing one base port are aliases for a single URL (e.g. `BASE_URL` and `ALLOWED_WS_ORIGINS` both `http://localhost:8000`): they are allocated once and stay equal in every worktree. |
 | `proxy.enabled` | no | Default `false`. When `true`, `up`/`add`/dashboard ensure the local gateway (best-effort, never fails the command) and runner env gains `APP_URL` (not written into the worktree `.env`). |
 | `proxy.domain` | no | Default `localhost` → `http://<slug>.localhost:<port>`. Lowercased, hostname chars only. `.localhost` needs no setup in Chrome/Firefox/Edge (RFC 6761); Safari and non-browser clients need `wrk3 proxy hosts-sync`. Avoid `.local` (mDNS/Bonjour conflicts on macOS). |
 | `proxy.addr` | no | Default `127.0.0.1:8080`. Gateway listen addr, must be `host:port` with port 1-65535 (`:80` needs root, so a high port is the default). |
@@ -157,8 +158,15 @@ it to exit before moving on.
 - Managed keys: one `<NAME>_PORT` per `ports.base` entry. Names sharing one
   `ports.base` value are aliases for a single host port (e.g. `app` and
   `public_api` both `8000`): every worktree assigns them the same port so
-  they stay in lockstep. App URLs such
-  as `BASE_URL` and a user-set `APP_URL` are never managed: they copy
+  they stay in lockstep. Each configured `urls` entry is also managed
+  (`<VAR>=<rewritten URL>` with its allocated port). A URL group whose
+  base port matches a `ports.base` value tracks that host service and
+  reuses its port (e.g. `BASE_URL` `http://localhost:8000` equals
+  `APP_PORT`); other groups take the lowest free port. Entries sharing
+  one base port are aliases for a single URL and stay equal (e.g.
+  `BASE_URL` and `ALLOWED_WS_ORIGINS` both `http://localhost:8000`).
+  Unconfigured app URLs such
+  as a user-set `APP_URL` are never managed: they copy
   verbatim from the repo-root `.env` seed into fresh worktrees. When
   `proxy.enabled`, runner env still receives `APP_URL`
   (`http://<slug>.<domain>[:port]`); it is not written into the `.env`.

@@ -364,20 +364,53 @@ func TestAllocateURLs_MultipleSpecs(t *testing.T) {
 	}
 }
 
-func TestAllocateURLs_CrossCollisionAvoided(t *testing.T) {
+func TestAllocateURLs_SameBaseSharesPort(t *testing.T) {
 	specs := []URLSpec{
-		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8001}},
-		{Var: "BASE_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8001}},
+		{Var: "BASE_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+		{Var: "ALLOWED_WS_ORIGINS", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
 	}
 	got, err := AllocateURLs(specs, nil, nil)
 	if err != nil {
 		t.Fatalf("AllocateURLs = %v", err)
 	}
-	if got["APP_URL"] == got["BASE_URL"] {
-		t.Errorf("cross-collision: APP_URL=BASE_URL=%d", got["APP_URL"])
+	if got["BASE_URL"] != 8000 || got["ALLOWED_WS_ORIGINS"] != 8000 {
+		t.Errorf("got %v, want BASE_URL=ALLOWED_WS_ORIGINS=8000 (alias)", got)
 	}
-	if got["APP_URL"] != 8000 || got["BASE_URL"] != 8001 {
-		t.Errorf("got %v, want APP_URL=8000 BASE_URL=8001", got)
+}
+
+func TestAllocateURLs_AliasSkipsTakenTogether(t *testing.T) {
+	specs := []URLSpec{
+		{Var: "BASE_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+		{Var: "ALLOWED_WS_ORIGINS", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+	}
+	taken := map[int]struct{}{8000: {}, 8001: {}}
+	got, err := AllocateURLs(specs, taken, nil)
+	if err != nil {
+		t.Fatalf("AllocateURLs = %v", err)
+	}
+	if got["BASE_URL"] != 8002 || got["ALLOWED_WS_ORIGINS"] != 8002 {
+		t.Errorf("got %v, want BASE_URL=ALLOWED_WS_ORIGINS=8002", got)
+	}
+}
+
+func TestAllocateURLs_DistinctGroupsAvoidCollision(t *testing.T) {
+	specs := []URLSpec{
+		{Var: "APP_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+		{Var: "API_URL", BaseURL: ptrURL("http://localhost:8001"), Range: [2]int{8001, 8099}},
+	}
+	taken := map[int]struct{}{8000: {}}
+	got, err := AllocateURLs(specs, taken, nil)
+	if err != nil {
+		t.Fatalf("AllocateURLs = %v", err)
+	}
+	if got["APP_URL"] != 8001 {
+		t.Errorf("APP_URL = %d, want 8001", got["APP_URL"])
+	}
+	if got["API_URL"] == got["APP_URL"] {
+		t.Errorf("distinct groups must not share: APP_URL=API_URL=%d", got["APP_URL"])
+	}
+	if got["API_URL"] != 8002 {
+		t.Errorf("API_URL = %d, want 8002 (8001 taken by alias group)", got["API_URL"])
 	}
 }
 
@@ -406,6 +439,64 @@ func TestAllocateURLs_ExhaustionNamesVar(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `"APP_URL"`) || !strings.Contains(err.Error(), "[8000,8001]") {
 		t.Errorf("error %q should name var and range", err.Error())
+	}
+}
+
+func TestHostBaseToPort_MapsBaseValues(t *testing.T) {
+	base := map[string]int{"app": 8000, "public_api": 8000, "web": 9000}
+	host := map[string]int{"app": 8001, "public_api": 8001, "web": 9001}
+	got := HostBaseToPort(base, host)
+	if got[8000] != 8001 || got[9000] != 9001 {
+		t.Errorf("got %v, want {8000:8001, 9000:9001}", got)
+	}
+	if len(got) != 2 {
+		t.Errorf("got %v, want exactly 2 base entries (aliases share)", got)
+	}
+}
+
+func TestAllocateURLsWithHost_TracksHostPort(t *testing.T) {
+	specs := []URLSpec{
+		{Var: "BASE_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+		{Var: "ALLOWED_WS_ORIGINS", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8099}},
+	}
+	// taken includes main (8000) and the fresh host allocation (8001):
+	// without tracking the alias group would land on 8002.
+	taken := map[int]struct{}{8000: {}, 8001: {}}
+	got, err := AllocateURLsWithHost(specs, taken, map[int]int{8000: 8001}, nil)
+	if err != nil {
+		t.Fatalf("AllocateURLsWithHost = %v", err)
+	}
+	if got["BASE_URL"] != 8001 || got["ALLOWED_WS_ORIGINS"] != 8001 {
+		t.Errorf("got %v, want BASE_URL=ALLOWED_WS_ORIGINS=8001 (tracked host port)", got)
+	}
+}
+
+func TestAllocateURLsWithHost_UntrackedScansTaken(t *testing.T) {
+	specs := []URLSpec{
+		{Var: "DOCS_URL", BaseURL: ptrURL("http://localhost:9000"), Range: [2]int{9000, 9099}},
+	}
+	taken := map[int]struct{}{8000: {}, 8001: {}, 9000: {}}
+	got, err := AllocateURLsWithHost(specs, taken, map[int]int{8000: 8001}, nil)
+	if err != nil {
+		t.Fatalf("AllocateURLsWithHost = %v", err)
+	}
+	if got["DOCS_URL"] != 9001 {
+		t.Errorf("DOCS_URL = %d, want 9001 (no host base match, skip taken)", got["DOCS_URL"])
+	}
+}
+
+func TestAllocateURLsWithHost_TrackedOutOfRangeFallsBack(t *testing.T) {
+	specs := []URLSpec{
+		{Var: "NARROW_URL", BaseURL: ptrURL("http://localhost:8000"), Range: [2]int{8000, 8001}},
+	}
+	// Host tracked port 8005 sits outside the URL range: fall back to scan.
+	taken := map[int]struct{}{8000: {}, 8005: {}}
+	got, err := AllocateURLsWithHost(specs, taken, map[int]int{8000: 8005}, nil)
+	if err != nil {
+		t.Fatalf("AllocateURLsWithHost = %v", err)
+	}
+	if got["NARROW_URL"] != 8001 {
+		t.Errorf("NARROW_URL = %d, want 8001 (tracked 8005 out of range)", got["NARROW_URL"])
 	}
 }
 

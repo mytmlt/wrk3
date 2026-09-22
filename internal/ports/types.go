@@ -4,9 +4,11 @@
 //
 // Allocation rule: per-service ranges scanned from base upward by 1; the
 // lowest free port wins (gap reuse). URL ports (config-driven url vars
-// with explicit port ranges) follow the same scan. Runtime state lives in
-// <worktreeBase>/.wrk3-state.json with absolute paths so every command
-// works from any cwd.
+// with explicit port ranges) follow the same scan; specs sharing one base
+// port are aliases for a single URL and stay equal, and a URL group whose
+// base matches a host base tracks that host service's port. Runtime state
+// lives in <worktreeBase>/.wrk3-state.json with absolute paths so every
+// command works from any cwd.
 package ports
 
 import "net/url"

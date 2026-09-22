@@ -2,12 +2,14 @@ package cmd
 
 import (
 	"errors"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/mytmlt/wrk3/internal/config"
 	"github.com/mytmlt/wrk3/internal/ports"
 	"github.com/mytmlt/wrk3/internal/source"
 )
@@ -234,6 +236,165 @@ func TestRecoveredReusable_AliasLockstep(t *testing.T) {
 	// Split aliases must not reuse.
 	if recoveredReusable(alloc, base, map[string]int{"app": 8001, "public_api": 8002}, taken, mainPorts) {
 		t.Error("split alias recovered ports should not be reusable")
+	}
+}
+
+func urlSpecForTest(t *testing.T, v, raw string, r [2]int) ports.URLSpec {
+	t.Helper()
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ports.URLSpec{Var: v, BaseURL: parsed, Range: r}
+}
+
+func TestUrlRecoveredReusable_AliasLockstep(t *testing.T) {
+	specs := []ports.URLSpec{
+		urlSpecForTest(t, "BASE_URL", "http://localhost:8000", [2]int{8000, 8099}),
+		urlSpecForTest(t, "ALLOWED_WS_ORIGINS", "http://localhost:8000", [2]int{8000, 8099}),
+	}
+	taken := map[int]struct{}{8000: {}}
+	// Aliases sharing one recovered port reuse.
+	if !urlRecoveredReusable(map[string]int{"BASE_URL": 8001, "ALLOWED_WS_ORIGINS": 8001}, specs, taken) {
+		t.Error("alias URL ports sharing one value should be reusable")
+	}
+	// Split aliases must not reuse.
+	if urlRecoveredReusable(map[string]int{"BASE_URL": 8001, "ALLOWED_WS_ORIGINS": 8002}, specs, taken) {
+		t.Error("split alias URL ports should not be reusable")
+	}
+	// Distinct bases sharing one value must not reuse.
+	distinct := []ports.URLSpec{
+		urlSpecForTest(t, "APP_URL", "http://localhost:8000", [2]int{8000, 8099}),
+		urlSpecForTest(t, "API_URL", "http://localhost:9000", [2]int{9000, 9099}),
+	}
+	if urlRecoveredReusable(map[string]int{"APP_URL": 8001, "API_URL": 8001}, distinct, taken) {
+		t.Error("distinct-base URL ports sharing one value should not be reusable")
+	}
+}
+
+func writeTestConfigWithURLs(t *testing.T, repoRoot string) *config.Config {
+	t.Helper()
+	content := `project:
+  worktreeBase: .worktrees
+source:
+  type: git
+  git: {remote: origin, fetchPrune: true}
+runner:
+  type: docker
+  docker:
+    composeFiles: [docker-compose.yml]
+    projectPrefix: demo
+entry:
+  setup: ["echo setup"]
+  run: "echo run"
+  stop: "echo stop"
+  logs: "echo logs"
+ports:
+  base: {app: 8000}
+  ranges:
+    app: [8000, 8099]
+urls:
+  - var: BASE_URL
+    base: http://localhost:8000
+    range: [8000, 8099]
+  - var: ALLOWED_WS_ORIGINS
+    base: http://localhost:8000
+    range: [8000, 8099]
+`
+	path := filepath.Join(repoRoot, "wrk3.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+func TestAssignAllocation_URLTracksHost(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfigWithURLs(t, repo)
+	r := &resolved{cfg: cfg, src: &source.GitSource{}}
+	got, err := assignAllocation(r, nil)
+	if err != nil {
+		t.Fatalf("assignAllocation = %v", err)
+	}
+	// main holds 8000; host app takes 8001 and both URL aliases track it.
+	if got.Ports["app"] != 8001 {
+		t.Errorf("app = %d, want 8001", got.Ports["app"])
+	}
+	if got.URLs["BASE_URL"] != 8001 || got.URLs["ALLOWED_WS_ORIGINS"] != 8001 {
+		t.Errorf("urls = %v, want BASE_URL=ALLOWED_WS_ORIGINS=8001 (tracked)", got.URLs)
+	}
+}
+
+func TestMigrateURLTracking_HealsScannedPast(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfigWithURLs(t, repo)
+	r := &resolved{cfg: cfg, src: &source.GitSource{}}
+	recs := []ports.WorktreeRecord{
+		{
+			Branch: "b", Slug: "b", Index: 1,
+			AbsPath: filepath.Join(t.TempDir(), "missing-b"),
+			Ports:   map[string]int{"app": 8001},
+			Urls:    map[string]int{"BASE_URL": 8002, "ALLOWED_WS_ORIGINS": 8002},
+		},
+	}
+	updated, moved, _, err := migrateURLTracking(r, recs)
+	if err != nil {
+		t.Fatalf("migrateURLTracking = %v", err)
+	}
+	if len(moved) != 1 || moved[0] != "b" {
+		t.Fatalf("moved = %v, want [b]", moved)
+	}
+	if updated[0].Urls["BASE_URL"] != 8001 || updated[0].Urls["ALLOWED_WS_ORIGINS"] != 8001 {
+		t.Errorf("urls = %v, want both 8001 (tracked host port)", updated[0].Urls)
+	}
+}
+
+func TestMigrateURLTracking_HealsSplitAliases(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfigWithURLs(t, repo)
+	r := &resolved{cfg: cfg, src: &source.GitSource{}}
+	recs := []ports.WorktreeRecord{
+		{
+			Branch: "b", Slug: "b", Index: 1,
+			AbsPath: filepath.Join(t.TempDir(), "missing-b"),
+			Ports:   map[string]int{"app": 8001},
+			Urls:    map[string]int{"BASE_URL": 8002, "ALLOWED_WS_ORIGINS": 8003},
+		},
+	}
+	updated, moved, _, err := migrateURLTracking(r, recs)
+	if err != nil {
+		t.Fatalf("migrateURLTracking = %v", err)
+	}
+	if len(moved) != 1 {
+		t.Fatalf("moved = %v, want [b]", moved)
+	}
+	if updated[0].Urls["BASE_URL"] != 8001 || updated[0].Urls["ALLOWED_WS_ORIGINS"] != 8001 {
+		t.Errorf("urls = %v, want both 8001", updated[0].Urls)
+	}
+}
+
+func TestMigrateURLTracking_LeavesTrackedAlone(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfigWithURLs(t, repo)
+	r := &resolved{cfg: cfg, src: &source.GitSource{}}
+	recs := []ports.WorktreeRecord{
+		{
+			Branch: "b", Slug: "b", Index: 1,
+			AbsPath: filepath.Join(t.TempDir(), "missing-b"),
+			Ports:   map[string]int{"app": 8001},
+			Urls:    map[string]int{"BASE_URL": 8001, "ALLOWED_WS_ORIGINS": 8001},
+		},
+	}
+	_, moved, _, err := migrateURLTracking(r, recs)
+	if err != nil {
+		t.Fatalf("migrateURLTracking = %v", err)
+	}
+	if len(moved) != 0 {
+		t.Errorf("moved = %v, want none (already tracked)", moved)
 	}
 }
 

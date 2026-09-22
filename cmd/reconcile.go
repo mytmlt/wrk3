@@ -19,7 +19,8 @@ import (
 // state nor the OS; otherwise the lowest free range allocation is
 // assigned (gap reuse, OS-aware). URL ports are similarly recovered from
 // the .env when the recovered values match configured URL specs; otherwise
-// a fresh URL allocation is made sharing the taken set with host ports.
+// a fresh URL allocation is made (URL groups whose base matches a host
+// base track that host service's port, other groups scan the taken set).
 // The worktree .env is ensured via ensureWorktreeEnv (managed port keys
 // overwritten to the allocation). Records are appended with Status stopped
 // — display overlays the live runner probe. Slug, port, and
@@ -50,6 +51,12 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 	}
 	mainPorts := alloc.BaseAllocation()
 	taken := takenWithMain(alloc, recs)
+	for _, p := range r.cfg.URLBasePorts() {
+		taken[p] = struct{}{}
+	}
+	for p := range ports.TakenFromURLRecords(recs) {
+		taken[p] = struct{}{}
+	}
 
 	all := append([]ports.WorktreeRecord(nil), recs...)
 
@@ -93,14 +100,14 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 		}
 		if len(urlSpecs) > 0 {
 			if recovered, ok := ports.ReadURLs(path, urlSpecs); ok {
-				if urlRecoveredReusable(recovered, taken) {
+				if urlRecoveredReusable(recovered, urlSpecs, taken) {
 					urlAlloc = recovered
 				} else {
 					warns = append(warns, fmt.Sprintf("worktree %q .env URL ports cannot be adopted; allocating a free set", branch))
 				}
 			}
 			if urlAlloc == nil {
-				fresh, err := ports.AllocateURLs(urlSpecs, taken, osPortFree)
+				fresh, err := ports.AllocateURLsWithHost(urlSpecs, taken, ports.HostBaseToPort(base, allocation), osPortFree)
 				if err != nil {
 					return recs, nil, false, fmt.Errorf("reconcile worktree %q urls: %w", branch, err)
 				}
@@ -223,20 +230,45 @@ func recoveredReusable(alloc ports.Allocator, base, recovered map[string]int, ta
 }
 
 // urlRecoveredReusable reports whether .env-recovered URL ports can be
-// reused: no collision with taken ports, distinct values, and OS-free.
-func urlRecoveredReusable(recovered map[string]int, taken map[int]struct{}) bool {
+// reused: no collision with taken ports, OS-free, and alias-consistent
+// values (vars sharing one base port must share one recovered value;
+// distinct base ports must stay distinct).
+func urlRecoveredReusable(recovered map[string]int, specs []ports.URLSpec, taken map[int]struct{}) bool {
 	if len(recovered) == 0 {
 		return false
 	}
 	if collidesTaken(taken, recovered) {
 		return false
 	}
-	seen := make(map[int]struct{}, len(recovered))
-	for _, v := range recovered {
-		if _, dup := seen[v]; dup {
+	aliasOf := make(map[string]int, len(recovered))
+	for _, s := range specs {
+		aliasOf[s.Var] = s.BasePort()
+	}
+	for v := range recovered {
+		if _, ok := aliasOf[v]; !ok {
 			return false
 		}
-		seen[v] = struct{}{}
+	}
+	seen := make(map[int]string, len(recovered))
+	for name, v := range recovered {
+		if other, dup := seen[v]; dup {
+			if aliasOf[name] != aliasOf[other] {
+				return false
+			}
+			continue
+		}
+		seen[v] = name
+	}
+	byBase := make(map[int]int, len(recovered))
+	for name, v := range recovered {
+		b := aliasOf[name]
+		if prev, ok := byBase[b]; ok {
+			if prev != v {
+				return false
+			}
+			continue
+		}
+		byBase[b] = v
 	}
 	for _, v := range recovered {
 		if !osPortFree(v) {
@@ -247,8 +279,9 @@ func urlRecoveredReusable(recovered map[string]int, taken map[int]struct{}) bool
 }
 
 // reconcileAndSave adopts orphan worktrees into recs, migrates legacy
-// managed allocations colliding with main (the ports.base allocation),
-// and persists when anything changed. It returns the updated records,
+// managed allocations colliding with main (the ports.base allocation)
+// and URL allocations predating host tracking, and persists when anything
+// changed. It returns the updated records,
 // the adopted branch names, and warnings (including recovered .env
 // allocations that cannot be adopted). A missing
 // stateP skips the save and returns display-only records.
@@ -270,6 +303,16 @@ func reconcileAndSave(r *resolved, recs []ports.WorktreeRecord) (updated []ports
 		updated = migratedRecs
 		dirty = true
 		warns = append(warns, "migrated legacy collides with main (ports.base): "+strings.Join(moved, ", "))
+	}
+	trackedRecs, trackedMoved, trackedWarns, err := migrateURLTracking(r, updated)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	warns = append(warns, trackedWarns...)
+	if len(trackedMoved) > 0 {
+		updated = trackedRecs
+		dirty = true
+		warns = append(warns, "migrated URLs to tracked host ports: "+strings.Join(trackedMoved, ", "))
 	}
 	if !dirty {
 		return updated, nil, warns, nil
