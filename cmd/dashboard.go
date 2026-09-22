@@ -174,6 +174,7 @@ type dashboardModel struct {
 	log             []string
 	statusMsg       string
 	proxyInfo       string // gateway status for the meta line (set on refresh)
+	lastProxyNote   string // last logged gateway start/fail line (dedup refresh spam)
 	fetchedAt       time.Time
 	ops             []dashboardOp
 	nextOpID        int
@@ -918,7 +919,8 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.rows = msg.rows
 			m.proxyInfo = msg.proxyInfo
-			if msg.proxyNote != "" {
+			if msg.proxyNote != "" && msg.proxyNote != m.lastProxyNote {
+				m.lastProxyNote = msg.proxyNote
 				m = m.appendLog(msg.proxyNote)
 			}
 			m = m.logReconciled(msg.adopted, msg.warns)

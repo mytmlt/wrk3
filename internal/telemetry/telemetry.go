@@ -76,6 +76,9 @@ func newErrorEvent(command string, err error) *sentry.Event {
 	if err == nil {
 		return nil
 	}
+	if !shouldReport(err) {
+		return nil
+	}
 	msg := Scrub(err)
 	if msg == "" {
 		return nil
@@ -176,6 +179,31 @@ func Init() {
 
 func Flush() {
 	sentry.Flush(2 * time.Second)
+}
+
+func shouldReport(err error) bool {
+	if err == nil {
+		return false
+	}
+	if !isPermissionDenied(err) {
+		return true
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "listen") {
+		return true
+	}
+	return !strings.Contains(msg, "bind") && !strings.Contains(msg, "proxy listen")
+}
+
+func isPermissionDenied(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, os.ErrPermission) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "permission denied") || strings.Contains(msg, "access is denied")
 }
 
 func errorTypeName(err error) string {

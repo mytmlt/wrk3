@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Local gateway no longer respawns a doomed `proxy run` (and no longer
+  reports it as a crash) when `proxy.addr` uses a privileged port such as
+  `:80` without root or `CAP_NET_BIND_SERVICE`. Bind failures are probed
+  in the parent, include a hint to use `127.0.0.1:8080`, and `up`/`add`/
+  dashboard keep worktrees reachable via localhost ports.
+
 - Error reports now use the innermost meaningful error type (instead of the
   generic `fmt.wrapError` wrapper) when grouping in Sentry, so issues from
   unrelated commands no longer look alike. The reported message and

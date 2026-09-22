@@ -111,6 +111,9 @@ func ensureProxyForCfg(cfg *config.Config) (warn string) {
 	for i := 0; i < 10 && !proxyRunning(cfg); i++ {
 		time.Sleep(100 * time.Millisecond)
 	}
+	if !proxyRunning(cfg) {
+		return fmt.Sprintf("proxy gateway not started (not listening on %s); worktrees still reachable via localhost ports", cfg.ProxyAddr())
+	}
 	return ""
 }
 
@@ -118,6 +121,9 @@ func ensureProxyForCfg(cfg *config.Config) (warn string) {
 func startProxyDetached(cfg *config.Config) error {
 	if err := os.MkdirAll(cfg.AbsWorktreeBase(), 0o755); err != nil {
 		return fmt.Errorf("create worktree base: %w", err)
+	}
+	if err := proxy.CheckListen(cfg.ProxyAddr()); err != nil {
+		return err
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -234,6 +240,12 @@ var proxyUpCmd = &cobra.Command{
 		}
 		if err := startProxyDetached(r.cfg); err != nil {
 			return err
+		}
+		for i := 0; i < 10 && !proxyRunning(r.cfg); i++ {
+			time.Sleep(100 * time.Millisecond)
+		}
+		if !proxyRunning(r.cfg) {
+			return fmt.Errorf("proxy did not start on %s (see %s)", r.cfg.ProxyAddr(), proxyLogPath(r.cfg))
 		}
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "proxy up on %s (<slug>.%s)\n", r.cfg.ProxyAddr(), r.cfg.ProxyDomain())
 		return nil
@@ -387,9 +399,9 @@ var proxyRunCmd = &cobra.Command{
 			return err
 		}
 		addr := r.cfg.ProxyAddr()
-		ln, err := net.Listen("tcp", addr)
+		ln, err := proxy.Listen(addr)
 		if err != nil {
-			return fmt.Errorf("proxy listen %s: %w", addr, err)
+			return err
 		}
 		pid := proxyPid{PID: os.Getpid(), Addr: addr, Domain: r.cfg.ProxyDomain()}
 		raw, _ := json.Marshal(pid)

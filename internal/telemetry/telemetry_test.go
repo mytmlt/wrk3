@@ -390,6 +390,32 @@ func TestErrorTypeName(t *testing.T) {
 	}
 }
 
+func TestShouldReport_SkipsListenPermissionDenied(t *testing.T) {
+	err := fmt.Errorf("proxy listen 10.0.0.1:80: listen tcp 10.0.0.1:80: bind: permission denied")
+	if shouldReport(err) {
+		t.Error("shouldReport = true for privileged listen failure")
+	}
+	wrapped := fmt.Errorf("proxy listen 127.0.0.1:80: %w (set proxy.addr to 127.0.0.1:8080)", os.ErrPermission)
+	if shouldReport(wrapped) {
+		t.Error("shouldReport = true for wrapped permission denied listen")
+	}
+	if newErrorEvent("run", wrapped) != nil {
+		t.Error("newErrorEvent should drop unprivileged listen failures")
+	}
+}
+
+func TestShouldReport_KeepsOtherErrors(t *testing.T) {
+	if !shouldReport(errSentinel("something went wrong")) {
+		t.Error("shouldReport = false for ordinary error")
+	}
+	if !shouldReport(fmt.Errorf("write proxy pid: %w", os.ErrPermission)) {
+		t.Error("shouldReport = false for non-listen permission denied")
+	}
+	if shouldReport(nil) {
+		t.Error("shouldReport = true for nil")
+	}
+}
+
 func TestNewErrorEvent_UnwrappedType(t *testing.T) {
 	err := fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", errSentinel("something went wrong")))
 	event := newErrorEvent("status", err)

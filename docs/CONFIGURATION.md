@@ -89,7 +89,7 @@ broader than `--mine`, which matches git commit authorship).
 | `ports.ranges` | no | Defaults to `{app: [8000, 8099]}`. Per-service `[min, max]` inclusive; `app` required; every `base` key needs a range (1–65535, `min <= max`). Legacy `ports.step` is a hard error: delete it and add `ranges` instead. |
 | `proxy.enabled` | no | Default `false`. When `true`, `up`/`add`/dashboard ensure the local gateway (best-effort, never fails the command) and runner env gains `APP_URL` (not written into the worktree `.env`). |
 | `proxy.domain` | no | Default `localhost` → `http://<slug>.localhost:<port>`. Lowercased, hostname chars only. `.localhost` needs no setup in Chrome/Firefox/Edge (RFC 6761); Safari and non-browser clients need `wrk3 proxy hosts-sync`. Avoid `.local` (mDNS/Bonjour conflicts on macOS). |
-| `proxy.addr` | no | Default `127.0.0.1:8080`. Gateway listen addr, must be `host:port` with port 1-65535 (`:80` needs root, so a high port is the default). |
+| `proxy.addr` | no | Default `127.0.0.1:8080`. Gateway listen addr, must be `host:port` with port 1-65535. Ports below 1024 (`:80`) need root or `CAP_NET_BIND_SERVICE`; without that, ensure/`proxy up` warn and skip the gateway (worktrees stay on localhost ports) instead of looping a failing bind. |
 | `health.checks` | no | Optional list of `{name, run, timeout}` probes (see below). Empty/missing means no shell checks; compose container health is still probed automatically. |
 | `health.checks[].name` | yes (per check) | Non-empty, unique per config. Shown in the dashboard DETAILS pane (`api: pass`). |
 | `health.checks[].run` | yes (per check) | Shell string run via `sh -c` with `cwd=worktree`, `env=allocated ports` (like `entry.*`). Exit 0 = pass. |
@@ -176,8 +176,10 @@ header per request against `<worktreeBase>/.wrk3-state.json`, so
 `add`/`up`/`down`/`remove` take effect immediately with no route sync.
 
 - `up`, `add`, and the dashboard ensure the gateway in the background when `proxy.enabled`
-  (never fails the command: spawn errors warn and worktrees stay reachable via
-  `localhost` ports). Manage it explicitly with `wrk3 proxy
+  (never fails the command: bind/spawn errors warn and worktrees stay reachable via
+  `localhost` ports). Privileged ports (`:80`) fail the listen probe with a
+  hint to keep `127.0.0.1:8080` unless the process may bind them. Manage it
+  explicitly with `wrk3 proxy
   up|down|status|open <worktree>|hosts-sync` (see `USAGE.md`).
 - `status` grows a `URL` column when enabled; the dashboard always shows a
   `URL` column (gateway URL when enabled, else `localhost:<appPort>`, opened

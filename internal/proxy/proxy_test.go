@@ -1,8 +1,11 @@
 package proxy
 
 import (
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
@@ -44,6 +47,86 @@ func TestValidate(t *testing.T) {
 		if err := Validate(tc[0], tc[1]); err == nil {
 			t.Errorf("Validate(%q,%q) = nil, want error", tc[0], tc[1])
 		}
+	}
+}
+
+func TestWrapListenErrorPrivilegedHint(t *testing.T) {
+	err := WrapListenError("10.0.0.1:80", os.ErrPermission)
+	if err == nil {
+		t.Fatal("WrapListenError returned nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "proxy listen 10.0.0.1:80") {
+		t.Errorf("missing listen prefix: %q", msg)
+	}
+	if !strings.Contains(msg, DefaultAddr) {
+		t.Errorf("missing default-addr hint: %q", msg)
+	}
+	if !strings.Contains(msg, "CAP_NET_BIND_SERVICE") {
+		t.Errorf("missing capability hint: %q", msg)
+	}
+	if !errors.Is(err, os.ErrPermission) {
+		t.Error("wrapped error should unwrap to permission denied")
+	}
+	if !IsUnprivilegedListen(err) {
+		t.Error("IsUnprivilegedListen = false, want true")
+	}
+}
+
+func TestWrapListenErrorHighPort(t *testing.T) {
+	err := WrapListenError("127.0.0.1:8080", os.ErrPermission)
+	if err == nil {
+		t.Fatal("WrapListenError returned nil")
+	}
+	if strings.Contains(err.Error(), "CAP_NET_BIND_SERVICE") {
+		t.Errorf("high port should not get privileged hint: %q", err)
+	}
+	if !strings.Contains(err.Error(), "proxy listen 127.0.0.1:8080") {
+		t.Errorf("missing listen prefix: %q", err)
+	}
+}
+
+func TestIsUnprivilegedListen(t *testing.T) {
+	if IsUnprivilegedListen(nil) {
+		t.Error("nil should not match")
+	}
+	if IsUnprivilegedListen(os.ErrPermission) {
+		t.Error("bare permission denied is not a listen failure")
+	}
+	listenDenied := WrapListenError("127.0.0.1:80", os.ErrPermission)
+	if !IsUnprivilegedListen(listenDenied) {
+		t.Errorf("wrapped privileged listen should match: %v", listenDenied)
+	}
+}
+
+func TestCheckListenFreeAndBusy(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	if err := CheckListen(addr); err == nil {
+		t.Fatal("CheckListen on occupied addr = nil, want error")
+	}
+	_ = ln.Close()
+	if err := CheckListen(addr); err != nil {
+		t.Fatalf("CheckListen on free addr: %v", err)
+	}
+}
+
+func TestListenPrivilegedPort(t *testing.T) {
+	_, err := Listen("127.0.0.1:1")
+	if err == nil {
+		t.Skip("process can bind privileged ports")
+	}
+	if !errors.Is(err, os.ErrPermission) {
+		t.Skipf("listen :1: %v", err)
+	}
+	if !IsUnprivilegedListen(err) {
+		t.Errorf("IsUnprivilegedListen = false for %v", err)
+	}
+	if !strings.Contains(err.Error(), DefaultAddr) {
+		t.Errorf("missing default-addr hint: %q", err)
 	}
 }
 

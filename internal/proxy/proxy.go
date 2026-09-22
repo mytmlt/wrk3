@@ -7,6 +7,7 @@
 package proxy
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -24,6 +25,9 @@ import (
 const (
 	DefaultDomain = "localhost"
 	DefaultAddr   = "127.0.0.1:8080"
+	// PrivilegedPortCeiling is the first unprivileged TCP port. Binding
+	// below it needs root or CAP_NET_BIND_SERVICE on typical Unix systems.
+	PrivilegedPortCeiling = 1024
 )
 
 // PidFileName tracks the gateway daemon under worktreeBase.
@@ -110,6 +114,63 @@ func GatewayPort(addr string) int {
 		return 0
 	}
 	return n
+}
+
+// Listen binds tcp addr. Permission denied on ports below
+// PrivilegedPortCeiling includes a hint to use DefaultAddr.
+func Listen(addr string) (net.Listener, error) {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, WrapListenError(addr, err)
+	}
+	return ln, nil
+}
+
+// CheckListen probes whether addr can be bound, then releases it.
+func CheckListen(addr string) error {
+	ln, err := Listen(addr)
+	if err != nil {
+		return err
+	}
+	return ln.Close()
+}
+
+// WrapListenError annotates a net.Listen failure for proxy.addr.
+func WrapListenError(addr string, err error) error {
+	if err == nil {
+		return nil
+	}
+	port := GatewayPort(addr)
+	if isPermissionDenied(err) && port > 0 && port < PrivilegedPortCeiling {
+		return fmt.Errorf("proxy listen %s: %w (ports below %d need root or CAP_NET_BIND_SERVICE; set proxy.addr to %s)",
+			addr, err, PrivilegedPortCeiling, DefaultAddr)
+	}
+	return fmt.Errorf("proxy listen %s: %w", addr, err)
+}
+
+// IsUnprivilegedListen reports a listen bind that failed because the
+// process cannot use a privileged port. Expected user/environment
+// condition, not a crash.
+func IsUnprivilegedListen(err error) bool {
+	if err == nil || !isPermissionDenied(err) {
+		return false
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "listen") {
+		return false
+	}
+	return strings.Contains(msg, "bind") || strings.Contains(msg, "proxy listen")
+}
+
+func isPermissionDenied(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, os.ErrPermission) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "permission denied") || strings.Contains(msg, "access is denied")
 }
 
 // URLForSlug builds the public URL for a worktree. Port 80 is omitted.
