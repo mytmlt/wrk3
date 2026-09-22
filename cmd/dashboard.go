@@ -176,7 +176,7 @@ type dashboardModel struct {
 	pane            int // 0 = worktrees, 1 = branches, 2 = event log, 3 = console
 	workSel         map[string]bool
 	brSel           map[string]bool
-	log             []string // event log (bottom-left)
+	log             []string            // event log (bottom-left)
 	console         map[string][]string // per-worktree console buffers
 	statusMsg       string
 	proxyInfo       string // gateway status for the meta line (set on refresh)
@@ -1439,30 +1439,34 @@ func dashboardKeyMsg(s string) tea.KeyMsg {
 func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "pgup":
-		if m.pane == 2 {
+		switch m.pane {
+		case 2:
 			m.eventLogView.ScrollUp(max(m.eventLogView.Height, 1))
-		} else if m.pane == 3 {
+		case 3:
 			m.consoleView.ScrollUp(max(m.consoleView.Height, 1))
 		}
 		return m, nil
 	case "pgdown":
-		if m.pane == 2 {
+		switch m.pane {
+		case 2:
 			m.eventLogView.ScrollDown(max(m.eventLogView.Height, 1))
-		} else if m.pane == 3 {
+		case 3:
 			m.consoleView.ScrollDown(max(m.consoleView.Height, 1))
 		}
 		return m, nil
 	case "home":
-		if m.pane == 2 {
+		switch m.pane {
+		case 2:
 			m.eventLogView.GotoTop()
-		} else if m.pane == 3 {
+		case 3:
 			m.consoleView.GotoTop()
 		}
 		return m, nil
 	case "end":
-		if m.pane == 2 {
+		switch m.pane {
+		case 2:
 			m.eventLogView.GotoBottom()
-		} else if m.pane == 3 {
+		case 3:
 			m.consoleView.GotoBottom()
 		}
 		return m, nil
@@ -1985,9 +1989,9 @@ var (
 
 	// Lazygit-inspired pane titles: focused is bright cyan, blurred is
 	// dim gray. Borders follow the same scheme (blue focus, gray blur).
-	dashPaneTitleFocused  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("51"))
-	dashPaneTitleBlurred  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247"))
-	dashLogTitleStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247"))
+	dashPaneTitleFocused = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("51"))
+	dashPaneTitleBlurred = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247"))
+	dashLogTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247"))
 
 	dashMenuTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
 	dashMenuSelectedStyle = lipgloss.NewStyle().Bold(true).
@@ -2268,8 +2272,6 @@ func dashboardFitLines(lines []string, width, height int) []string {
 	return out
 }
 
-
-
 // detailRecord follows the worktree selection: first selected row in table
 // order, else the cursor row. The detail pane is a read-only preview, never
 // focusable.
@@ -2508,11 +2510,11 @@ func (m dashboardModel) eventLogPane(width, height int) string {
 // lines of pane chrome (title + top/bottom borders); consoleViewH is
 // the matching console viewport height.
 type dashboardGrid struct {
-	wide                                              bool
-	leftW, rightW                                     int
+	wide                                                bool
+	leftW, rightW                                       int
 	workTableH, branchTableH, eventLogInnerH, detInnerH int
-	logH                                              int
-	logViewW, consoleViewH                            int
+	logH                                                int
+	logViewW, consoleViewH                              int
 }
 
 func computeDashboardGrid(w, h int) dashboardGrid {
@@ -2531,9 +2533,9 @@ func computeDashboardGrid(w, h int) dashboardGrid {
 			wide: true, leftW: leftW, rightW: rightW,
 			workTableH: max(workH-3, 3), branchTableH: max(branchH-3, 3),
 			eventLogInnerH: max(eventLogH-3, 3), detInnerH: max(detH-3, 3),
-			logH:          logH,
-			logViewW:      max(rightW-4, 10),
-			consoleViewH:  max(logH-3, 3),
+			logH:         logH,
+			logViewW:     max(rightW-4, 10),
+			consoleViewH: max(logH-3, 3),
 		}
 	}
 	workH := max(bodyH*25/100, 4)

@@ -171,10 +171,10 @@ func testDashboardModel() dashboardModel {
 		projects: []*dashboardProject{
 			{desc: dashboardProjectDesc{Name: "myapp", ConfigPath: "/r/wrk3.yaml", Current: true}},
 		},
-		workSel:  map[string]bool{},
-		brSel:    map[string]bool{},
-		poll:     0,
-		console:  map[string][]string{},
+		workSel: map[string]bool{},
+		brSel:   map[string]bool{},
+		poll:    0,
+		console: map[string][]string{},
 	}
 	m.rows = []dashboardRow{
 		{Rec: ports.WorktreeRecord{Branch: "feature-a", Slug: "feature-a", Index: 0}, Status: "running", Ports: "app=8000"},
