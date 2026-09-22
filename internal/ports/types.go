@@ -105,14 +105,15 @@ func StoredStatusOverridesLive(status string) bool {
 
 // ShouldPersistLive reports whether a live probe result should be written
 // back to the state file. Unknown probes never persist (e.g. daemon
-// unreachable). Running always persists (running wins, even over setting
-// up/stopping/failed). Stopped persists only over running/failed so a
+// unreachable). Running persists (clears stopped/failed) but must never
+// clobber transitional states (setting up, stopping) that an active in-band
+// operation just wrote. Stopped persists only over running/failed so a
 // transient empty probe mid-up never clobbers an in-progress transitional
 // state.
 func ShouldPersistLive(stored, live string) bool {
 	switch live {
 	case StatusRunning:
-		return stored != StatusRunning
+		return stored != StatusRunning && stored != StatusSettingUp && stored != StatusStopping
 	case StatusStopped:
 		return stored == StatusRunning || stored == StatusFailed
 	default:
@@ -122,9 +123,14 @@ func ShouldPersistLive(stored, live string) bool {
 
 // ResolveDisplayStatus picks the cell shown in status/ls/dashboard given
 // the stored state and a live probe result. liveErr != nil (or empty live)
-// falls back to stored/unknown. Live running always wins; otherwise stored
-// transitional/terminal states win over the probe.
+// falls back to stored/unknown. Transitional states (setting up, stopping)
+// always win over a live running probe to prevent flicker during long-running
+// operations. Live running always wins over terminal stored states (failed,
+// stopped) so out-of-band recovery still works.
 func ResolveDisplayStatus(stored, live string, liveErr error) string {
+	if stored == StatusSettingUp || stored == StatusStopping {
+		return stored
+	}
 	if liveErr == nil && live == StatusRunning {
 		return StatusRunning
 	}
