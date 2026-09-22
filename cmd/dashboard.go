@@ -159,6 +159,7 @@ type dashboardOp struct {
 	id       int
 	label    string
 	branches []string
+	slugs    []string // resolved at startOp time for console routing
 	proj     int
 }
 
@@ -268,7 +269,8 @@ func (m dashboardModel) busyTitle() string {
 func (m *dashboardModel) startOp(label string, branches []string) int {
 	id := m.nextOpID
 	m.nextOpID++
-	m.ops = append(m.ops, dashboardOp{id: id, label: label, branches: append([]string(nil), branches...), proj: m.cur})
+	slugs := resolveSlugs(m.rows, branches)
+	m.ops = append(m.ops, dashboardOp{id: id, label: label, branches: append([]string(nil), branches...), slugs: slugs, proj: m.cur})
 	return id
 }
 
@@ -288,6 +290,26 @@ func (m *dashboardModel) popOp(id int) (dashboardOp, bool) {
 		}
 	}
 	return dashboardOp{}, false
+}
+
+// resolveSlugs maps branch names to slugs: matches existing rows first,
+// then falls back to source.Slugify for branches added before rows appear.
+func resolveSlugs(rows []dashboardRow, branches []string) []string {
+	slugs := make([]string, 0, len(branches))
+	for _, b := range branches {
+		found := false
+		for _, row := range rows {
+			if row.Rec.Branch == b {
+				slugs = append(slugs, row.Rec.Slug)
+				found = true
+				break
+			}
+		}
+		if !found {
+			slugs = append(slugs, source.Slugify(b))
+		}
+	}
+	return slugs
 }
 
 // conflictingOp returns the running op in the same project that already
@@ -995,8 +1017,8 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		wasEventBottom := m.eventLogView.AtBottom()
 		wasConsoleBottom := m.consoleView.AtBottom()
 		grid := computeDashboardGrid(msg.Width, msg.Height)
-		m.eventLogView.Width = grid.logViewW
-		m.eventLogView.Height = grid.consoleViewH
+		m.eventLogView.Width = max(grid.leftW-4, 10)
+		m.eventLogView.Height = grid.eventLogInnerH
 		m.eventLogView.SetContent(strings.Join(wrapLogLines(m.log, m.eventLogView.Width), "\n"))
 		if wasEventBottom || len(m.log) == 0 {
 			m.eventLogView.GotoBottom()
@@ -1047,6 +1069,16 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					delete(m.workSel, k)
 				}
 			}
+			// Prune vanished slugs from the console map.
+			aliveSlugs := map[string]bool{}
+			for _, row := range m.rows {
+				aliveSlugs[row.Rec.Slug] = true
+			}
+			for slug := range m.console {
+				if !aliveSlugs[slug] {
+					delete(m.console, slug)
+				}
+			}
 			if m.workCursor >= len(m.rows) {
 				m.workCursor = max(0, len(m.rows)-1)
 			}
@@ -1084,7 +1116,9 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case dashboardConsoleLineMsg:
-		m = m.appendConsole(m.selectedSlug(), "["+msg.label+"] "+msg.line)
+		if s := m.selectedSlug(); s != "" {
+			m = m.appendConsole(s, "["+msg.label+"] "+msg.line)
+		}
 		return m, nil
 	case dashboardOpDoneMsg:
 		op, _ := m.popOp(msg.opID)
@@ -1094,32 +1128,29 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for _, l := range msg.lines {
 			m = m.appendLog("[" + msg.label + "] " + l)
 		}
-		// Compute participating slugs: match op branches against worktree slugs.
-		participating := map[string]bool{}
-		for _, b := range op.branches {
-			for _, row := range m.rows {
-				if row.Rec.Branch == b {
-					participating[row.Rec.Slug] = true
+		// Route console output to target slugs resolved at startOp time.
+		// Skip if the user switched to another project while the op ran.
+		if op.proj == m.cur {
+			for _, l := range msg.console {
+				for _, slug := range op.slugs {
+					m = m.appendConsole(slug, l)
 				}
 			}
-		}
-		for _, l := range msg.console {
-			// Route to every participating worktree's buffer.
-			for slug := range participating {
-				m = m.appendConsole(slug, l)
-			}
-			// Also append to any buffer so it shows when switching back.
-			if len(participating) == 0 {
-				// No matching worktree (e.g. the row hasn't loaded yet):
-				// route to the current cursor slug if available.
-				if s := m.selectedSlug(); s != "" {
-					m = m.appendConsole(s, l)
+			if len(msg.console) > 0 {
+				// Command output landed: stick to the bottom only when
+				// the visible buffer received output.
+				s := m.selectedSlug()
+				received := false
+				for _, slug := range op.slugs {
+					if slug == s {
+						received = true
+						break
+					}
+				}
+				if received {
+					m.consoleView.GotoBottom()
 				}
 			}
-		}
-		if len(msg.console) > 0 {
-			// Command output landed: stick to the bottom so result is visible.
-			m.consoleView.GotoBottom()
 		}
 		if msg.err != nil {
 			m.statusMsg = msg.label + ": " + msg.err.Error()
@@ -2402,7 +2433,7 @@ func (m dashboardModel) logPane(width, height int) string {
 	} else {
 		m.consoleView.SetYOffset(m.consoleView.YOffset)
 	}
-	prefix := "[3]-Console"
+	prefix := "[4]-Console"
 	if slug != "" {
 		prefix += " (" + slug + ")"
 	}
@@ -2449,7 +2480,7 @@ func (m dashboardModel) eventLogPane(width, height int) string {
 	} else {
 		m.eventLogView.SetYOffset(m.eventLogView.YOffset)
 	}
-	title := "[4]-Event Log - " + fmt.Sprintf("%d lines", len(wrapped))
+	title := "[3]-Event Log - " + fmt.Sprintf("%d lines", len(wrapped))
 	if focused {
 		title += " ●"
 	}

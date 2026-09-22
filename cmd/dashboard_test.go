@@ -1257,7 +1257,7 @@ func TestDashboardView_RedesignedLayout(t *testing.T) {
 		out := m.View()
 		for _, want := range []string{
 			"Worktrees", "Branches", "Details", "Console", "Event Log",
-			"[1]-Worktrees", "[2]-Branches", "Details", "[3]-Console", "[4]-Event Log",
+			"[1]-Worktrees", "[2]-Branches", "Details", "[4]-Console", "[3]-Event Log",
 			"1 of ", "of 2", "of 3",
 			"feature-a", "pr-1", "1-4/arrows",
 		} {
@@ -1270,13 +1270,13 @@ func TestDashboardView_RedesignedLayout(t *testing.T) {
 	m := dashboardViewModel(t)
 	m.width, m.height = 140, 40
 	m.pane = 2
-	if out := m.View(); !strings.Contains(out, "[4]-Event Log - 2 lines") || !strings.Contains(out, "●") {
-		t.Errorf("focused event log pane should mark [4]-Event Log - 2 lines ●:\n%s", out)
+	if out := m.View(); !strings.Contains(out, "[3]-Event Log - 2 lines") || !strings.Contains(out, "●") {
+		t.Errorf("focused event log pane should mark [3]-Event Log - 2 lines ●:\n%s", out)
 	}
 	// Focused console pane is visibly marked.
 	m.pane = 3
-	if out := m.View(); !strings.Contains(out, "[3]-Console") || !strings.Contains(out, "●") {
-		t.Errorf("focused console pane should mark [3]-Console ●:\n%s", out)
+	if out := m.View(); !strings.Contains(out, "[4]-Console") || !strings.Contains(out, "●") {
+		t.Errorf("focused console pane should mark [4]-Console ●:\n%s", out)
 	}
 }
 
