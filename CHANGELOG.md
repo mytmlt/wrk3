@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `OpenCodeReview` workflow shipped with duplicate `concurrency` and
+  `timeout-minutes` keys, which made the workflow file invalid — GitHub
+  never created the review check on PRs (only a 0-job failed `push` run
+  named after the workflow file). Duplicates removed so the bot reviews
+  collaborator PRs as intended.
+
 - Error reports now use the innermost meaningful error type (instead of the
   generic `fmt.wrapError` wrapper) when grouping in Sentry, so issues from
   unrelated commands no longer look alike. The reported message and
