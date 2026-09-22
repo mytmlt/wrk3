@@ -398,6 +398,254 @@ func TestMigrateURLTracking_LeavesTrackedAlone(t *testing.T) {
 	}
 }
 
+func TestMigrateURLTracking_BlockedOnMainURLReservation(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfigWithURLs(t, repo)
+	r := &resolved{cfg: cfg, src: &source.GitSource{}}
+	// Stale host still on the main base (8000): the tracked port 8000
+	// hits the main URL reservation, so migration must block with a
+	// warning instead of pointing the worktree URL at main's service.
+	recs := []ports.WorktreeRecord{
+		{
+			Branch: "b", Slug: "b", Index: 1,
+			AbsPath: filepath.Join(t.TempDir(), "missing-b"),
+			Ports:   map[string]int{"app": 8000},
+			Urls:    map[string]int{"BASE_URL": 8001, "ALLOWED_WS_ORIGINS": 8001},
+		},
+	}
+	updated, moved, warns, err := migrateURLTracking(r, recs)
+	if err != nil {
+		t.Fatalf("migrateURLTracking = %v", err)
+	}
+	if len(moved) != 0 {
+		t.Errorf("moved = %v, want none (tracked port hits main reservation)", moved)
+	}
+	if updated[0].Urls["BASE_URL"] != 8001 || updated[0].Urls["ALLOWED_WS_ORIGINS"] != 8001 {
+		t.Errorf("urls = %v, want unchanged (blocked)", updated[0].Urls)
+	}
+	if len(warns) != 1 || !strings.Contains(warns[0], "collision") {
+		t.Errorf("warns = %v, want one collision warning", warns)
+	}
+}
+
+func writeTestConfigTwoTracked(t *testing.T, repoRoot string) *config.Config {
+	t.Helper()
+	content := `project:
+  worktreeBase: .worktrees
+source:
+  type: git
+  git: {remote: origin, fetchPrune: true}
+runner:
+  type: docker
+  docker:
+    composeFiles: [docker-compose.yml]
+    projectPrefix: demo
+entry:
+  setup: ["echo setup"]
+  run: "echo run"
+  stop: "echo stop"
+  logs: "echo logs"
+ports:
+  base: {app: 8000, api: 9000}
+  ranges:
+    app: [8000, 8099]
+    api: [9000, 9099]
+urls:
+  - var: Z_URL
+    base: http://localhost:8000
+    range: [8000, 8099]
+  - var: A_URL
+    base: http://localhost:9000
+    range: [9000, 9099]
+`
+	path := filepath.Join(repoRoot, "wrk3.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+func TestMigrateURLTracking_BlockedWarningSorted(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfigTwoTracked(t, repo)
+	r := &resolved{cfg: cfg, src: &source.GitSource{}}
+	// Both records want each other's URL ports, so both block. changed
+	// is built by ranging over a map: the warning must still list vars
+	// in sorted order on every run.
+	recs := []ports.WorktreeRecord{
+		{
+			Branch: "a", Slug: "a", Index: 1,
+			AbsPath: filepath.Join(t.TempDir(), "missing-a"),
+			Ports:   map[string]int{"app": 8001, "api": 9001},
+			Urls:    map[string]int{"Z_URL": 8002, "A_URL": 9002},
+		},
+		{
+			Branch: "b", Slug: "b", Index: 2,
+			AbsPath: filepath.Join(t.TempDir(), "missing-b"),
+			Ports:   map[string]int{"app": 8002, "api": 9002},
+			Urls:    map[string]int{"Z_URL": 8001, "A_URL": 9001},
+		},
+	}
+	_, moved, warns, err := migrateURLTracking(r, recs)
+	if err != nil {
+		t.Fatalf("migrateURLTracking = %v", err)
+	}
+	if len(moved) != 0 {
+		t.Errorf("moved = %v, want none (both collide)", moved)
+	}
+	want := []string{
+		`worktree "a" URLs not migrated to tracked host ports (collision): A_URL=9001, Z_URL=8001`,
+		`worktree "b" URLs not migrated to tracked host ports (collision): A_URL=9002, Z_URL=8002`,
+	}
+	if len(warns) != len(want) {
+		t.Fatalf("warns = %v, want %v", warns, want)
+	}
+	for i := range want {
+		if warns[i] != want[i] {
+			t.Errorf("warns[%d] = %q, want %q", i, warns[i], want[i])
+		}
+	}
+}
+
+func TestMigrateURLTracking_EnvErrorKeepsPartialProgress(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfigWithURLs(t, repo)
+	r := &resolved{cfg: cfg, src: &source.GitSource{}}
+	dirA := t.TempDir()
+	dirB := t.TempDir()
+	// A .env DIRECTORY makes the worktree .env write fail portably.
+	if err := os.Mkdir(filepath.Join(dirB, ".env"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	recs := []ports.WorktreeRecord{
+		{
+			Branch: "a", Slug: "a", Index: 1,
+			AbsPath: dirA,
+			Ports:   map[string]int{"app": 8001},
+			Urls:    map[string]int{"BASE_URL": 8002, "ALLOWED_WS_ORIGINS": 8002},
+		},
+		{
+			Branch: "b", Slug: "b", Index: 2,
+			AbsPath: dirB,
+			Ports:   map[string]int{"app": 8003},
+			Urls:    map[string]int{"BASE_URL": 8004, "ALLOWED_WS_ORIGINS": 8004},
+		},
+	}
+	updated, moved, warns, err := migrateURLTracking(r, recs)
+	if err == nil {
+		t.Fatal("migrateURLTracking = nil error, want .env write failure for b")
+	}
+	// Branch a is fully migrated (state + .env) and must be kept; branch
+	// b reverts to its old URLs since its .env was not updated.
+	if len(moved) != 1 || moved[0] != "a" {
+		t.Errorf("moved = %v, want [a] (partial progress)", moved)
+	}
+	if updated[0].Urls["BASE_URL"] != 8001 || updated[0].Urls["ALLOWED_WS_ORIGINS"] != 8001 {
+		t.Errorf("a urls = %v, want both 8001 (migrated)", updated[0].Urls)
+	}
+	if updated[1].Urls["BASE_URL"] != 8004 || updated[1].Urls["ALLOWED_WS_ORIGINS"] != 8004 {
+		t.Errorf("b urls = %v, want both 8004 (reverted)", updated[1].Urls)
+	}
+	if len(warns) != 1 || !strings.Contains(warns[0], `"a"`) {
+		t.Errorf("warns = %v, want only a's migration warning", warns)
+	}
+}
+
+func writeTestConfigWithUntrackedURL(t *testing.T, repoRoot string) *config.Config {
+	t.Helper()
+	content := `project:
+  worktreeBase: .worktrees
+source:
+  type: git
+  git: {remote: origin, fetchPrune: true}
+runner:
+  type: docker
+  docker:
+    composeFiles: [docker-compose.yml]
+    projectPrefix: demo
+entry:
+  setup: ["echo setup"]
+  run: "echo run"
+  stop: "echo stop"
+  logs: "echo logs"
+ports:
+  base: {app: 8000}
+  ranges:
+    app: [8000, 8100]
+urls:
+  - var: EDITOR_URL
+    base: http://localhost:8001
+    range: [8001, 8100]
+`
+	path := filepath.Join(repoRoot, "wrk3.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+func TestAssignAllocation_HostAvoidsURLPorts(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfigWithUntrackedURL(t, repo)
+	r := &resolved{cfg: cfg, src: &source.GitSource{}}
+	// Main holds host 8000 + URL reservation 8001; record a holds host
+	// 8002 + URL 8003. The fresh host must skip all of them: 8001 is a
+	// main URL reservation and 8003 an existing URL port, even though
+	// host allocation runs first.
+	recs := []ports.WorktreeRecord{
+		{
+			Branch: "a", Slug: "a", Index: 1,
+			AbsPath: filepath.Join(t.TempDir(), "missing-a"),
+			Ports:   map[string]int{"app": 8002},
+			Urls:    map[string]int{"EDITOR_URL": 8003},
+		},
+	}
+	got, err := assignAllocation(r, recs)
+	if err != nil {
+		t.Fatalf("assignAllocation = %v", err)
+	}
+	if got.Ports["app"] != 8004 {
+		t.Errorf("app = %d, want 8004 (skip main URL res 8001 + URL port 8003)", got.Ports["app"])
+	}
+	if got.URLs["EDITOR_URL"] != 8005 {
+		t.Errorf("EDITOR_URL = %d, want 8005 (untracked scan past taken)", got.URLs["EDITOR_URL"])
+	}
+}
+
+func TestReconcileState_AdoptsTrackedURLsWithoutWarning(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfigWithURLs(t, repo)
+	r := &resolved{cfg: cfg, src: &source.GitSource{}, base: cfg.AbsWorktreeBase(), stateP: cfg.StatePath()}
+	wt := filepath.Join(repo, ".worktrees", "feature-t")
+	gitWorktreeAdd(t, repo, wt, "feature-t")
+	// Correctly tracked .env: both URL aliases equal the host port.
+	env := "APP_PORT=8001\nBASE_URL=http://localhost:8001\nALLOWED_WS_ORIGINS=http://localhost:8001\n"
+	if err := os.WriteFile(filepath.Join(wt, ".env"), []byte(env), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	updated, warns, dirty, err := reconcileState(r, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dirty || len(updated) != 1 {
+		t.Fatalf("updated = %+v, dirty=%v, want 1 adopted", updated, dirty)
+	}
+	if updated[0].Urls["BASE_URL"] != 8001 || updated[0].Urls["ALLOWED_WS_ORIGINS"] != 8001 {
+		t.Errorf("urls = %v, want both 8001 (recovered tracked)", updated[0].Urls)
+	}
+	if len(warns) != 0 {
+		t.Errorf("warns = %v, want none (tracked URLs must adopt cleanly)", warns)
+	}
+}
+
 func TestUnionBranches(t *testing.T) {
 	got := unionBranches([]string{"b", "a"}, []string{"c", "a"})
 	if len(got) != 3 || got[0] != "a" || got[1] != "b" || got[2] != "c" {

@@ -36,10 +36,20 @@ func assignPorts(alloc ports.Allocator, recs []ports.WorktreeRecord) (map[string
 // URL groups scan for the lowest free port, sharing one taken set (main
 // host + main URL reservations, existing host/URL ports, fresh host
 // ports) so distinct groups never share a port. URL specs with the same
-// base port are aliases and share one port.
+// base port are aliases and share one port. Existing URL ports and main
+// URL reservations seed taken before host allocation (like
+// reconcileState): host ranges may overlap URL ranges, and tracked URL
+// reuse skips taken checks, so a fresh host port must never land on a
+// held URL port.
 func assignAllocation(r *resolved, recs []ports.WorktreeRecord) (ports.EnvAllocation, error) {
 	alloc := r.cfg.Allocator()
 	taken := takenWithMain(alloc, recs)
+	for p := range ports.TakenFromURLRecords(recs) {
+		taken[p] = struct{}{}
+	}
+	for _, p := range r.cfg.URLBasePorts() {
+		taken[p] = struct{}{}
+	}
 	hostPorts, err := alloc.FindFreeAllocation(taken, osPortFree)
 	if err != nil {
 		return ports.EnvAllocation{}, fmt.Errorf("ports: %w", err)
@@ -50,17 +60,6 @@ func assignAllocation(r *resolved, recs []ports.WorktreeRecord) (ports.EnvAlloca
 	specs := r.cfg.URLSpecs()
 	if len(specs) == 0 {
 		return ports.EnvAllocation{Ports: hostPorts}, nil
-	}
-	for _, rec := range recs {
-		if rec.Urls == nil {
-			continue
-		}
-		for _, p := range rec.Urls {
-			taken[p] = struct{}{}
-		}
-	}
-	for _, p := range r.cfg.URLBasePorts() {
-		taken[p] = struct{}{}
 	}
 	base := r.cfg.Ports.Base
 	if base == nil {
@@ -238,24 +237,24 @@ func migrateURLTracking(r *resolved, recs []ports.WorktreeRecord) (updated []por
 		if len(changed) == 0 {
 			continue
 		}
+		// changed is built by ranging over the byBase map, so sort for
+		// deterministic warnings on both the blocked and migrated paths.
+		sort.Strings(changed)
 		// Collision check: tracked ports must not belong to main or any
-		// other record (host or URL). Own host ports are excluded: a
-		// tracked port always equals our own host port, which never
-		// collides with main (host migration runs first).
-		ownHost := make(map[int]struct{}, len(out[idx].Ports))
-		for _, p := range out[idx].Ports {
-			ownHost[p] = struct{}{}
-		}
+		// other record (host or URL). There is no exemption for own
+		// host ports: a tracked port always equals our own host port,
+		// and fresh host allocations hold main URL reservations before
+		// allocating (see assignAllocation), so a main hit means a
+		// stale host — leave the record alone with a warning instead
+		// of migrating into the collision.
 		blocked := false
 		for v, p := range want {
 			if out[idx].Urls[v] == p {
 				continue // unchanged var cannot newly collide
 			}
 			if _, ok := mainTaken[p]; ok {
-				if _, own := ownHost[p]; !own {
-					blocked = true
-					break
-				}
+				blocked = true
+				break
 			}
 			for j := range out {
 				if j == idx {
@@ -290,17 +289,22 @@ func migrateURLTracking(r *resolved, recs []ports.WorktreeRecord) (updated []por
 				out[idx].Branch, strings.Join(changed, ", ")))
 			continue
 		}
-		sort.Strings(changed)
+		prev := out[idx].Urls
 		out[idx].Urls = want
+		if st, statErr := os.Stat(out[idx].AbsPath); statErr == nil && st.IsDir() {
+			if err := ensureWorktreeEnv(r, out[idx], specs); err != nil {
+				// Revert: this branch's .env was not updated, so state
+				// must keep the old URLs. Earlier branches are fully
+				// migrated (state + .env); return them with the error
+				// instead of discarding all progress.
+				out[idx].Urls = prev
+				return out, migrated, warns, err
+			}
+		}
 		migrated = append(migrated, out[idx].Branch)
 		warns = append(warns, fmt.Sprintf(
 			"migrated worktree %q URLs to tracked host ports: %s",
 			out[idx].Branch, strings.Join(changed, ", ")))
-		if st, statErr := os.Stat(out[idx].AbsPath); statErr == nil && st.IsDir() {
-			if err := ensureWorktreeEnv(r, out[idx], specs); err != nil {
-				return recs, nil, nil, err
-			}
-		}
 	}
 	return out, migrated, warns, nil
 }

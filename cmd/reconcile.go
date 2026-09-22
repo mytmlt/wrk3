@@ -100,7 +100,18 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 		}
 		if len(urlSpecs) > 0 {
 			if recovered, ok := ports.ReadURLs(path, urlSpecs); ok {
-				if urlRecoveredReusable(recovered, urlSpecs, taken) {
+				// Exclude the orphan's own host allocation from the
+				// reuse check: a correctly tracked URL equals its host
+				// port, which is already in taken, and must not block
+				// adoption. Other records' and main's ports stay held.
+				urlTaken := make(map[int]struct{}, len(taken))
+				for p := range taken {
+					urlTaken[p] = struct{}{}
+				}
+				for _, p := range allocation {
+					delete(urlTaken, p)
+				}
+				if urlRecoveredReusable(recovered, urlSpecs, urlTaken) {
 					urlAlloc = recovered
 				} else {
 					warns = append(warns, fmt.Sprintf("worktree %q .env URL ports cannot be adopted; allocating a free set", branch))
