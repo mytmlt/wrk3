@@ -2305,7 +2305,8 @@ func (m dashboardModel) confirmPane(width int) string {
 		Render(body)
 }
 
-func (m dashboardModel) telemetryPromptView(width int) string {	title := dashMenuTitleStyle.Render("Anonymous error reporting")
+func (m dashboardModel) telemetryPromptView(width int) string {
+	title := dashMenuTitleStyle.Render("Anonymous error reporting")
 	lines := []string{
 		"",
 		"Help improve wrk3 by sending anonymous error reports.",
