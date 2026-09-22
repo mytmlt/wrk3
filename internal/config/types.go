@@ -142,8 +142,8 @@ type HealthConfig struct {
 // Var is the .env variable name (e.g. "APP_URL"); Base is the URL
 // with an explicit port; Range is [min, max] inclusive.
 type URLConfig struct {
-	Var   string  `yaml:"var"`
-	Base  string  `yaml:"base"`
+	Var   string `yaml:"var"`
+	Base  string `yaml:"base"`
 	Range [2]int `yaml:"range"`
 }
 

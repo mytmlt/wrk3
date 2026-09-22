@@ -1,6 +1,7 @@
 package ports
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -152,11 +153,21 @@ func TestState_LoadOldFormatWithoutUrls(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, StateFileName)
 	// Old format state without urls field must load without error.
-	raw := `[
-  {"branch":"feat-a","slug":"feat-a","absPath":"` + filepath.Join(dir, "feat-a") + `","index":0,"ports":{"app":8000},"composeProject":"demo-feat-a","status":"stopped"}
-]
-`
-	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+	// Marshal a record with nil Urls so the urls field is omitted (omitempty),
+	// with proper JSON escaping of AbsPath on all platforms (e.g. Windows).
+	rawBytes, err := json.Marshal([]WorktreeRecord{{
+		Branch:         "feat-a",
+		Slug:           "feat-a",
+		AbsPath:        filepath.Join(dir, "feat-a"),
+		Index:          0,
+		Ports:          map[string]int{"app": 8000},
+		ComposeProject: "demo-feat-a",
+		Status:         "stopped",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, rawBytes, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := Load(path)
