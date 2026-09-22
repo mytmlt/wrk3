@@ -28,22 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Configured `urls` entries whose base port matches a `ports.base` value
-  now track that host service instead of scanning past it: e.g. `BASE_URL`
-  `http://localhost:8000` reuses the `app` listener's port (`APP_PORT`)
-  in every worktree rather than incrementing to the next free port.
-  Existing worktrees allocated before tracking are healed to the tracked
-  port on the next read (with a warning); colliding cases are left alone.
-  Main URL reservations are now held like host reservations, so the first
-  worktree can no longer collide with the main checkout's URL ports.
-
-- Configured `urls` entries sharing one base port are now aliases for a
-  single URL (e.g. `BASE_URL` and `ALLOWED_WS_ORIGINS` both
-  `http://localhost:8000`): they are allocated once per worktree and stay
-  equal instead of incrementing to distinct ports. The `.env` recovery
-  check accepts shared alias values and still rejects split aliases or
-  collisions across distinct base ports.
-
 - Error reports now use the innermost meaningful error type (instead of the
   generic `fmt.wrapError` wrapper) when grouping in Sentry, so issues from
   unrelated commands no longer look alike. The reported message and
@@ -65,6 +49,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   skips that file even when a glob matches it. Gateway `APP_URL` is no
   longer written into `.env` (still injected into runner env when the
   gateway is enabled); `remove` leaves a user-set `APP_URL`.
+
+- Configured `urls` entries whose base port matches a `ports.base` value
+  now track that host service instead of scanning past it: e.g. `BASE_URL`
+  `http://localhost:8000` reuses the `app` listener's port (`APP_PORT`)
+  in every worktree rather than incrementing to the next free port.
+  Existing worktrees allocated before tracking are healed to the tracked
+  port on the next read (with a warning); colliding cases are left alone.
+  Main URL reservations are now held like host reservations, so the first
+  worktree can no longer collide with the main checkout's URL ports.
+
+- Configured `urls` entries sharing one base port are now aliases for a
+  single URL (e.g. `BASE_URL` and `ALLOWED_WS_ORIGINS` both
+  `http://localhost:8000`): they are allocated once per worktree and stay
+  equal instead of incrementing to distinct ports. The `.env` recovery
+  check accepts shared alias values and still rejects split aliases or
+  collisions across distinct base ports.
 
 ### Added
 
