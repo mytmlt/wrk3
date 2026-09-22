@@ -491,3 +491,18 @@ urls:
 		t.Errorf("BASE_URL base port = %d, want 443", bports["BASE_URL"])
 	}
 }
+
+func TestAllocatorPreservesPartialPorts(t *testing.T) {
+	partial := &Config{Ports: PortsConfig{Base: map[string]int{"app": 9000}}}
+	a := partial.Allocator()
+	if a.Base["app"] != 9000 {
+		t.Errorf("Allocator().Base = %v, want custom base preserved", a.Base)
+	}
+	if a.Ranges != nil {
+		t.Errorf("Allocator().Ranges = %v, want nil (downstream defaults per field)", a.Ranges)
+	}
+	empty := (&Config{}).Allocator()
+	if empty.Base != nil || empty.Ranges != nil {
+		t.Errorf("empty Allocator() = %+v, want zero value", empty)
+	}
+}

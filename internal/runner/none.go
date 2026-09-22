@@ -1,11 +1,9 @@
 package runner
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"sort"
 	"strings"
 	"time"
@@ -64,16 +62,12 @@ func (r *NoneRunner) Exec(ctx context.Context, worktreePath string, cmd []string
 	}
 	timeoutCtx, cancel := context.WithTimeout(ctx, r.timeout())
 	defer cancel()
-	var stdout, stderr bytes.Buffer
-	c := exec.CommandContext(timeoutCtx, cmd[0], cmd[1:]...)
-	c.Dir = worktreePath
-	c.Env = buildEnvNoProject(os.Environ(), env)
-	c.Stdout = &stdout
-	c.Stderr = &stderr
-	if err := startKillable(ctx, c); err != nil {
+	_, stderr, err := runCmdLive(timeoutCtx, cmd[0], worktreePath,
+		buildEnvNoProject(os.Environ(), env), cmd[1:]...)
+	if err != nil {
 		return fmt.Errorf("exec %q (dir=%s): %w: %s",
 			strings.Join(cmd, " "), worktreePath, err,
-			strings.TrimSpace(stderr.String()))
+			strings.TrimSpace(stderr))
 	}
 	return nil
 }
@@ -87,7 +81,9 @@ func (r *NoneRunner) Status(ctx context.Context, worktreePath string) (Status, e
 
 // buildEnvNoProject is like buildEnv but without COMPOSE_PROJECT_NAME.
 // Since DockerRunner's buildEnv forces that variable, the none runner
-// needs its own version that skips it.
+// needs its own version that skips it. An ambient COMPOSE_PROJECT_NAME
+// (e.g. exported in the user's shell) is stripped too, so entry commands
+// invoking `docker compose` without -p never inherit a stale project.
 func buildEnvNoProject(base []string, extra map[string]string) []string {
 	merged := make([]string, 0, len(base)+len(extra))
 	index := map[string]int{}
@@ -95,6 +91,9 @@ func buildEnvNoProject(base []string, extra map[string]string) []string {
 		k := kv
 		if i := strings.IndexByte(kv, '='); i >= 0 {
 			k = kv[:i]
+		}
+		if k == "COMPOSE_PROJECT_NAME" {
+			continue
 		}
 		if j, ok := index[k]; ok {
 			merged[j] = kv
@@ -105,7 +104,7 @@ func buildEnvNoProject(base []string, extra map[string]string) []string {
 	}
 	keys := make([]string, 0, len(extra))
 	for k := range extra {
-		if k == "" || strings.Contains(k, "=") {
+		if k == "" || strings.Contains(k, "=") || k == "COMPOSE_PROJECT_NAME" {
 			continue
 		}
 		keys = append(keys, k)

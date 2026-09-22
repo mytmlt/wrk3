@@ -199,7 +199,7 @@ func (c *Config) StatePath() string {
 // Allocator returns the port allocator for this config (nil-safe for
 // runner.type "none" where ports may be unconfigured).
 func (c *Config) Allocator() ports.Allocator {
-	if c.Ports.Base == nil || c.Ports.Ranges == nil {
+	if c.Ports.Base == nil && c.Ports.Ranges == nil {
 		return ports.Allocator{Base: nil, Ranges: nil}
 	}
 	return ports.Allocator{Base: c.Ports.Base, Ranges: c.Ports.Ranges}

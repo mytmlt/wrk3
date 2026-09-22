@@ -28,8 +28,12 @@ var statusCmd = &cobra.Command{
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 		noPorts := r.cfg.Runner.Type == "none" || len(r.cfg.Ports.Base) == 0
 		switch {
-		case r.cfg.Proxy.Enabled:
+		case r.cfg.Proxy.Enabled && !noPorts:
 			if _, err := fmt.Fprintln(w, "WORKTREE\tBRANCH\tSTATUS\tPORTS\tCOMPOSE_PROJECT\tURL"); err != nil {
+				return fmt.Errorf("write output: %w", err)
+			}
+		case r.cfg.Proxy.Enabled:
+			if _, err := fmt.Fprintln(w, "WORKTREE\tBRANCH\tSTATUS\tURL"); err != nil {
 				return fmt.Errorf("write output: %w", err)
 			}
 		case noPorts:
@@ -60,9 +64,14 @@ func printResolvedStatus(w *tabwriter.Writer, cfg *config.Config) error {
 	noPorts := cfg.Runner.Type == "none" || len(cfg.Ports.Base) == 0
 	for _, cell := range probeStatusCells(cfg, recs) {
 		switch {
-		case cfg.Proxy.Enabled:
+		case cfg.Proxy.Enabled && !noPorts:
 			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 				cell.slug, cell.branch, cell.status, cell.ports, cell.project, cfg.ProxyURL(cell.slug)); err != nil {
+				return fmt.Errorf("write output: %w", err)
+			}
+		case cfg.Proxy.Enabled:
+			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+				cell.slug, cell.branch, cell.status, cfg.ProxyURL(cell.slug)); err != nil {
 				return fmt.Errorf("write output: %w", err)
 			}
 		case noPorts:
