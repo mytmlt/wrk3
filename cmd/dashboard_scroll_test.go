@@ -86,7 +86,7 @@ func TestDashboardPanes_FillGridCells(t *testing.T) {
 	grid := computeDashboardGrid(m.width, m.height)
 	workH := dashboardBoxHeight(m.worktreePane(grid.leftW, grid.workTableH))
 	branchH := dashboardBoxHeight(m.branchPane(grid.leftW, grid.branchTableH))
-	projH := dashboardBoxHeight(m.projectPane(grid.leftW, grid.projInnerH))
+	eventLogH := dashboardBoxHeight(m.eventLogPane(grid.leftW, grid.eventLogInnerH))
 	detH := dashboardBoxHeight(m.detailPane(grid.rightW, grid.detInnerH))
 	logH := dashboardBoxHeight(m.logPane(grid.rightW, grid.logH))
 	if workH != grid.workTableH+3 {
@@ -95,8 +95,8 @@ func TestDashboardPanes_FillGridCells(t *testing.T) {
 	if branchH != grid.branchTableH+3 {
 		t.Errorf("branches box height = %d, want %d", branchH, grid.branchTableH+3)
 	}
-	if projH != grid.projInnerH+3 {
-		t.Errorf("projects box height = %d, want %d", projH, grid.projInnerH+3)
+	if eventLogH != grid.eventLogInnerH+3 {
+		t.Errorf("event log box height = %d, want %d", eventLogH, grid.eventLogInnerH+3)
 	}
 	if detH != grid.detInnerH+3 {
 		t.Errorf("details box height = %d, want %d", detH, grid.detInnerH+3)
@@ -104,8 +104,8 @@ func TestDashboardPanes_FillGridCells(t *testing.T) {
 	if logH != grid.logH {
 		t.Errorf("logs box height = %d, want %d", logH, grid.logH)
 	}
-	if workH+branchH+projH != detH+logH {
-		t.Errorf("columns differ: left %d vs right %d", workH+branchH+projH, detH+logH)
+	if workH+branchH+eventLogH != detH+logH {
+		t.Errorf("columns differ: left %d vs right %d", workH+branchH+eventLogH, detH+logH)
 	}
 	// Long detail lines (ports/health lists, abs paths) must truncate to
 	// the pane instead of stretching its border wider than the logs box.

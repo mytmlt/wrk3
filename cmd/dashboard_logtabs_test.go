@@ -7,28 +7,8 @@ import (
 	"github.com/mytmlt/wrk3/internal/ports"
 )
 
-func TestDashboardLogTabs_Toggle(t *testing.T) {
-	m := seedLogModel(t, testDashboardModel())
-	if m.logTab != 0 {
-		t.Fatalf("default tab = %d, want 0 (console)", m.logTab)
-	}
-	m = applyKey(t, m, "t")
-	if m.logTab != 1 {
-		t.Fatalf("t: tab = %d, want 1 (dashboard)", m.logTab)
-	}
-	m = applyKey(t, m, "t")
-	if m.logTab != 0 {
-		t.Fatalf("t again: tab = %d, want 0 (console)", m.logTab)
-	}
-	m = applyKey(t, m, "T")
-	if m.logTab != 1 {
-		t.Fatalf("T: tab = %d, want 1 (dashboard)", m.logTab)
-	}
-}
-
 func TestDashboardLogTabs_OpDoneRoutesConsoleAndSwitches(t *testing.T) {
 	m := seedLogModel(t, testDashboardModel())
-	m.logTab = 1
 	m.startOp("up", []string{"feature-a"})
 	done, _ := m.Update(dashboardOpDoneMsg{
 		opID:    m.ops[0].id,
@@ -37,18 +17,15 @@ func TestDashboardLogTabs_OpDoneRoutesConsoleAndSwitches(t *testing.T) {
 		console: []string{"[up] setup output", "[up] compose output"},
 	})
 	dm := done.(dashboardModel)
-	if dm.logTab != 0 {
-		t.Errorf("console output should flip to console tab, got %d", dm.logTab)
-	}
 	for _, want := range []string{"[up] setup output", "[up] compose output"} {
 		found := false
-		for _, l := range dm.console {
+		for _, l := range dm.console["feature-a"] {
 			if l == want {
 				found = true
 			}
 		}
 		if !found {
-			t.Errorf("console missing %q: %v", want, dm.console)
+			t.Errorf("console for feature-a missing %q: %v", want, dm.console["feature-a"])
 		}
 	}
 	found := false
@@ -58,13 +35,12 @@ func TestDashboardLogTabs_OpDoneRoutesConsoleAndSwitches(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("event line missing from dashboard tab: %v", dm.log)
+		t.Errorf("event line missing from event log: %v", dm.log)
 	}
 }
 
-func TestDashboardLogTabs_OpDoneWithoutConsoleKeepsTab(t *testing.T) {
+func TestDashboardLogTabs_OpDoneWithoutConsole(t *testing.T) {
 	m := seedLogModel(t, testDashboardModel())
-	m.logTab = 1
 	m.startOp("pull", []string{"feature-a"})
 	done, _ := m.Update(dashboardOpDoneMsg{
 		opID:  m.ops[0].id,
@@ -72,44 +48,43 @@ func TestDashboardLogTabs_OpDoneWithoutConsoleKeepsTab(t *testing.T) {
 		lines: []string{"[feature-a] pulled"},
 	})
 	dm := done.(dashboardModel)
-	if dm.logTab != 1 {
-		t.Errorf("event-only op must not flip tab, got %d", dm.logTab)
-	}
-	if len(dm.console) != len(m.console) {
-		t.Errorf("event-only op must not touch console: %v", dm.console)
+	// Console for feature-a must not contain pull output (no console lines sent).
+	if len(dm.console["feature-a"]) != 30 {
+		t.Errorf("event-only op must not touch console: %d lines", len(dm.console["feature-a"]))
 	}
 }
 
-func TestDashboardLogTabs_ScrollFollowsActiveTab(t *testing.T) {
+func TestDashboardLogTabs_ScrollEventLogAndConsole(t *testing.T) {
 	m := seedLogModel(t, testDashboardModel())
+	// Focus event log (pane 2).
 	m = applyKey(t, m, "3")
 	if m.pane != 2 {
 		t.Fatalf("3: pane = %d, want 2", m.pane)
 	}
-	m.logTab = 0
-	top := m.consoleView.YOffset
+	top := m.eventLogView.YOffset
 	m = applyKey(t, m, "k")
-	if m.consoleView.YOffset >= top {
-		t.Fatalf("k should scroll console: %d -> %d", top, m.consoleView.YOffset)
+	if m.eventLogView.YOffset >= top {
+		t.Fatalf("k should scroll event log: %d -> %d", top, m.eventLogView.YOffset)
 	}
-	if m.logView.YOffset == 0 && top > 0 {
-		t.Errorf("dashboard view must not move on console scroll")
+	// Focus console (pane 3).
+	m = applyKey(t, m, "4")
+	if m.pane != 3 {
+		t.Fatalf("4: pane = %d, want 3", m.pane)
 	}
-	m.logTab = 1
-	topDash := m.logView.YOffset
+	cTop := m.consoleView.YOffset
 	m = applyKey(t, m, "k")
-	if m.logView.YOffset >= topDash && topDash > 0 {
-		t.Errorf("k should scroll dashboard tab: %d -> %d", topDash, m.logView.YOffset)
+	if m.consoleView.YOffset >= cTop {
+		t.Errorf("k should scroll console: %d -> %d", cTop, m.consoleView.YOffset)
 	}
 }
 
-func TestDashboardLogTabs_PaneShowsTabs(t *testing.T) {
+func TestDashboardLogTabs_PaneShowsConsoleAndEventLog(t *testing.T) {
 	m := dashboardViewModel(t)
 	m.width, m.height = 140, 40
 	out := m.View()
-	for _, want := range []string{"console (", "dashboard (", "t tab"} {
+	for _, want := range []string{"Console", "Event Log", "feature-a", "dashboard started"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("log pane missing %q:\n%s", want, out)
+			t.Errorf("dashboard missing %q:\n%s", want, out)
 		}
 	}
 }
@@ -138,5 +113,54 @@ func TestDashboardOpCmdStream_CapturesConsole(t *testing.T) {
 	joined := strings.Join(done.console, "\n")
 	if !strings.Contains(joined, "hello-console") {
 		t.Errorf("console missing entry output: %q", joined)
+	}
+}
+
+func TestDashboardLogTabs_ConsolePerWorktreeFollowsCursor(t *testing.T) {
+	m := testDashboardModel()
+	m.console = map[string][]string{
+		"feature-a": {"[up] output for feature-a"},
+		"feature-b": {"[reload] output for feature-b"},
+	}
+	m.width, m.height = 140, 40
+	m.workCursor = 0
+	m.syncConsoleView()
+	outA := m.logPane(60, 15)
+	if !strings.Contains(outA, "feature-a") {
+		t.Errorf("console for worktree 0 should show feature-a content:\n%s", outA)
+	}
+	if strings.Contains(outA, "feature-b") {
+		t.Errorf("console for worktree 0 must not show feature-b content:\n%s", outA)
+	}
+	m.workCursor = 1
+	m.syncConsoleView()
+	outB := m.logPane(60, 15)
+	if !strings.Contains(outB, "feature-b") {
+		t.Errorf("console for worktree 1 should show feature-b content:\n%s", outB)
+	}
+	if strings.Contains(outB, "feature-a") {
+		t.Errorf("console for worktree 1 must not show feature-a content:\n%s", outB)
+	}
+}
+
+func TestDashboardLogTabs_MultiBranchConsoleRoutesToBoth(t *testing.T) {
+	m := seedLogModel(t, testDashboardModel())
+	m.startOp("up", []string{"feature-a", "feature-b"})
+	done, _ := m.Update(dashboardOpDoneMsg{
+		opID:    m.ops[0].id,
+		label:   "up",
+		console: []string{"[up] shared output"},
+	})
+	dm := done.(dashboardModel)
+	for _, slug := range []string{"feature-a", "feature-b"} {
+		found := false
+		for _, l := range dm.console[slug] {
+			if l == "[up] shared output" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("slug %q missing shared console output: %v", slug, dm.console[slug])
+		}
 	}
 }
