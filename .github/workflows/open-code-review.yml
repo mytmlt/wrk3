@@ -25,6 +25,9 @@ jobs:
           llm_auth_token: ${{ secrets.OCR_LLM_TOKEN }}
           llm_model: ${{ secrets.OCR_LLM_MODEL }}
           llm_protocol: openai
+          # Empty object: the action default sends {"thinking":...}, which
+          # strict OpenAI-compatible endpoints reject with HTTP 400.
+          llm_extra_body: '{}'
           language: English
           github_token: ${{ secrets.GITHUB_TOKEN }}
           sticky_summary: 'true'
