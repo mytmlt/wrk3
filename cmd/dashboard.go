@@ -896,39 +896,39 @@ func dashboardRemoveCmd(p *dashboardProject, opID int, branches []string, force 
 				r.logOpDone(label, label+" "+rec.Branch, err)
 				return err
 			}
-		if err := rn.Down(ctx, rec.AbsPath, envForWorktree(r.cfg, *rec)); err != nil {
-			logf("warning: compose down for %q: %v", rec.Branch, err)
-		}
-		if _, err := ports.StripManaged(filepath.Join(rec.AbsPath, ports.EnvFileName), rec.Ports); err != nil {
-			logf("warning: strip managed .env keys for %q: %v", rec.Branch, err)
-		}
-		if err := r.src.Remove(r.cfg.RepoPath(), rec.AbsPath, force); err != nil {
-			if !force {
-				err = fmt.Errorf("remove worktree %q: %w", rec.Branch, err)
+			if err := rn.Down(ctx, rec.AbsPath, envForWorktree(r.cfg, *rec)); err != nil {
+				logf("warning: compose down for %q: %v", rec.Branch, err)
+			}
+			if _, err := ports.StripManaged(filepath.Join(rec.AbsPath, ports.EnvFileName), rec.Ports); err != nil {
+				logf("warning: strip managed .env keys for %q: %v", rec.Branch, err)
+			}
+			if err := r.src.Remove(r.cfg.RepoPath(), rec.AbsPath, force); err != nil {
+				if !force {
+					err = fmt.Errorf("remove worktree %q: %w", rec.Branch, err)
+					r.logOpDone(label, label+" "+rec.Branch, err)
+					return err
+				}
+				logf("warning: worktree remove for %q: %v", rec.Branch, err)
+				_ = os.RemoveAll(rec.AbsPath)
+			}
+			var kept []ports.WorktreeRecord
+			for _, existing := range recs {
+				if existing.Branch == rec.Branch {
+					continue
+				}
+				kept = append(kept, existing)
+			}
+			if kept == nil {
+				kept = []ports.WorktreeRecord{}
+			}
+			if err := saveState(r, kept); err != nil {
 				r.logOpDone(label, label+" "+rec.Branch, err)
 				return err
 			}
-			logf("warning: worktree remove for %q: %v", rec.Branch, err)
-			_ = os.RemoveAll(rec.AbsPath)
+			r.logOpDone(label, "removed "+rec.Branch, nil)
+			logf("removed %s", rec.Branch)
 		}
-		var kept []ports.WorktreeRecord
-		for _, existing := range recs {
-			if existing.Branch == rec.Branch {
-				continue
-			}
-			kept = append(kept, existing)
-		}
-		if kept == nil {
-			kept = []ports.WorktreeRecord{}
-		}
-		if err := saveState(r, kept); err != nil {
-			r.logOpDone(label, label+" "+rec.Branch, err)
-			return err
-		}
-		r.logOpDone(label, "removed "+rec.Branch, nil)
-		logf("removed %s", rec.Branch)
-	}
-	return nil
+		return nil
 	})
 }
 
@@ -1764,7 +1764,7 @@ type dashboardKeys struct {
 	Move, Select, Pane, Project                                                                  key.Binding
 	OpUp, OpDown, OpReload, OpPull, OpAdd, OpOpen, OpCopyURL, OpEditEnv, OpRemove, OpForceRemove key.Binding
 	Refresh, Fetch, Mine, MyPRS                                                                  key.Binding
-	LogScroll, LogTab                                                                             key.Binding
+	LogScroll, LogTab                                                                            key.Binding
 	Help, Quit                                                                                   key.Binding
 }
 
@@ -1924,9 +1924,9 @@ var (
 
 	// Lazygit-inspired pane titles: focused is bright cyan, blurred is
 	// dim gray. Borders follow the same scheme (blue focus, gray blur).
-	dashPaneTitleFocused = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("51"))
-	dashPaneTitleBlurred = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247"))
-	dashLogTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247"))
+	dashPaneTitleFocused  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("51"))
+	dashPaneTitleBlurred  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247"))
+	dashLogTitleStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247"))
 	dashLogTabStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
 	dashLogTabActiveStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("51"))
 

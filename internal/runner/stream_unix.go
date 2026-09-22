@@ -61,7 +61,14 @@ func runStreaming(ctx context.Context, name, dir string, env []string, sink Outp
 	wg.Add(2)
 	go func() { defer wg.Done(); tee(stdoutPipe, &outBuf) }()
 	go func() { defer wg.Done(); tee(stderrPipe, &errBuf) }()
-	waitErr := c.Wait()
+	// Drain both pipes before Wait: Wait closes the parent-side read ends
+	// as soon as the process exits, and any stdout/stderr still buffered
+	// in a kernel pipe is discarded with them — losing both the captured
+	// buffer and the matching sink line (flaky on go1.26). The scanners
+	// reach EOF once every write end closes; the process-group kill on
+	// ctx end above forces that when grandchildren hold the pipes, so
+	// callers' existing timeouts still bound the whole call.
 	wg.Wait()
+	waitErr := c.Wait()
 	return string(outBuf), string(errBuf), waitErr
 }

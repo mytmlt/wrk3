@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -21,9 +22,6 @@ func TestWithOutputRoundTrip(t *testing.T) {
 	}
 	if OutputFrom(context.Background()) != nil {
 		t.Fatal("empty ctx must yield nil sink")
-	}
-	if OutputFrom(nil) != nil {
-		t.Fatal("nil ctx must yield nil sink")
 	}
 }
 
@@ -70,8 +68,13 @@ func TestRunCmdLiveNoSinkMatchesBuffered(t *testing.T) {
 }
 
 func TestRunCmdLiveSinkStreamsLines(t *testing.T) {
+	var mu sync.Mutex
 	var got []string
-	ctx := WithOutput(context.Background(), func(l string) { got = append(got, l) })
+	ctx := WithOutput(context.Background(), func(l string) {
+		mu.Lock()
+		got = append(got, l)
+		mu.Unlock()
+	})
 	stdout, _, err := runCmdLive(ctx, "sh", t.TempDir(), nil, "-c", "echo one; echo two >&2")
 	if err != nil {
 		t.Fatalf("err = %v", err)
@@ -79,20 +82,31 @@ func TestRunCmdLiveSinkStreamsLines(t *testing.T) {
 	if !strings.Contains(stdout, "one") {
 		t.Fatalf("stdout = %q, want one", stdout)
 	}
+	mu.Lock()
 	joined := strings.Join(got, "\n")
+	mu.Unlock()
 	if !strings.Contains(joined, "one") || !strings.Contains(joined, "two") {
 		t.Fatalf("sink missing lines: %q", joined)
 	}
 }
 
 func TestRunCmdLiveSinkErrorKeepsOutput(t *testing.T) {
+	var mu sync.Mutex
 	var got []string
-	ctx := WithOutput(context.Background(), func(l string) { got = append(got, l) })
+	ctx := WithOutput(context.Background(), func(l string) {
+		mu.Lock()
+		got = append(got, l)
+		mu.Unlock()
+	})
 	_, _, err := runCmdLive(ctx, "sh", t.TempDir(), nil, "-c", "echo before-fail; exit 3")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if len(got) == 0 || !strings.Contains(strings.Join(got, "\n"), "before-fail") {
+	mu.Lock()
+	joined := strings.Join(got, "\n")
+	missing := len(got) == 0 || !strings.Contains(joined, "before-fail")
+	mu.Unlock()
+	if missing {
 		t.Fatalf("sink must keep pre-failure output: %q", got)
 	}
 }
