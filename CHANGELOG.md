@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Error reports now use the innermost meaningful error type (instead of the
+  generic `fmt.wrapError` wrapper) when grouping in Sentry, so issues from
+  unrelated commands no longer look alike. The reported message and
+  scrubbing behavior are unchanged.
+
 - Error reports now include a PII-free exception stacktrace and a crashed
   main thread (module, function, line; no locals, source context, user,
   or server name) so issues group by code location.
