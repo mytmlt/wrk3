@@ -1,5 +1,3 @@
-//go:build unix
-
 package runner
 
 import (
@@ -8,59 +6,73 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
+	"time"
 )
 
 const composeLockFile = ".wrk3-compose.lock"
 
+// composeLockPollInterval is how long LockCompose waits between non-blocking
+// lock attempts while waiting for another process to release the lock.
+const composeLockPollInterval = 20 * time.Millisecond
+
+// ComposeLock is an exclusive inter-process lock on a worktree's compose
+// operations, backed by a lock file. Acquire with LockCompose and release
+// with UnlockCompose. The zero value is not usable; UnlockCompose on nil is
+// a no-op.
+type ComposeLock struct {
+	f *os.File
+}
+
 // LockCompose acquires an exclusive file lock on .wrk3-compose.lock inside
 // worktreePath. The lock serialises compose operations (up and down) so
-// concurrent processes do not race on the same worktree.  Returns the open
-// file handle; callers must call UnlockCompose when done, even on error.
-// The returned handle is safe to defer-close with UnlockCompose.
+// concurrent processes do not race on the same worktree. Callers must call
+// UnlockCompose when done, even on error paths.
 //
-// LockCompose honours ctx cancellation: if the context is cancelled or its
-// deadline expires before the lock is acquired, the call returns ctx.Err()
-// and no file handle is returned.
-func LockCompose(ctx context.Context, worktreePath string) (*os.File, error) {
+// The lock file is intentionally never deleted: removing it would break
+// mutual exclusion between processes waiting on the same inode.
+//
+// LockCompose honours ctx cancellation: if the context is already cancelled
+// it fails fast, and if the context is cancelled or its deadline expires
+// while waiting for the lock, the call returns ctx.Err() and no lock is
+// returned.
+func LockCompose(ctx context.Context, worktreePath string) (*ComposeLock, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("lock compose: %w", err)
+	}
 	lockPath := filepath.Join(worktreePath, composeLockFile)
 	f, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("lock compose: open lock file: %w", err)
 	}
-
-	locked := make(chan struct{}, 1)
-	go func() {
-		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_EX)
-		locked <- struct{}{}
-	}()
-
-	select {
-	case <-locked:
-		return f, nil
-	case <-ctx.Done():
-		_ = f.Close()
-		_ = os.Remove(lockPath)
-		return nil, fmt.Errorf("lock compose: %w", ctx.Err())
+	for {
+		if err := tryLockFile(f); err == nil {
+			return &ComposeLock{f: f}, nil
+		} else if !isLockContention(err) {
+			_ = f.Close()
+			return nil, fmt.Errorf("lock compose: %w", err)
+		}
+		select {
+		case <-ctx.Done():
+			_ = f.Close()
+			return nil, fmt.Errorf("lock compose: %w", ctx.Err())
+		case <-time.After(composeLockPollInterval):
+		}
 	}
 }
 
-// UnlockCompose releases the lock acquired by LockCompose, closes the file,
-// and removes the lock file. It is safe to call on a nil file (no-op).
-func UnlockCompose(f *os.File) error {
-	if f == nil {
+// UnlockCompose releases the lock acquired by LockCompose and closes the
+// underlying file. It is safe to call on a nil lock (no-op).
+func UnlockCompose(l *ComposeLock) error {
+	if l == nil || l.f == nil {
 		return nil
 	}
-	lockPath := f.Name()
 	var errs []error
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_UN); err != nil {
-		errs = append(errs, fmt.Errorf("flock unlock: %w", err))
+	if err := unlockFile(l.f); err != nil {
+		errs = append(errs, fmt.Errorf("unlock compose: %w", err))
 	}
-	if err := f.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("close lock: %w", err))
+	if err := l.f.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("close compose lock: %w", err))
 	}
-	if err := os.Remove(lockPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		errs = append(errs, fmt.Errorf("remove lock: %w", err))
-	}
+	l.f = nil
 	return errors.Join(errs...)
 }

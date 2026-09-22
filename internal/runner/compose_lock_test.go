@@ -1,5 +1,3 @@
-//go:build unix
-
 package runner
 
 import (
@@ -74,7 +72,7 @@ func TestLockComposeContextCancellation(t *testing.T) {
 	}
 }
 
-func TestLockComposeLockFileCreatedAndRemoved(t *testing.T) {
+func TestLockComposeLockFilePersists(t *testing.T) {
 	dir := t.TempDir()
 	lockPath := filepath.Join(dir, composeLockFile)
 
@@ -95,8 +93,22 @@ func TestLockComposeLockFileCreatedAndRemoved(t *testing.T) {
 		t.Fatalf("UnlockCompose: %v", err)
 	}
 
-	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
-		t.Fatal("lock file should be removed after UnlockCompose")
+	// The lock file must survive unlock: deleting it would hand a new inode
+	// to the next locker while a contender still waits on the old one,
+	// silently breaking mutual exclusion between processes.
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Fatalf("lock file should persist after UnlockCompose: %v", err)
+	}
+}
+
+func TestLockComposeCancelledContextFailsFast(t *testing.T) {
+	dir := t.TempDir()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := LockCompose(ctx, dir); err == nil {
+		t.Fatal("LockCompose with cancelled context should return error")
 	}
 }
 
