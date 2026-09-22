@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -191,6 +192,24 @@ func TestReportIfEnabled_NoDSN(t *testing.T) {
 
 func TestReportIfEnabled_NilError(t *testing.T) {
 	ReportIfEnabled("test", nil)
+}
+
+func TestQuiet(t *testing.T) {
+	if Quiet(nil) != nil {
+		t.Error("Quiet(nil) != nil")
+	}
+	inner := errSentinel("no wrk3.yaml found (walked up from cwd); pass -f <path>")
+	err := Quiet(fmt.Errorf("%w or --project <name>", inner))
+	if !IsQuiet(err) {
+		t.Error("IsQuiet(Quiet(wrap)) = false")
+	}
+	if IsQuiet(inner) {
+		t.Error("IsQuiet(unwrapped) = true")
+	}
+	if !errors.Is(err, inner) {
+		t.Error("Quiet must unwrap to the inner error")
+	}
+	ReportIfEnabled("dashboard", err)
 }
 
 func TestFlush_Noop(t *testing.T) {

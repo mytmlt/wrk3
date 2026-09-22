@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `wrk3 dashboard` no longer requires a `wrk3.yaml` in cwd: with no local
+  config it opens the first registered project (same list as `--project` /
+  `tab` switching). Missing both a config and a registry still errors.
+  That usage error (and the same message from other commands) is not
+  reported to Sentry.
+
 - Error reports now use the innermost meaningful error type (instead of the
   generic `fmt.wrapError` wrapper) when grouping in Sentry, so issues from
   unrelated commands no longer look alike. The reported message and

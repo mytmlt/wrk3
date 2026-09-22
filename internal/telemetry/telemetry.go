@@ -47,8 +47,29 @@ func activeDSN() string {
 	return DSN
 }
 
+// Quiet wraps err so ReportIfEnabled ignores it. Use for expected
+// usage failures (missing config, bad flags) that are not bugs.
+func Quiet(err error) error {
+	if err == nil {
+		return nil
+	}
+	return quietError{error: err}
+}
+
+type quietError struct{ error }
+
+func (e quietError) Unwrap() error { return e.error }
+
+func IsQuiet(err error) bool {
+	var q quietError
+	return errors.As(err, &q)
+}
+
 func ReportIfEnabled(command string, err error) {
 	if err == nil {
+		return
+	}
+	if IsQuiet(err) {
 		return
 	}
 	if CheckDisabled() {

@@ -199,6 +199,8 @@ Like `docker compose`: every command resolves its config as
 `-f/--file <path>` > upward scan from cwd for `wrk3.yaml`, then
 `wrk3.yml` (nearest directory wins; `wrk3.yaml` preferred in the same
 directory). `cd` into the repo (or a subdirectory) or pass `-f`.
+`wrk3 dashboard` is the exception: with no local file it falls back to
+the project registry so the TUI works from any directory.
 
 `wrk3 add` also registers the repo in `~/.config/wrk3/projects.yaml`
 (XDG-aware, `$WRK3_CONFIG_HOME` override) under the repo root

@@ -5,6 +5,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -14,8 +15,13 @@ import (
 	"github.com/mytmlt/wrk3/internal/ports"
 	"github.com/mytmlt/wrk3/internal/runner"
 	"github.com/mytmlt/wrk3/internal/source"
+	"github.com/mytmlt/wrk3/internal/telemetry"
 	"github.com/mytmlt/wrk3/internal/update"
 )
+
+// errNoConfig is returned when no wrk3.yaml/yml is found via -f or cwd walk-up.
+// It is a usage error, not a bug: Quiet so it is never reported to Sentry.
+var errNoConfig = errors.New("no wrk3.yaml found (walked up from cwd); pass -f <path>")
 
 var fileFlag string
 
@@ -72,7 +78,7 @@ func ResolveConfigPath() (string, error) {
 			// DiscoverFile with explicit never returns empty; defensive.
 			return "", fmt.Errorf("config file %q not found", fileFlag)
 		}
-		return "", fmt.Errorf("no wrk3.yaml found (walked up from cwd); pass -f <path>")
+		return "", telemetry.Quiet(errNoConfig)
 	}
 	return found, nil
 }

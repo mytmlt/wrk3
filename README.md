@@ -16,7 +16,7 @@ projects.
 ## Dashboard (start here)
 
 ```bash
-wrk3 dashboard   # or: wrk3 db
+wrk3 dashboard   # or: wrk3 db  (from any directory once a project is registered)
 ```
 
 The dashboard is the fastest way to drive `wrk3` — one TUI over the

@@ -2,13 +2,18 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/mytmlt/wrk3/internal/ports"
+	"github.com/mytmlt/wrk3/internal/project"
 	"github.com/mytmlt/wrk3/internal/source"
+	"github.com/mytmlt/wrk3/internal/telemetry"
 )
 
 func TestMapDashboardRows_SortsAndMarksMain(t *testing.T) {
@@ -130,6 +135,168 @@ func TestDashboardProjectDescs_CurrentFirstDedupe(t *testing.T) {
 	}
 	if descs[1].Name != "other" {
 		t.Errorf("second must be other: %v", descs)
+	}
+}
+
+func TestDashboardProjectDescs_EmptyCurrentUsesRegistry(t *testing.T) {
+	descs := dashboardProjectDescs("", "",
+		[]string{"other", "myapp"}, []string{"/o/wrk3.yaml", "/r/wrk3.yaml"})
+	if len(descs) != 2 {
+		t.Fatalf("got %v, want 2 registry entries", descs)
+	}
+	if descs[0].Current || descs[1].Current {
+		t.Errorf("no current path: none should be marked current: %v", descs)
+	}
+	if descs[0].Name != "myapp" || descs[1].Name != "other" {
+		t.Errorf("sorted by name: %v", descs)
+	}
+}
+
+type dashboardStubStore struct {
+	projects []project.Project
+}
+
+func (s *dashboardStubStore) Touch(string, string) error { return nil }
+
+func (s *dashboardStubStore) Get(name string) (*project.Project, error) {
+	for i := range s.projects {
+		if s.projects[i].Name == name {
+			return &s.projects[i], nil
+		}
+	}
+	return nil, fmt.Errorf("get project %q: %w", name, project.ErrNotFound)
+}
+
+func (s *dashboardStubStore) List() ([]project.Project, error) {
+	return s.projects, nil
+}
+
+func stubProjectStore(t *testing.T, projects []project.Project) {
+	t.Helper()
+	old := newProjectStore
+	newProjectStore = func() (project.Store, error) {
+		return &dashboardStubStore{projects: projects}, nil
+	}
+	t.Cleanup(func() { newProjectStore = old })
+}
+
+func resetDashboardPathFlags(t *testing.T) {
+	t.Helper()
+	oldFile, oldProj := fileFlag, dashboardProjectArg
+	fileFlag, dashboardProjectArg = "", ""
+	t.Cleanup(func() {
+		fileFlag, dashboardProjectArg = oldFile, oldProj
+	})
+}
+
+func TestResolveDashboardInitialPath_FallsBackToRegistry(t *testing.T) {
+	resetDashboardPathFlags(t)
+	dir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+
+	want := "/reg/wrk3.yaml"
+	stubProjectStore(t, []project.Project{{Name: "myapp", ConfigPath: want}})
+	got, err := resolveDashboardInitialPath(nil)
+	if err != nil {
+		t.Fatalf("resolveDashboardInitialPath: %v", err)
+	}
+	if got != want {
+		t.Errorf("path = %q, want registry %q", got, want)
+	}
+}
+
+func TestResolveDashboardInitialPath_NoYamlNoRegistry(t *testing.T) {
+	resetDashboardPathFlags(t)
+	dir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+
+	stubProjectStore(t, nil)
+	_, err = resolveDashboardInitialPath(nil)
+	if err == nil {
+		t.Fatal("expected error with no yaml and empty registry")
+	}
+	if !errors.Is(err, errNoConfig) {
+		t.Errorf("err = %v, want errNoConfig", err)
+	}
+	if !telemetry.IsQuiet(err) {
+		t.Error("missing-config usage error must be telemetry-quiet")
+	}
+}
+
+func TestResolveDashboardInitialPath_LocalYamlWins(t *testing.T) {
+	resetDashboardPathFlags(t)
+	dir := t.TempDir()
+	local := filepath.Join(dir, "wrk3.yaml")
+	if err := os.WriteFile(local, []byte("project:\n  worktreeBase: .worktrees\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+
+	stubProjectStore(t, []project.Project{{Name: "other", ConfigPath: "/other/wrk3.yaml"}})
+	got, err := resolveDashboardInitialPath(nil)
+	if err != nil {
+		t.Fatalf("resolveDashboardInitialPath: %v", err)
+	}
+	if got != local {
+		t.Errorf("path = %q, want local %q", got, local)
+	}
+}
+
+func TestResolveDashboardInitialPath_ProjectFlag(t *testing.T) {
+	resetDashboardPathFlags(t)
+	dashboardProjectArg = "other"
+	stubProjectStore(t, []project.Project{
+		{Name: "myapp", ConfigPath: "/a/wrk3.yaml"},
+		{Name: "other", ConfigPath: "/o/wrk3.yaml"},
+	})
+	got, err := resolveDashboardInitialPath(nil)
+	if err != nil {
+		t.Fatalf("resolveDashboardInitialPath: %v", err)
+	}
+	if got != "/o/wrk3.yaml" {
+		t.Errorf("path = %q, want --project other", got)
+	}
+}
+
+func TestResolveConfigPath_QuietUsageError(t *testing.T) {
+	resetDashboardPathFlags(t)
+	dir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+
+	_, err = ResolveConfigPath()
+	if !errors.Is(err, errNoConfig) {
+		t.Errorf("ResolveConfigPath = %v, want errNoConfig", err)
+	}
+	if !telemetry.IsQuiet(err) {
+		t.Error("ResolveConfigPath missing-config must be telemetry-quiet")
 	}
 }
 
