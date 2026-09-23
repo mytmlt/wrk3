@@ -124,6 +124,26 @@ func TestScrub_QuotedNameWithEscapedQuote(t *testing.T) {
 	}
 }
 
+func TestScrub_CobraUnknownCommand(t *testing.T) {
+	msg := `unknown command "foobar" for "wrk3"`
+
+	err := errSentinel(msg)
+	got := Scrub(err)
+	if !strings.Contains(got, `unknown command "foobar" for "wrk3"`) {
+		t.Errorf("Scrub should keep quoted command and executable; got %q", got)
+	}
+}
+
+func TestScrub_CobraUnknownCommandKeepsExemptionNarrow(t *testing.T) {
+	// Only the exact cobra "unknown command ... for ..." shape is exempt:
+	// a message that merely mentions an unknown worktree keeps scrubbing.
+	err := errSentinel(`unknown worktree "secret-branch" (see status)`)
+	got := Scrub(err)
+	if strings.Contains(got, "secret-branch") {
+		t.Errorf("Scrub should still redact non-cobra quoted names; got %q", got)
+	}
+}
+
 func TestScrub_CapLength(t *testing.T) {
 	long := strings.Repeat("a", 2000)
 	err := errSentinel(long)
