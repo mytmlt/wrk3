@@ -47,6 +47,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `"<name>"` so leaked identifiers cannot appear in remote payloads.
   Local command and dashboard error text is unchanged.
 
+- Error reports keep cobra's `unknown command "x" for "wrk3"` message intact
+  instead of scrubbing both quoted strings to `"<name>"`, so the unknown
+  command name (user-typed, not a branch/slug) stays readable when debugging.
+  All other quoted-name scrubbing is unchanged.
+
 - Managed port variables (`APP_PORT` and other `<NAME>_PORT` keys) are
   always overwritten to the worktree allocation on ensure, so a tracked
   `.env`, a git copy, or gap-fill can no longer leak the main checkout's

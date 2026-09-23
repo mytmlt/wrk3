@@ -77,6 +77,53 @@ func TestScrub_HexHash(t *testing.T) {
 	}
 }
 
+func TestScrub_QuotedWorktreeName(t *testing.T) {
+	err := errSentinel(`unknown worktree "chore/bake-sentry-dsn" (see status)`)
+	got := Scrub(err)
+	if strings.Contains(got, "chore/bake-sentry-dsn") {
+		t.Errorf("Scrub should remove quoted worktree name; got %q", got)
+	}
+	if !strings.Contains(got, "unknown worktree") {
+		t.Errorf("Scrub should keep error class; got %q", got)
+	}
+	if !strings.Contains(got, `"<name>"`) {
+		t.Errorf("Scrub should replace quoted name with placeholder; got %q", got)
+	}
+}
+
+func TestScrub_QuotedHyphenatedSlug(t *testing.T) {
+	err := errSentinel(`unknown worktree "feature-foo" (see status)`)
+	got := Scrub(err)
+	if strings.Contains(got, "feature-foo") {
+		t.Errorf("Scrub should remove hyphenated slug; got %q", got)
+	}
+	if !strings.Contains(got, `"<name>"`) {
+		t.Errorf("Scrub should replace quoted name with placeholder; got %q", got)
+	}
+}
+
+func TestScrub_QuotedNameInOtherError(t *testing.T) {
+	err := errSentinel(`branch "feat/redact-names" already exists`)
+	got := Scrub(err)
+	if strings.Contains(got, "feat/redact-names") {
+		t.Errorf("Scrub should remove quoted name; got %q", got)
+	}
+	if !strings.Contains(got, `"<name>"`) {
+		t.Errorf("Scrub should replace quoted name with placeholder; got %q", got)
+	}
+}
+
+func TestScrub_QuotedNameWithEscapedQuote(t *testing.T) {
+	err := errSentinel(`unknown worktree "foo\"bar" (see status)`)
+	got := Scrub(err)
+	if strings.Contains(got, `foo\"bar`) || strings.Contains(got, `foo"bar`) {
+		t.Errorf("Scrub should remove quoted name with escaped quote; got %q", got)
+	}
+	if !strings.Contains(got, `"<name>"`) {
+		t.Errorf("Scrub should replace quoted name with placeholder; got %q", got)
+	}
+}
+
 func TestScrub_CobraUnknownCommand(t *testing.T) {
 	msg := `unknown command "foobar" for "wrk3"`
 
@@ -84,6 +131,16 @@ func TestScrub_CobraUnknownCommand(t *testing.T) {
 	got := Scrub(err)
 	if !strings.Contains(got, `unknown command "foobar" for "wrk3"`) {
 		t.Errorf("Scrub should keep quoted command and executable; got %q", got)
+	}
+}
+
+func TestScrub_CobraUnknownCommandKeepsExemptionNarrow(t *testing.T) {
+	// Only the exact cobra "unknown command ... for ..." shape is exempt:
+	// a message that merely mentions an unknown worktree keeps scrubbing.
+	err := errSentinel(`unknown worktree "secret-branch" (see status)`)
+	got := Scrub(err)
+	if strings.Contains(got, "secret-branch") {
+		t.Errorf("Scrub should still redact non-cobra quoted names; got %q", got)
 	}
 }
 
