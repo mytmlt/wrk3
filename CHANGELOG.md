@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Shared services (`shared:` block in `wrk3.yaml`): long-lived infra
+  (databases, brokers) runs once per repo in a fixed compose project
+  while each worktree runs only `shared.worktreeServices` (`--no-deps`).
+  `up` ensures shared first (`compose up -d --wait` on the shared scope,
+  TCP wait on published host ports, then template-expanded per-slug
+  `shared.setup` hooks and `shared.env` overrides via a generated
+  overlay — no base compose file edits). `down`/`remove` never touch
+  the shared project; only `wrk3 shared down` stops it (volumes kept).
+  Manage with `wrk3 shared up|down|status|logs`; `status` appends a
+  `shared:` summary line. See `docs/CONFIGURATION.md#shared-services`.
+
+### Added
+
 - OpenCodeReview bot (`.github/workflows/open-code-review.yml`, pinned
   to `alibaba/open-code-review@v1.12.9`): posts inline + sticky summary
   review comments on collaborator PRs as `github-actions[bot]`.

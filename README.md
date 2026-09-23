@@ -234,7 +234,11 @@ for where the `docker` / `podman` / `portainer` / `nomad` / bare-machine runners
     Bare `up`/`down` apply to all worktrees including the implicit main
     checkout (repo root, reserved port index 0 — the `ports.base` allocation,
     managed `.env` section ensured on run);
-    pass names to filter.
+    pass names to filter. With `shared` configured, `up` first ensures
+    the shared project (`compose up -d --wait` on the shared scope, then
+    per-slug `shared.setup` isolation hooks), starts only
+    `shared.worktreeServices` (`--no-deps`), and `down` never touches
+    shared (only `wrk3 shared down` stops it).
 3. `wrk3 status` → reconciles the state file against `git worktree list`
     (on-disk worktrees missing from state are adopted, ports recovered
     from `.env` or freshly allocated), probes live runner status

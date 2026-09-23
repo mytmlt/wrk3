@@ -190,6 +190,60 @@ compose/`entry` commands consume the matching `.env` vars (e.g.
 `"${APP_PORT:-8000}:8000"`). How recovered ports, reconcile, and live
 docker status sync on every read: [USAGE.md](USAGE.md).
 
+## Shared services
+
+Opt-in long-lived infrastructure (databases, message brokers) shared by
+all worktrees. Without it every worktree boots the full compose stack
+(`<prefix>-<slug>` project); with it the heavy services run once in a
+fixed project while each worktree runs only its app services.
+
+```yaml
+shared:
+  docker:  # or podman (must match runner.type)
+    composeFiles: [docker-compose.dev.yml]  # resolved against the repo root
+    project: demo-shared                     # fixed compose project (sanitized)
+    services:                                # `up -d --wait <services>` in the shared project
+      db: {ports: ["5432:5432"]}             # host publishes (generated overlay; base file untouched)
+      rabbitmq: {ports: ["5672:5672", "15672:15672"]}
+  worktreeServices: [app]  # required; per-worktree up runs `up -d --build --no-deps <these>`
+  env:                     # per-worktree overrides (containers via overlay, commands via runner env)
+    DB_HOST: host.docker.internal
+    DB_NAME: myapp_${slug_underscore}  # ${slug} ${slug_underscore} ${slug_dash} ${shared_project}
+  setup:  # per-worktree, before entry.setup (e.g. create the branch database)
+    - docker exec ${shared_project}-db-1 createdb -U postgres ${DB_NAME} || true
+```
+
+| Path | Required | Notes |
+| ---- | -------- | ----- |
+| `shared.docker.composeFiles` / `shared.podman.composeFiles` | yes (when shared) | At least one compose file, resolved against the repo root (the config dir) — shared services run once per repo, not per worktree. Only the block matching `runner.type` applies; setting the other block errors. |
+| `shared.docker.project` / `shared.podman.project` | yes (when shared) | Fixed compose project name (sanitized like worktree projects). Distinct from every `<prefix>-<slug>` project by construction — this is what keeps `down` from ever touching shared. |
+| `shared.docker.services` / `shared.podman.services` | yes (when shared) | Map of compose service name → `{ports: [...]}` publishes. Names must be valid service names; publish strings are short-syntax (`host:container`, `ip:host:container`, optional `/proto`); empty publish lists are allowed (no host reachability, no readiness wait for that service). |
+| `shared.worktreeServices` | yes (when shared) | Services the per-worktree project starts (`--no-deps`, so shared dependencies are never duplicated). Must not overlap `shared.*.services`. Your `entry.setup` must also avoid starting shared services (e.g. scope `make` targets or compose calls to the app services). |
+| `shared.env` | no | Per-worktree overrides. Values support `${slug}`, `${slug_underscore}` (db-safe), `${slug_dash}`, `${shared_project}`; anything else passes through verbatim (compose `${VAR}` references and `$` in passwords survive). Expanded values reach worktree containers through a generated overlay (`<worktreeBase>/.wrk3-overlays/`) and every entry command through runner env (plus `WRK3_SLUG`, `WRK3_SLUG_UNDERSCORE`, `WRK3_SLUG_DASH`, `WRK3_SHARED_PROJECT`). Keys must be valid env names, outside `WRK3_*`, and collide with neither managed `<NAME>_PORT` keys nor `urls` vars. Not written to `.env` (host-side `make` targets should take them as `VAR=...` args or read runner env). |
+| `shared.setup` | no | Shell strings run per worktree via `sh -c` (cwd=worktree, full env) after shared-ensure and before `entry.setup` — the generic isolation hook (create database, declare vhost, `pg_isready` loops). Empty strings skipped; failures fail `up` like `entry.setup`. |
+
+Lifecycle:
+
+- `wrk3 shared up|down|status|logs` manage the shared project explicitly.
+  `down` removes containers/networks and keeps named volumes (reclaim
+  manually, e.g. `docker volume rm`, when you really mean it).
+- `wrk3 up` ensures shared first (`compose up -d --wait` on the shared
+  scope, then a TCP wait on published host ports, then `shared.setup`,
+  then the normal flow). Concurrent ups serialize on a lock in
+  `<worktreeBase>/.wrk3-overlays/`; the operation is idempotent.
+- `wrk3 down` (bare or named) stops only the worktree project(s) and
+  says so (`shared <project> untouched`); `remove` likewise never
+  touches shared volumes.
+- `status` appends a `shared: <project> <state> (<detail>)
+  [services: ...]` line; probes never fail the command (`unknown` on
+  error). The dashboard reuses the same up/down paths, so shared
+  behavior applies there too (no dedicated shared pane in v1).
+
+Networking: shared and worktree projects are on different compose
+networks, so `db`-style service DNS does not cross the boundary.
+Point worktree services at shared over the host gateway
+(`host.docker.internal` + published fixed ports, as above) instead.
+
 ## Local gateway (`proxy`)
 
 Opt-in stdlib reverse proxy (no Caddy/binary dependency) mapping
