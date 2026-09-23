@@ -58,7 +58,7 @@ stacked otherwise) with `[n]` numbers and `x of y` counts on every list:
 | `o` | open the cursor worktree `URL` in a browser (full URL is logged too) |
 | `O` | copy the cursor worktree `URL` to the OS clipboard (`pbcopy` on macOS, `wl-copy`/`xclip`/`xsel` on Linux, `clip` on Windows; the URL is logged too) |
 | `e` | edit the cursor worktree `.env` in `$VISUAL`/`$EDITOR` (TUI suspends fullscreen, resumes on quit) |
-| `x` / `X` | `remove` / `remove --force` selected worktrees (asks `y/n`, never touches main) |
+| `x` / `X` | `remove` / `remove --force` selected worktrees (confirm dialog, never touches main) |
 | `r` / `R` | refresh state / fetch remote |
 | `m` / `P` | toggle `mine` / `myprs` branch filters |
 | `?` | `Menu` popup with every action (`j/k` move, `enter` runs, `esc` closes) |

@@ -272,6 +272,9 @@ func TestDashboardModel_ConfirmRemoveFlow(t *testing.T) {
 	if m.confirm == "" || len(m.pendingX) != 1 || m.pendingX[0] != "feature-a" {
 		t.Fatalf("x should stage confirm: %+v", m)
 	}
+	if m.confirmSel != confirmCancelOpt {
+		t.Errorf("x should default to cancel: %+v", m)
+	}
 	// Cancel path.
 	m = applyKey(t, m, "n")
 	if m.confirm != "" || m.pendingX != nil {
@@ -338,6 +341,130 @@ func TestDashboardModel_ForceRemoveFlow(t *testing.T) {
 	m = applyKey(t, m, "n")
 	if m.confirm != "" || m.pendingForce {
 		t.Errorf("n should cancel and clear force: %+v", m)
+	}
+}
+
+func TestDashboardModel_ConfirmDialogSelection(t *testing.T) {
+	// X stages the force dialog with cancel selected by default.
+	m := testDashboardModel()
+	m.workSel["feature-a"] = true
+	m = applyKey(t, m, "X")
+	if m.confirm != "remove --force" || m.confirmSel != confirmCancelOpt {
+		t.Fatalf("X should stage dialog with cancel default: %+v", m)
+	}
+	// Enter on cancel clears staged state with no operation started.
+	next, cmd := m.handleKey(keyMsg("enter"))
+	dm := next.(dashboardModel)
+	if dm.confirm != "" || dm.pendingX != nil || dm.pendingForce {
+		t.Errorf("enter on cancel must clear staged state: %+v", dm)
+	}
+	if cmd != nil || dm.isBusy() {
+		t.Errorf("enter on cancel must not start an op: cmd=%v ops=%v", cmd, dm.ops)
+	}
+	// Left/right and j/k navigate between the two options.
+	m = testDashboardModel()
+	m.workSel["feature-a"] = true
+	m = applyKey(t, m, "X")
+	for _, key := range []string{"left", "right", "j", "k", "h", "l", "up", "down"} {
+		before := m.confirmSel
+		m = applyKey(t, m, key)
+		if m.confirmSel == before {
+			t.Errorf("%s should toggle the dialog selection", key)
+		}
+	}
+	// Enter on delete starts dashboardRemoveCmd with force true.
+	if m.confirmSel != confirmDeleteOpt {
+		m = applyKey(t, m, "right")
+	}
+	next, cmd = m.handleKey(keyMsg("enter"))
+	dm = next.(dashboardModel)
+	if !dm.isBusy() || dm.busyTitle() != "remove --force feature-a" {
+		t.Errorf("enter on delete should start busy force remove: %+v", dm)
+	}
+	if cmd == nil {
+		t.Fatal("enter on delete should return the remove command")
+	}
+	// A conflicting op blocks the dialog confirm: the dialog stays open
+	// for retry or cancel instead of starting a second op.
+	blocked := testDashboardModel()
+	blocked.workSel["feature-a"] = true
+	blocked = applyKey(t, blocked, "X")
+	blocked.startOp("up", []string{"feature-a"})
+	blocked = applyKey(t, blocked, "right")
+	next, cmd = blocked.handleKey(keyMsg("enter"))
+	dm = next.(dashboardModel)
+	if cmd != nil || len(dm.ops) != 1 {
+		t.Errorf("blocked enter must not start a second op: cmd=%v ops=%v", cmd, dm.ops)
+	}
+	if dm.confirm == "" {
+		t.Errorf("blocked enter must keep the dialog open for retry/cancel: %+v", dm)
+	}
+	if !strings.Contains(dm.statusMsg, "already running") {
+		t.Errorf("blocked enter should explain the block: %q", dm.statusMsg)
+	}
+	// esc cancels explicitly with no operation started.
+	m = testDashboardModel()
+	m.workSel["feature-a"] = true
+	m = applyKey(t, m, "X")
+	m = applyKey(t, m, "esc")
+	if m.confirm != "" || m.pendingX != nil || m.pendingForce {
+		t.Errorf("esc should cancel and clear staged state: %+v", m)
+	}
+	if m.confirmSel != confirmCancelOpt {
+		t.Errorf("esc should reset selection to cancel: %+v", m)
+	}
+	// Normal x uses the same dialog shape with force false.
+	m = testDashboardModel()
+	m.workSel["feature-a"] = true
+	m = applyKey(t, m, "x")
+	if m.confirm != "remove" || m.pendingForce || m.confirmSel != confirmCancelOpt {
+		t.Fatalf("x should stage the same dialog with force false: %+v", m)
+	}
+	if out := m.confirmPane(60); !strings.Contains(out, "Confirm remove") ||
+		!strings.Contains(out, "feature-a") ||
+		!strings.Contains(out, "Delete") || !strings.Contains(out, "Cancel") {
+		t.Errorf("normal dialog missing label/targets/options:\n%s", out)
+	}
+	m = applyKey(t, m, "right")
+	next, cmd = m.handleKey(keyMsg("enter"))
+	dm = next.(dashboardModel)
+	if !dm.isBusy() || dm.busyTitle() != "remove feature-a" {
+		t.Errorf("enter on delete should start busy clean remove: %+v", dm)
+	}
+	if cmd == nil {
+		t.Fatal("enter on delete should return the remove command")
+	}
+}
+
+func TestDashboardView_ConfirmDialog(t *testing.T) {
+	m := dashboardViewModel(t)
+	m.workSel["feature-a"] = true
+	m = applyKey(t, m, "X")
+	m.width, m.height = 100, 40
+	out := m.View()
+	for _, want := range []string{"Confirm remove --force", "feature-a", "Delete", "Cancel", "uncommitted"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("dialog view missing %q:\n%s", want, out)
+		}
+	}
+	// The grid hides behind the dialog while it is open.
+	for _, gone := range []string{"Worktrees", "Branches"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("dialog should replace panes, found %q:\n%s", gone, out)
+		}
+	}
+	// Normal remove uses the same dialog shape without the force warning.
+	m = dashboardViewModel(t)
+	m.workSel["feature-a"] = true
+	m = applyKey(t, m, "x")
+	out = m.View()
+	for _, want := range []string{"Confirm remove", "feature-a", "Delete", "Cancel"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("normal dialog missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "uncommitted") {
+		t.Errorf("normal dialog must not show the force warning:\n%s", out)
 	}
 }
 
@@ -563,7 +690,7 @@ func TestDashboardModel_MenuEnterRunsAction(t *testing.T) {
 	if cmd == nil {
 		t.Error("menu pull should return the pull command")
 	}
-	// Remove via the menu lands in the y/n confirm flow.
+	// Remove via the menu lands in the confirm dialog flow.
 	m = testDashboardModel()
 	m.workSel["feature-a"] = true
 	m = applyKey(t, m, "?")

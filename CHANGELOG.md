@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Dashboard remove (`x`) and force remove (`X`) now open a centered
+  selectable confirm dialog (same shape for both, targets listed, force
+  warning when destructive, cancel selected by default; `←`/`→` or
+  `j/k` move, `enter` confirms, `y` deletes, `n`/`esc` cancels) instead
+  of the status-line `y/n` prompt. Removal execution and safety guards
+  are unchanged.
 ### Added
 
 - Shared services (`shared:` block in `wrk3.yaml`): long-lived infra

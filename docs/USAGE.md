@@ -267,17 +267,17 @@ clipboard (`pbcopy` on macOS, `wl-copy`/`xclip`/`xsel` on Linux, `clip` on
 Windows), `e` edits the cursor worktree `.env` in your editor
 (`$VISUAL`, then `$EDITOR`, then nvim/vim/nano/vi; the TUI suspends
 fullscreen while the editor runs and resumes on quit, the `.env` is
-ensured first like `wrk3 env`), `x` removes (asks `y/n`, refuses
-main like `remove`), `X` force-removes like `remove --force` (asks
-`y/n`, for dirty worktrees with modified/untracked files), `r` refreshes
+ensured first like `wrk3 env`), `x` removes (confirm dialog, refuses
+main like `remove`), `X` force-removes like `remove --force` (confirm
+dialog, for dirty worktrees with modified/untracked files), `r` refreshes
 state, `R` fetches the remote
 (`--remote`/`--mine`/`--author`/`--myprs` filter the branch list, `m`
 toggles mine, `P` toggles myprs), `1`/`2`/`3` or `←`/`→` switch panes
 (worktrees/branches/log; the DETAILS preview follows the worktree
 cursor/selection and is never focused), `?` opens the lazydocker-style
 `Menu` popup listing every action (`j/k`/`↑`/`↓` move, `enter` runs the
-highlighted row, `esc` closes; `x`/`X` rows land in the usual `y/n`
-confirm), `q` quits. The unfiltered branch pane unions remote refs
+highlighted row, `esc` closes; `x`/`X` rows land in the confirm
+dialog), `q` quits. The unfiltered branch pane unions remote refs
 with local-only branches (filtered views stay remote-only); like
 `add <branch>`, `a` creates the checkout from either ref, or adopts the
 on-disk worktree when one already exists. The branch pane sorts your
