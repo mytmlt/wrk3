@@ -27,22 +27,36 @@ hermetic (temp git repos, temp dirs — no network).
 - `internal/source/` — `Source` iface + `registry.go` + `git.go`.
 - `internal/runner/` — `Runner` iface + `registry.go` + `docker.go` + `podman.go`
   (`portainer`/`nomad` are intentional `not implemented` stubs).
-- `internal/ports/` — `allocated = base + index*step` allocator, `.env`
-  writer, `<worktreeBase>/.wrk3-state.json` state file.
+- `internal/ports/` — range allocator (`base` + per-service `ranges`,
+  lowest free with gap reuse + OS bind probe), `.env` writer,
+  `<worktreeBase>/.wrk3-state.json` state file.
 - `internal/forge/` — `gh`-based PR filtering (`--myprs`).
 - `internal/proxy/` — stdlib local gateway (`<slug>.<domain>` → app port).
 - `internal/project/` — `~/.config/wrk3/projects.yaml` registry.
 - `cmd/dashboard*.go` — bubbletea TUI.
+- `skills/` — vendored agent skills (canonical source, supersedes the
+  standalone `mytmlt/wrk3-skills` repo). `skills/wrk3-setup/` covers
+  onboarding: compatibility triage → author + validate `wrk3.yaml`.
 
 ## Rules
 
+- Docs + skills stay in sync with behavior — no exceptions. Every change
+  to CLI behavior, config shape (`ports`/`urls`/`proxy`/`shared`/`health`/
+  `entry`/`runner`/`source`), dashboard UX, port allocation, `.env`
+  management, or setup flow **must** update `docs/` (`USAGE.md` /
+  `CONFIGURATION.md`), `skills/wrk3-setup/SKILL.md` (+ `examples/` when the
+  template or verdict changes), and a `CHANGELOG.md` `[Unreleased]` entry
+  in the same PR. Bump the skill `wrk3-version` frontmatter and the
+  `skills/README.md` version table when the tested CLI release moves.
+  A PR that changes behavior without touching docs + skills + changelog
+  is incomplete.
 - New `Source`/`Runner` backends **must** register in their `registry.go`;
   unknown `source.type`/`runner.type` values error listing available options.
 - State file paths stay absolute (cwd-independence). `status` shows
   `?`/`stale` when a worktree dir is missing — never fail hard there.
 - Branch slugs: `feature/foo` → `feature-foo`, max 50 chars
   (`internal/source/slug.go`).
-- Entry strings (`setup`/`run`/`stop`/`logs`) execute verbatim via `sh -c`
+- Entry strings (`setup`/`run`/`stop`/`logs`/`reload`) execute verbatim via `sh -c`
   with `cwd=worktree`, `env=allocated ports` — never hardcode repo-specific
   commands (e.g. `make test`) in Go code.
 - Keep functions small, wrap errors with context
@@ -54,7 +68,9 @@ hermetic (temp git repos, temp dirs — no network).
   `-f/--file <path>` > upward scan from cwd for `wrk3.yaml`, then `wrk3.yml`
   (nearest directory wins). No registry, no env var — like `docker compose`.
 - For config-authoring questions (new stack, broken config, port mapping),
-  start from `wrk3.yaml.example` and `docs/CONFIGURATION.md`.
+  start from `wrk3.yaml.example` and `docs/CONFIGURATION.md`, plus
+  `skills/wrk3-setup/SKILL.md` (+ `skills/wrk3-setup/examples/`) for the
+  agent onboarding flow.
 
 ## Verifying behavior changes
 
@@ -73,5 +89,8 @@ repos, and `down` + `remove` afterwards to clean up.
 - Don't commit personal configs (`wrk3.*.local.yaml`), `.wrk3-state.json`, `.worktrees/`, `.env` files,
   binaries, or anything with absolute personal paths / secrets.
 - User-facing change? Update `README.md` / `docs/USAGE.md` /
-  `docs/CONFIGURATION.md` plus a `CHANGELOG.md` `[Unreleased]` entry.
+  `docs/CONFIGURATION.md` **plus** `skills/wrk3-setup/SKILL.md`
+  (+ `examples/` + `skills/README.md` version table when the skill changes)
+  plus a `CHANGELOG.md` `[Unreleased]` entry — all in the same PR (see
+  Rules: docs + skills + changelog stay in sync, no exceptions).
 - Security issues: see `SECURITY.md` — never file public issues for them.

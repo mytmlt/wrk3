@@ -275,7 +275,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution process and commit style
 [docs/INSTALL.md](docs/INSTALL.md) / [docs/CONFIGURATION.md](docs/CONFIGURATION.md) /
 [docs/USAGE.md](docs/USAGE.md) for setup and usage. [ROADMAP.md](ROADMAP.md)
 tracks the any-codebase project goal and runner coverage. To add a new `Source` or
-`Runner` backend, see [docs/PLUGINS.md](docs/PLUGINS.md).
+`Runner` backend, see [docs/PLUGINS.md](docs/PLUGINS.md). Agent onboarding
+lives in [skills/](skills/) (`wrk3-setup`: compatibility triage → author +
+validate `wrk3.yaml`) — behavior changes must update docs + skills +
+changelog together (see `AGENTS.md`).
 
 ## License
 

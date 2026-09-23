@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are unchanged.
 ### Added
 
+- Vendored agent skills (`skills/` is now canonical, superseding the
+  standalone `mytmlt/wrk3-skills` repo): `skills/wrk3-setup/` rewritten for
+  current `main` — range ports (`base` + `ranges`, no `step`), aliases,
+  `urls` tracking, `podman` parity, optional `projectPrefix`, `entry.reload`,
+  managed `.env` keys (`<NAME>_PORT` + `urls` vars; `APP_URL` runner-env only;
+  `source.git.copy` rejects `.env`), `proxy` privileged-port guard,
+  display-only `health.checks`, and opt-in `shared:` services. `AGENTS.md`
+  now requires docs + skills + changelog in the same PR on every behavior
+  change (skill `wrk3-version` + `skills/README.md` version table kept in sync).
+
+### Added
+
 - Shared services (`shared:` block in `wrk3.yaml`): long-lived infra
   (databases, brokers) runs once per repo in a fixed compose project
   while each worktree runs only `shared.worktreeServices` (`--no-deps`).
