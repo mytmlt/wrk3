@@ -62,7 +62,7 @@ type sharedProbeRig struct {
 
 func (rig *sharedProbeRig) register(t *testing.T) string {
 	t.Helper()
-	typ := fmt.Sprintf("shared-probe-%s", strings.Replace(t.Name(), "/", "-", -1))
+	typ := fmt.Sprintf("shared-probe-%s", strings.ReplaceAll(t.Name(), "/", "-"))
 	runner.Register(typ, func(o runner.Options) runner.Runner {
 		p := &sharedProbeRunner{opts: o}
 		rig.mu.Lock()
