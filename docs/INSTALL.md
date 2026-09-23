@@ -91,7 +91,20 @@ wrk3 update --version v0.8.0
 
 ## Shell completions
 
-Canonical (works without `make`):
+No extra setup: the `shell-init` snippet already loads tab-completion
+for subcommands, flags, branches, and worktree slugs, so `wrk3 ch<TAB>`
+offers `checkout` and `wrk3 checkout <TAB>` offers your worktrees (never
+files):
+
+```bash
+eval "$(wrk3 shell-init bash)"   # ~/.bashrc (zsh/fish/powershell too)
+```
+
+(zsh: keep that line after `compinit` / the oh-my-zsh init, otherwise the
+`compdef` registration is skipped silently.)
+
+Prefer static files instead (or no `checkout`-cds wrapper)? Install the
+completion alone — canonical (works without `make`):
 
 ```bash
 wrk3 completion bash > ~/.local/share/bash-completion/completions/wrk3
@@ -115,10 +128,12 @@ cp completions/wrk3.fish ~/.config/fish/completions/
 ```
 
 The `wrk3 shell-init` wrapper (`eval "$(wrk3 shell-init bash)"` and
-friends, needed so `wrk3 checkout` cds the calling shell) coexists with
-completion: the generated scripts dispatch through the `wrk3` command
-name, so TAB-completing subcommands, branches, and worktree slugs keeps
-working with the wrapper active (bash + zsh verified).
+friends, needed so `wrk3 checkout` cds the calling shell) already loads
+the completion above, so with the wrapper active there is nothing else
+to install. The generated scripts dispatch through the `wrk3` command
+name and the wrapper passes TAB plumbing (`__complete`, `completion`)
+straight to the binary, so subcommand, branch, and worktree-slug
+completion keeps working with the wrapper active (bash + zsh verified).
 
 ## Verify
 
