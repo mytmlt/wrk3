@@ -87,7 +87,9 @@ wrk3 exec feature-a -- <cmd...>     # run inside worktree env (cwd=worktree)
 wrk3 env feature-a                 # open the worktree .env in $VISUAL/$EDITOR (ensured first; managed ports overwritten)
 wrk3 env feature-a --print         # print the worktree .env to stdout instead
 wrk3 checkout feature-a             # cd to the worktree (needs shell-init wrapper; else prints path)
-wrk3 down feature-a | wrk3 down     # bare = all including main
+wrk3 down feature-a | wrk3 down     # bare = all including main (shared services untouched; use `shared down` to stop them)
+wrk3 shared up | wrk3 shared status | wrk3 shared logs [--follow]  # manage shared services (see below)
+wrk3 shared down                    # stop shared services (volumes preserved)
 wrk3 remove feature-a feature-b | wrk3 remove --all   # compose down -v + worktree remove + state cleanup (never touches main)
 wrk3 remove --force feature-a | wrk3 remove --all --force  # same with git worktree remove --force (falls back to rm -rf); for dirty worktrees with modified/untracked files
 wrk3 dashboard                       # interactive TUI: worktrees + branches + ports, up/down/add/remove (shorthand: wrk3 db)

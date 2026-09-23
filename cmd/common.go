@@ -15,6 +15,7 @@ import (
 	"github.com/mytmlt/wrk3/internal/config"
 	"github.com/mytmlt/wrk3/internal/ports"
 	"github.com/mytmlt/wrk3/internal/runner"
+	"github.com/mytmlt/wrk3/internal/shared"
 	"github.com/mytmlt/wrk3/internal/source"
 )
 
@@ -167,13 +168,40 @@ func resolveTargetsRequired(recs []ports.WorktreeRecord, args []string, all bool
 }
 
 // envForWorktree maps an allocation to runner env vars plus the gateway
-// APP_URL when proxy.enabled. COMPOSE_PROJECT_NAME is forced by the
+// APP_URL when proxy.enabled and the expanded shared env plus WRK3_*
+// runtime vars when shared services are configured.
+// COMPOSE_PROJECT_NAME is forced by the
 // compose runners (docker/podman) and is not set here.
 func envForWorktree(cfg *config.Config, rec ports.WorktreeRecord) map[string]string {
 	out := envFromPorts(rec.Ports)
 	for k, v := range proxyEnvForSlug(cfg, rec.Slug) {
 		out[k] = v
 	}
+	for k, v := range sharedEnvForWorktree(cfg, rec.Slug) {
+		out[k] = v
+	}
+	return out
+}
+
+// sharedEnvForWorktree expands shared.env for slug and adds the WRK3_*
+// runtime vars (slug forms and shared project name) that shared.setup
+// and entry commands can reference via shell expansion (e.g.
+// `make db.create DB_NAME=${DB_NAME}` or `${WRK3_SLUG_UNDERSCORE}`).
+// Nil when shared services are disabled. Shared keys win over
+// proxy/ports keys on collision (validation rejects such configs,
+// so this is defense in depth).
+func sharedEnvForWorktree(cfg *config.Config, slug string) map[string]string {
+	if cfg == nil || !cfg.HasShared() {
+		return nil
+	}
+	out := cfg.ExpandSharedEnv(slug)
+	if out == nil {
+		out = map[string]string{}
+	}
+	out["WRK3_SLUG"] = slug
+	out["WRK3_SLUG_UNDERSCORE"] = shared.SlugUnderscore(slug)
+	out["WRK3_SLUG_DASH"] = shared.SlugDash(slug)
+	out["WRK3_SHARED_PROJECT"] = cfg.SharedProject()
 	return out
 }
 

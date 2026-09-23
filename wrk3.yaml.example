@@ -44,6 +44,24 @@ ports:
 #     - name: api
 #       run: "curl -sf http://localhost:${APP_PORT}/healthz"
 #       timeout: 10s  # optional, default 10s (1s-120s)
+# Shared services (optional): long-lived infra (databases, brokers) that
+# runs once per repo in a fixed compose project while each worktree runs
+# only its app services. `up` ensures shared is up first (compose up
+# --wait on the shared scope, then per-slug isolation hooks); `down`
+# never touches shared — only `shared down` stops it (volumes kept).
+# shared:
+#   docker:  # or podman (must match runner.type)
+#     composeFiles: [docker-compose.yml]  # resolved against the repo root
+#     project: demo-shared                 # fixed compose project (sanitized)
+#     services:                            # started by `shared up` / ensured by `up`
+#       db: {ports: ["5432:5432"]}         # host publishes added by a generated overlay
+#       rabbitmq: {ports: ["5672:5672", "15672:15672"]}
+#   worktreeServices: [app]  # required when shared is set; per-worktree up starts only these (--no-deps)
+#   env:  # per-worktree overrides (template-expanded; reach containers via overlay + entry env)
+#     DB_HOST: host.docker.internal
+#     DB_NAME: myapp_${slug_underscore}  # ${slug}, ${slug_underscore}, ${slug_dash}, ${shared_project}
+#   setup:  # per-worktree, before entry.setup (e.g. create the branch database); empty strings skipped
+#     - docker exec ${shared_project}-db-1 createdb -U postgres ${DB_NAME} || true
 # Local gateway: http://<slug>.localhost:8080 -> app port (stdlib reverse
 # proxy, no extra dependencies). Opt-in: `up`/`add`/dashboard ensure the
 # gateway when enabled, runner env gains APP_URL (not written into .env),
