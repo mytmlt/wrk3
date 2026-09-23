@@ -7,7 +7,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/getsentry/sentry-go"
 )
@@ -341,6 +343,103 @@ func TestBeforeSend_DropsWhenDisabledOrEmpty(t *testing.T) {
 	event.Message = "something went wrong"
 	if got := beforeSend(event, nil); got != nil {
 		t.Error("beforeSend should drop when kill-switch is on")
+	}
+}
+
+// testNonReportableError implements NonReportable so tests can assert the
+// telemetry skip path without hitting Sentry.
+type testNonReportableError struct {
+	msg string
+}
+
+func (e *testNonReportableError) Error() string {
+	if e.msg == "" {
+		return "non-reportable"
+	}
+	return e.msg
+}
+
+func (e *testNonReportableError) NonReportable() bool { return true }
+
+// recordingTransport records captured events in memory (synchronously:
+// client.Transport.SendEvent is invoked directly by CaptureEvent).
+type recordingTransport struct {
+	mu     sync.Mutex
+	events []*sentry.Event
+}
+
+func (t *recordingTransport) Configure(sentry.ClientOptions) {}
+func (t *recordingTransport) SendEvent(event *sentry.Event) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.events = append(t.events, event)
+}
+func (t *recordingTransport) Flush(time.Duration) bool { return true }
+func (t *recordingTransport) Close()                   {}
+
+func (t *recordingTransport) count() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.events)
+}
+
+func TestNonReportable(t *testing.T) {
+	reported := &testNonReportableError{}
+	plain := errSentinel("boom")
+
+	if nonReportable(plain) {
+		t.Error("nonReportable(plain error) = true, want false")
+	}
+	if !nonReportable(reported) {
+		t.Error("nonReportable(NonReportable error) = false, want true")
+	}
+	if !nonReportable(fmt.Errorf("outer: %w", reported)) {
+		t.Error("nonReportable(wrapped once) = false, want true")
+	}
+	if !nonReportable(fmt.Errorf("mid: %w", fmt.Errorf("inner: %w", reported))) {
+		t.Error("nonReportable(deeply wrapped) = false, want true")
+	}
+}
+
+func TestReportIfEnabled_SkipsNonReportable(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("WRK3_CONFIG_HOME", dir)
+	t.Setenv("WRK3_NO_TELEMETRY", "")
+	oldDSN := DSN
+	DSN = "https://key@o0.ingest.sentry.io/project"
+	defer func() { DSN = oldDSN }()
+
+	if err := SavePrefs(true, true); err != nil {
+		t.Fatalf("SavePrefs: %v", err)
+	}
+
+	tr := &recordingTransport{}
+	if err := sentry.Init(sentry.ClientOptions{
+		Dsn:              DSN,
+		Transport:        tr,
+		TracesSampleRate: 0,
+		SendDefaultPII:   false,
+	}); err != nil {
+		t.Fatalf("sentry.Init: %v", err)
+	}
+	defer sentry.Flush(2 * time.Second)
+
+	// A plain (reportable) error must be captured, proving the transport
+	// and prefs are wired up.
+	ReportIfEnabled("remove", errSentinel("real bug"))
+	if got := tr.count(); got != 1 {
+		t.Fatalf("reportable error captured %d events, want 1", got)
+	}
+
+	ReportIfEnabled("remove", &testNonReportableError{})
+	if got := tr.count(); got != 1 {
+		t.Fatalf("non-reportable error captured %d events, want still 1 (skipped)", got)
+	}
+
+	// Non-reportable through the unwrap chain is skipped too.
+	ReportIfEnabled("remove", fmt.Errorf("wrapped: %w", &testNonReportableError{}))
+	if got := tr.count(); got != 1 {
+		t.Fatalf("wrapped non-reportable error captured %d events, want still 1 (skipped)", got)
 	}
 }
 

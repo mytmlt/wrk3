@@ -36,6 +36,22 @@ func CheckDisabled() bool {
 	}
 }
 
+// NonReportable marks an error as an expected, user-actionable failure
+// (e.g. refusing to remove a dirty worktree without --force). It is
+// still returned to the caller and shown to the user, but ReportIfEnabled
+// never captures it as a Sentry exception.
+type NonReportable interface {
+	// NonReportable reports whether this error opts out of telemetry.
+	NonReportable() bool
+}
+
+// nonReportable reports whether err (or anything it wraps, via the whole
+// unwrap chain) opts out of telemetry reporting.
+func nonReportable(err error) bool {
+	var nr NonReportable
+	return errors.As(err, &nr) && nr.NonReportable()
+}
+
 func DSNConfigured() bool {
 	return activeDSN() != ""
 }
@@ -47,8 +63,15 @@ func activeDSN() string {
 	return DSN
 }
 
+// ReportIfEnabled reports err to Sentry when telemetry is enabled, the
+// kill-switch is off, and a DSN is configured. Errors that implement
+// NonReportable are skipped: they are expected, user-actionable failures
+// (still surfaced to the user) rather than bugs.
 func ReportIfEnabled(command string, err error) {
 	if err == nil {
+		return
+	}
+	if nonReportable(err) {
 		return
 	}
 	if CheckDisabled() {

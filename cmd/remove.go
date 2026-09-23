@@ -11,6 +11,19 @@ import (
 	"github.com/mytmlt/wrk3/internal/ports"
 )
 
+// userError marks an expected, user-actionable failure (e.g. refusing to
+// remove a dirty worktree without --force). The message is shown to the
+// user, but telemetry never reports it as an exception.
+type userError struct {
+	err error
+}
+
+func (e *userError) Error() string { return e.err.Error() }
+func (e *userError) Unwrap() error { return e.err }
+func (e *userError) NonReportable() bool {
+	return true
+}
+
 var removeAll bool
 
 var removeForce bool
@@ -99,6 +112,21 @@ func removeOne(cmd *cobra.Command, r *resolved, recs []ports.WorktreeRecord, bra
 	// keeping plain remove working on otherwise clean worktrees.
 	if _, err := ports.StripManagedExt(filepath.Join(rec.AbsPath, ports.EnvFileName), rec.Ports, rec.Urls, r.cfg.URLSpecs()); err != nil {
 		warnf(cmd, "strip managed .env keys for %q: %v", rec.Branch, err)
+	}
+	// Pre-check worktree cleanliness before `git worktree remove` so a
+	// dirty-worktree refusal without --force is an expected,
+	// user-actionable error instead of a raw git exec.ExitError reaching
+	// telemetry. A GitStatus failure (stale dir, permission) falls through
+	// to Remove below so force-mode cleanup and genuine failures keep
+	// their existing behavior.
+	if !removeForce {
+		if status, statErr := r.src.GitStatus(rec.AbsPath); statErr == nil && !status.Clean {
+			err := &userError{err: fmt.Errorf(
+				"remove worktree %q: contains modified or untracked files\nhint: if due to uncommitted changes, use `wrk3 remove --force %s` to discard them",
+				rec.Branch, rec.Branch)}
+			r.logOpDone("remove", "remove "+branch, err)
+			return err
+		}
 	}
 	if err := r.src.Remove(r.cfg.RepoPath(), rec.AbsPath, removeForce); err != nil {
 		if !removeForce {

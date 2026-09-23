@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `wrk3 remove` now refuses a dirty worktree (without `--force`) before
+  invoking `git worktree remove`, so the expected "use --force" hint no
+  longer surfaces in Sentry as a raw `exec.ExitError`. The exit code,
+  hint wording, and the `--force` path (including the `rm -rf` fallback)
+  are unchanged; genuine git failures are still reported.
+
 - Dashboard remove (`x`) and force remove (`X`) now open a centered
   selectable confirm dialog (same shape for both, targets listed, force
   warning when destructive, cancel selected by default; `←`/`→` or
