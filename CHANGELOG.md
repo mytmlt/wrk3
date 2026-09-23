@@ -61,6 +61,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `add` now fails with a clear, actionable error when the target worktree
+  directory already exists on disk (e.g. a stale directory left over from a
+  prior failed operation) instead of surfacing git's cryptic "already
+  exists" failure. The error names the conflicting path and suggests
+  removing it (`rm -rf`) or running `git worktree prune`.
 - `urls` entries whose base port matches a `ports.base` value (e.g.
   `BASE_URL` on `http://localhost:8000` with `base: {app: 8000}`) now
   track that host allocation instead of taking their own port: every
