@@ -94,9 +94,11 @@ alongside — `wrk3 add` in another terminal shows up on the next poll or
   walking up from cwd (`-f/--file` to override), so it works from any
   subdirectory. `add` auto-registers the repo for `project ls` /
   `ls --project`.
-- **Shell completion** — `wrk3 completion <bash|zsh|fish|powershell>` plus
+- **Shell completion** — tab-completion for subcommands, flags, and
   dynamic branch/worktree/project completion for `add`/`up`/`down`/`reload`/`pull`/`logs`/`exec`/`env`/`remove`/`checkout`/`proxy open`/`ls --project`
-  (prefix-filtered; works alongside the `shell-init` wrapper).
+  (prefix-filtered) loads with the `shell-init` snippet below — no extra
+  setup (`wrk3 completion <bash|zsh|fish|powershell>` static files remain
+  for setups that prefer them).
 - **Worktree switching** — `wrk3 checkout <branch|slug>` cds to the
   worktree (via a `wrk3 shell-init` wrapper eval'd once in your rc file;
   prints the path without it, so `cd "$(wrk3 checkout x)"` always works).
@@ -138,7 +140,14 @@ wrk3 update --check
 wrk3 update
 ```
 
-Shell completions: `make completion` then source
+Shell integration (needed so `wrk3 checkout` cds your shell) also loads
+tab-completion — one line and TAB just works:
+
+```bash
+eval "$(wrk3 shell-init bash)"   # ~/.bashrc (zsh/fish/powershell too; zsh: after compinit)
+```
+
+Static completions instead: `make completion` then source
 `completions/wrk3.<bash|zsh|fish|powershell>`.
 
 ## Quickstart (5 minutes)

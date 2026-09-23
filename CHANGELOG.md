@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Out-of-the-box tab-completion: the `wrk3 shell-init`
+  (`bash`/`zsh`/`fish`/`powershell`) snippet now also loads completion
+  for subcommands, flags, branches, and worktree slugs, so no separate
+  `wrk3 completion` install step is needed (`wrk3 ch<TAB>` offers
+  `checkout`, `wrk3 checkout <TAB>` offers worktrees instead of files).
+  TAB plumbing (`__complete`, `completion`) bypasses the
+  cd-directive dance straight to the binary. zsh loads after `compinit`
+  (skipped silently otherwise); static `wrk3 completion <shell>` files
+  remain for setups that prefer them.
+
 ### Changed
 
 - Dashboard remove (`x`) and force remove (`X`) now open a centered

@@ -9,7 +9,16 @@ use `-f` from outside it.
 wrk3 -f ./wrk3.yaml status
 ```
 
-Shell completion (static commands/flags + dynamic branches/worktrees):
+Shell completion (static commands/flags + dynamic branches/worktrees)
+loads with the shell integration — no extra setup:
+
+```bash
+eval "$(wrk3 shell-init bash)"   # ~/.bashrc (zsh/fish/powershell too; zsh: after compinit)
+```
+
+so `wrk3 ch<TAB>` offers `checkout`, bare `wrk3 <TAB>` lists all
+commands, and `wrk3 checkout <TAB>` offers your worktrees (never files).
+Static files remain available for setups that prefer them:
 
 ```bash
 wrk3 completion bash > ~/.local/share/bash-completion/completions/wrk3
