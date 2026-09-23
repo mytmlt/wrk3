@@ -61,6 +61,17 @@ func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func
 	if err := ensureWorktreeEnv(r, rec, r.cfg.URLSpecs()); err != nil {
 		return err
 	}
+	if r.cfg.HasShared() {
+		// Shared project first (idempotent; concurrent ups
+		// serialize on the shared lock), then the per-slug
+		// overlay so the runner below picks it up.
+		if err := ensureSharedUp(ctx, r, logf); err != nil {
+			return fmt.Errorf("up %q shared services: %w", rec.Branch, err)
+		}
+		if err := writeWorktreeOverlay(r.cfg, rec.Slug); err != nil {
+			return fmt.Errorf("up %q: %w", rec.Branch, err)
+		}
+	}
 	rn, err := r.runnerFor(rec)
 	if err != nil {
 		return fmt.Errorf("up %q: %w", rec.Branch, err)
@@ -75,6 +86,20 @@ func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func
 		}
 	}
 	env := envForWorktree(r.cfg, rec)
+	if r.cfg.HasShared() {
+		// Per-worktree isolation hooks (e.g. create the branch
+		// database): expanded shared.setup runs before entry.setup
+		// so later steps can assume isolation exists.
+		for _, s := range r.cfg.ExpandSharedSetup(rec.Slug) {
+			if s == "" {
+				continue
+			}
+			logf("[%s] shared setup: %s", rec.Slug, s)
+			if err := rn.Exec(ctx, rec.AbsPath, shellCmd(s), env); err != nil {
+				return fmt.Errorf("up %q shared setup %q: %w", rec.Branch, s, err)
+			}
+		}
+	}
 	for _, s := range r.cfg.Entry.Setup {
 		if s == "" {
 			continue

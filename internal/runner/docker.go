@@ -113,9 +113,29 @@ func buildComposeArgs(project string, files []string, sub ...string) []string {
 }
 
 // composeArgs prefixes sub with the runner's project name and compose
-// files.
+// files (base files plus existing extra overlay files).
 func (r *DockerRunner) composeArgs(sub ...string) []string {
-	return buildComposeArgs(r.ProjectName(), r.opts.ComposeFiles, sub...)
+	return buildComposeArgs(r.ProjectName(), allComposeFiles(r.opts), sub...)
+}
+
+// allComposeFiles returns ComposeFiles with ExtraFiles appended (copied,
+// so the caller's backing arrays are never mutated).
+func allComposeFiles(o Options) []string {
+	out := append([]string(nil), o.ComposeFiles...)
+	return append(out, o.ExtraFiles...)
+}
+
+// upArgs builds the `up -d --build [--wait] [--no-deps]
+// [services...]` tail for the runner's scoping options.
+func upArgs(o Options) []string {
+	sub := []string{"up", "-d", "--build"}
+	if o.Wait {
+		sub = append(sub, "--wait")
+	}
+	if o.NoDeps {
+		sub = append(sub, "--no-deps")
+	}
+	return append(sub, o.Services...)
 }
 
 // buildEnv merges base (typically os.Environ()) with COMPOSE_PROJECT_NAME
@@ -192,7 +212,7 @@ func (r *DockerRunner) Up(ctx context.Context, worktreePath string, env map[stri
 	if err := CheckComposeFiles(worktreePath, r.opts.ComposeFiles); err != nil {
 		return fmt.Errorf("docker up: %w", err)
 	}
-	_, err := composeLive(ctx, r.timeout(), "docker", r.ProjectName(), r.opts.ComposeFiles, worktreePath, r.environ(env), "up", "-d", "--build")
+	_, err := composeLive(ctx, r.timeout(), "docker", r.ProjectName(), allComposeFiles(r.opts), worktreePath, r.environ(env), upArgs(r.opts)...)
 	return err
 }
 

@@ -87,7 +87,9 @@ wrk3 exec feature-a -- <cmd...>     # run inside worktree env (cwd=worktree)
 wrk3 env feature-a                 # open the worktree .env in $VISUAL/$EDITOR (ensured first; managed ports overwritten)
 wrk3 env feature-a --print         # print the worktree .env to stdout instead
 wrk3 checkout feature-a             # cd to the worktree (needs shell-init wrapper; else prints path)
-wrk3 down feature-a | wrk3 down     # bare = all including main
+wrk3 down feature-a | wrk3 down     # bare = all including main (shared services untouched; use `shared down` to stop them)
+wrk3 shared up | wrk3 shared status | wrk3 shared logs [--follow]  # manage shared services (see below)
+wrk3 shared down                    # stop shared services (volumes preserved)
 wrk3 remove feature-a feature-b | wrk3 remove --all   # compose down -v + worktree remove + state cleanup (never touches main)
 wrk3 remove --force feature-a | wrk3 remove --all --force  # same with git worktree remove --force (falls back to rm -rf); for dirty worktrees with modified/untracked files
 wrk3 dashboard                       # interactive TUI: worktrees + branches + ports, up/down/add/remove (shorthand: wrk3 db)
@@ -265,17 +267,17 @@ clipboard (`pbcopy` on macOS, `wl-copy`/`xclip`/`xsel` on Linux, `clip` on
 Windows), `e` edits the cursor worktree `.env` in your editor
 (`$VISUAL`, then `$EDITOR`, then nvim/vim/nano/vi; the TUI suspends
 fullscreen while the editor runs and resumes on quit, the `.env` is
-ensured first like `wrk3 env`), `x` removes (asks `y/n`, refuses
-main like `remove`), `X` force-removes like `remove --force` (asks
-`y/n`, for dirty worktrees with modified/untracked files), `r` refreshes
+ensured first like `wrk3 env`), `x` removes (confirm dialog, refuses
+main like `remove`), `X` force-removes like `remove --force` (confirm
+dialog, for dirty worktrees with modified/untracked files), `r` refreshes
 state, `R` fetches the remote
 (`--remote`/`--mine`/`--author`/`--myprs` filter the branch list, `m`
 toggles mine, `P` toggles myprs), `1`/`2`/`3` or `←`/`→` switch panes
 (worktrees/branches/log; the DETAILS preview follows the worktree
 cursor/selection and is never focused), `?` opens the lazydocker-style
 `Menu` popup listing every action (`j/k`/`↑`/`↓` move, `enter` runs the
-highlighted row, `esc` closes; `x`/`X` rows land in the usual `y/n`
-confirm), `q` quits. The unfiltered branch pane unions remote refs
+highlighted row, `esc` closes; `x`/`X` rows land in the confirm
+dialog), `q` quits. The unfiltered branch pane unions remote refs
 with local-only branches (filtered views stay remote-only); like
 `add <branch>`, `a` creates the checkout from either ref, or adopts the
 on-disk worktree when one already exists. The branch pane sorts your

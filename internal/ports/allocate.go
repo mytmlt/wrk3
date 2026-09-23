@@ -222,6 +222,22 @@ func (a Allocator) FindFreeAllocation(taken map[int]struct{}, isFree func(int) b
 	return out, nil
 }
 
+// HostPortsByBase inverts hostPorts (an allocation from this Allocator)
+// into base value -> allocated port. URL specs whose base port matches a
+// host base value track that group's port instead of allocating their
+// own (see AllocateURLs): the URL always names the port its service
+// actually listens on.
+func (a Allocator) HostPortsByBase(hostPorts map[string]int) map[int]int {
+	base := a.baseOrDefault()
+	out := make(map[int]int, len(base))
+	for name, b := range base {
+		if p, ok := hostPorts[name]; ok {
+			out[b] = p
+		}
+	}
+	return out
+}
+
 // TakenFromRecords returns the union of all host port values in recs,
 // including stale rows (dir missing, still in state) which intentionally
 // hold their ports until remove --force.
@@ -266,40 +282,115 @@ func AllocationsCollide(a, b map[string]int) bool {
 	return false
 }
 
-// AllocateURLs scans each URLSpec range from its base port upward and
-// returns the lowest free port per var. taken holds already-used ports
-// (host allocations + previously allocated URL ports); isFree probes OS
-// availability. Results are added to used so cross-collisions within one
-// call are avoided. Exhaustion errors name the var and its range.
-func AllocateURLs(specs []URLSpec, taken map[int]struct{}, isFree func(int) bool) (map[string]int, error) {
+// AllocateURLs resolves each URLSpec to a port for one worktree and
+// returns var -> port. A spec whose base port matches a host base value
+// tracks that group's allocated port (via tracked, see HostPortsByBase),
+// so the URL always names the port its service actually listens on —
+// e.g. BASE_URL on http://localhost:8000 follows the `app` allocation
+// instead of taking its own port. The tracked port must sit inside every
+// group member's range, else allocation fails naming the var. Specs with
+// no tracked base (standalone URLs) allocate the lowest free port in
+// their range, like host ports: specs sharing one base port are aliases
+// for a single URL and receive the same port, so they stay in lockstep
+// across worktrees. taken holds already-used ports (host allocations +
+// previously allocated URL ports); isFree probes OS availability.
+// Results are added to used so cross-collisions between distinct groups
+// in one call are avoided. Exhaustion errors name the var (or alias
+// group) and its range.
+func AllocateURLs(specs []URLSpec, tracked map[int]int, taken map[int]struct{}, isFree func(int) bool) (map[string]int, error) {
 	if len(specs) == 0 {
 		return nil, nil
 	}
+	// Group specs by shared base port: one URL port per group.
+	byBase := make(map[int][]int, len(specs))
+	for i, spec := range specs {
+		bp := spec.BasePort()
+		byBase[bp] = append(byBase[bp], i)
+	}
+	type group struct {
+		members []URLSpec // sorted by var
+		base    int       // shared base port
+		ceil    int       // smallest member max
+	}
+	groups := make([]group, 0, len(byBase))
+	for b, idxs := range byBase {
+		if b <= 0 {
+			first := specs[idxs[0]]
+			return nil, fmt.Errorf("no free port for %q in [%d,%d]: no explicit port in base URL", first.Var, first.Range[0], first.Range[1])
+		}
+		ceil := -1
+		members := make([]URLSpec, 0, len(idxs))
+		for _, i := range idxs {
+			members = append(members, specs[i])
+			if ceil < 0 || specs[i].Range[1] < ceil {
+				ceil = specs[i].Range[1]
+			}
+		}
+		sort.Slice(members, func(a, c int) bool { return members[a].Var < members[c].Var })
+		groups = append(groups, group{members: members, base: b, ceil: ceil})
+	}
+	sort.Slice(groups, func(i, j int) bool {
+		if groups[i].ceil != groups[j].ceil {
+			return groups[i].ceil < groups[j].ceil
+		}
+		if groups[i].base != groups[j].base {
+			return groups[i].base < groups[j].base
+		}
+		return groups[i].members[0].Var < groups[j].members[0].Var
+	})
 	used := make(map[int]struct{}, len(taken))
 	for p := range taken {
 		used[p] = struct{}{}
 	}
 	out := make(map[string]int, len(specs))
-	for _, spec := range specs {
-		bp := spec.BasePort()
-		if bp <= 0 {
-			return nil, fmt.Errorf("no free port for %q in [%d,%d]: no explicit port in base URL", spec.Var, spec.Range[0], spec.Range[1])
+	for _, g := range groups {
+		if tp, ok := tracked[g.base]; ok {
+			for _, m := range g.members {
+				if tp < m.Range[0] || tp > m.Range[1] {
+					return nil, fmt.Errorf("no free port for %q in [%d,%d]: tracked host port %d sits outside its range", m.Var, m.Range[0], m.Range[1], tp)
+				}
+			}
+			for _, m := range g.members {
+				out[m.Var] = tp
+			}
+			used[tp] = struct{}{}
+			continue
 		}
 		found := -1
-		for p := bp; p <= spec.Range[1]; p++ {
+		for p := g.base; p <= g.ceil; p++ {
 			if _, ok := used[p]; ok {
 				continue
 			}
 			if isFree != nil && !isFree(p) {
 				continue
 			}
+			okAll := true
+			for _, m := range g.members {
+				if p < m.Range[0] || p > m.Range[1] {
+					okAll = false
+					break
+				}
+			}
+			if !okAll {
+				continue
+			}
 			found = p
 			break
 		}
 		if found < 0 {
-			return nil, fmt.Errorf("no free port for %q in [%d,%d]", spec.Var, spec.Range[0], spec.Range[1])
+			if len(g.members) == 1 {
+				m := g.members[0]
+				return nil, fmt.Errorf("no free port for %q in [%d,%d]", m.Var, m.Range[0], m.Range[1])
+			}
+			vars := make([]string, 0, len(g.members))
+			for _, m := range g.members {
+				vars = append(vars, m.Var)
+			}
+			return nil, fmt.Errorf("no free port for %q in [%d,%d]", strings.Join(vars, ","), g.base, g.ceil)
 		}
-		out[spec.Var] = found
+		for _, m := range g.members {
+			out[m.Var] = found
+		}
 		used[found] = struct{}{}
 	}
 	return out, nil

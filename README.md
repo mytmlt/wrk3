@@ -58,7 +58,7 @@ stacked otherwise) with `[n]` numbers and `x of y` counts on every list:
 | `o` | open the cursor worktree `URL` in a browser (full URL is logged too) |
 | `O` | copy the cursor worktree `URL` to the OS clipboard (`pbcopy` on macOS, `wl-copy`/`xclip`/`xsel` on Linux, `clip` on Windows; the URL is logged too) |
 | `e` | edit the cursor worktree `.env` in `$VISUAL`/`$EDITOR` (TUI suspends fullscreen, resumes on quit) |
-| `x` / `X` | `remove` / `remove --force` selected worktrees (asks `y/n`, never touches main) |
+| `x` / `X` | `remove` / `remove --force` selected worktrees (confirm dialog, never touches main) |
 | `r` / `R` | refresh state / fetch remote |
 | `m` / `P` | toggle `mine` / `myprs` branch filters |
 | `?` | `Menu` popup with every action (`j/k` move, `enter` runs, `esc` closes) |
@@ -234,7 +234,11 @@ for where the `docker` / `podman` / `portainer` / `nomad` / bare-machine runners
     Bare `up`/`down` apply to all worktrees including the implicit main
     checkout (repo root, reserved port index 0 — the `ports.base` allocation,
     managed `.env` section ensured on run);
-    pass names to filter.
+    pass names to filter. With `shared` configured, `up` first ensures
+    the shared project (`compose up -d --wait` on the shared scope, then
+    per-slug `shared.setup` isolation hooks), starts only
+    `shared.worktreeServices` (`--no-deps`), and `down` never touches
+    shared (only `wrk3 shared down` stops it).
 3. `wrk3 status` → reconciles the state file against `git worktree list`
     (on-disk worktrees missing from state are adopted, ports recovered
     from `.env` or freshly allocated), probes live runner status
@@ -271,7 +275,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution process and commit style
 [docs/INSTALL.md](docs/INSTALL.md) / [docs/CONFIGURATION.md](docs/CONFIGURATION.md) /
 [docs/USAGE.md](docs/USAGE.md) for setup and usage. [ROADMAP.md](ROADMAP.md)
 tracks the any-codebase project goal and runner coverage. To add a new `Source` or
-`Runner` backend, see [docs/PLUGINS.md](docs/PLUGINS.md).
+`Runner` backend, see [docs/PLUGINS.md](docs/PLUGINS.md). Agent onboarding
+lives in [skills/](skills/) (`wrk3-setup`: compatibility triage → author +
+validate `wrk3.yaml`) — behavior changes must update docs + skills +
+changelog together (see `AGENTS.md`).
 
 ## License
 

@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Dashboard remove (`x`) and force remove (`X`) now open a centered
+  selectable confirm dialog (same shape for both, targets listed, force
+  warning when destructive, cancel selected by default; `←`/`→` or
+  `j/k` move, `enter` confirms, `y` deletes, `n`/`esc` cancels) instead
+  of the status-line `y/n` prompt. Removal execution and safety guards
+  are unchanged.
+### Added
+
+- Vendored agent skills (`skills/` is now canonical, superseding the
+  standalone `mytmlt/wrk3-skills` repo): `skills/wrk3-setup/` rewritten for
+  current `main` — range ports (`base` + `ranges`, no `step`), aliases,
+  `urls` tracking, `podman` parity, optional `projectPrefix`, `entry.reload`,
+  managed `.env` keys (`<NAME>_PORT` + `urls` vars; `APP_URL` runner-env only;
+  `source.git.copy` rejects `.env`), `proxy` privileged-port guard,
+  display-only `health.checks`, and opt-in `shared:` services. `AGENTS.md`
+  now requires docs + skills + changelog in the same PR on every behavior
+  change (skill `wrk3-version` + `skills/README.md` version table kept in sync).
+
+### Added
+
+- Shared services (`shared:` block in `wrk3.yaml`): long-lived infra
+  (databases, brokers) runs once per repo in a fixed compose project
+  while each worktree runs only `shared.worktreeServices` (`--no-deps`).
+  `up` ensures shared first (`compose up -d --wait` on the shared scope,
+  TCP wait on published host ports, then template-expanded per-slug
+  `shared.setup` hooks and `shared.env` overrides via a generated
+  overlay — no base compose file edits). `down`/`remove` never touch
+  the shared project; only `wrk3 shared down` stops it (volumes kept).
+  Manage with `wrk3 shared up|down|status|logs`; `status` appends a
+  `shared:` summary line. See `docs/CONFIGURATION.md#shared-services`.
+
 ### Added
 
 - OpenCodeReview bot (`.github/workflows/open-code-review.yml`, pinned
@@ -33,6 +66,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   prior failed operation) instead of surfacing git's cryptic "already
   exists" failure. The error names the conflicting path and suggests
   removing it (`rm -rf`) or running `git worktree prune`.
+- `urls` entries whose base port matches a `ports.base` value (e.g.
+  `BASE_URL` on `http://localhost:8000` with `base: {app: 8000}`) now
+  track that host allocation instead of taking their own port: every
+  worktree's `BASE_URL` names the port its service actually listens on
+  (`APP_PORT`), instead of diverging to the next free port (`8002` vs
+  `8001`). Entries sharing one base port stay equal to each other, and
+  entries with no matching host base still allocate their own lowest
+  free port. Existing diverged records migrate on next read (with a
+  warning): stored URL values are rewritten to the tracked host port
+  and the worktree `.env` is ensured. `.env` recovery enforces tracking
+  (diverged values warn and are rewritten to the tracked port), and host
+  allocation skips ports held by existing `urls` vars (and the main
+  checkout's base-URL ports), so a new worktree's `<NAME>_PORT` can no
+  longer collide with another worktree's managed URL.
 
 - `OpenCodeReview` workflow shipped with duplicate `concurrency` and
   `timeout-minutes` keys, which made the workflow file invalid — GitHub
@@ -52,6 +99,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Error reports now replace Go-quoted names (branch, slug, worktree) with
   `"<name>"` so leaked identifiers cannot appear in remote payloads.
   Local command and dashboard error text is unchanged.
+
+- Error reports keep cobra's `unknown command "x" for "wrk3"` message intact
+  instead of scrubbing both quoted strings to `"<name>"`, so the unknown
+  command name (user-typed, not a branch/slug) stays readable when debugging.
+  All other quoted-name scrubbing is unchanged.
 
 - Managed port variables (`APP_PORT` and other `<NAME>_PORT` keys) are
   always overwritten to the worktree allocation on ensure, so a tracked

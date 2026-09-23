@@ -1,15 +1,12 @@
+# Generic compose-stack template for wrk3.
+# Copy to wrk3.<name>.local.yaml in the repo root, fill in commands from the
+# target repo's own Makefile/README, then:
+#   wrk3 -f wrk3.<name>.local.yaml status
 project:
   worktreeBase: .worktrees
 source:
   type: git
-  git:
-    remote: origin
-    fetchPrune: true
-    # Optional: repo-relative files/dirs (globs allowed, ** supported)
-    # copied from the repo root into each new worktree on `add`.
-    # Missing sources skip with a warning; existing files are never
-    # overwritten. Example:
-    # copy: [".env.local", "certs/", "storage/*.sqlite"]
+  git: {remote: origin, fetchPrune: true}
 runner:
   type: docker
   docker:
@@ -33,41 +30,41 @@ ports:
   base: {app: 8000}
   ranges:
     app: [8000, 8099]
-# Health checks (optional, display-only): each `run` executes via `sh -c`
-# with cwd=worktree and env=allocated ports (like entry.*). A running
-# worktree shows `running (healthy)` when all pass, `running (degraded 1/2)`
-# when some pass, `running (unhealthy)` when none pass. Compose containers
-# with a `healthcheck:` are probed automatically with no config. Failures
-# never fail `up` and never persist to the state file.
+# Optional config-driven URLs: each needs var + base URL (explicit port) + range.
+# An entry whose base port matches a ports.base value tracks that host
+# allocation instead of taking its own port.
+# urls:
+#   - {var: BASE_URL, base: "http://localhost:8000", range: [8000, 8099]}
+# Optional health checks (display-only): each `run` executes via `sh -c`
+# with cwd=worktree and env=allocated ports (like entry.*). Failures never
+# fail `up` and never persist to the state file.
 # health:
 #   checks:
 #     - name: api
 #       run: "curl -sf http://localhost:${APP_PORT}/healthz"
 #       timeout: 10s  # optional, default 10s (1s-120s)
-# Shared services (optional): long-lived infra (databases, brokers) that
-# runs once per repo in a fixed compose project while each worktree runs
-# only its app services. `up` ensures shared is up first (compose up
-# --wait on the shared scope, then per-slug isolation hooks); `down`
-# never touches shared — only `shared down` stops it (volumes kept).
+# Optional shared services: long-lived infra (databases, brokers) that runs
+# once per repo in a fixed compose project while each worktree runs only
+# its app services. `up` ensures shared first; `down`/`remove` never touch
+# shared — only `shared down` stops it (volumes kept).
 # shared:
 #   docker:  # or podman (must match runner.type)
 #     composeFiles: [docker-compose.yml]  # resolved against the repo root
 #     project: demo-shared                 # fixed compose project (sanitized)
 #     services:                            # started by `shared up` / ensured by `up`
 #       db: {ports: ["5432:5432"]}         # host publishes added by a generated overlay
-#       rabbitmq: {ports: ["5672:5672", "15672:15672"]}
 #   worktreeServices: [app]  # required when shared is set; per-worktree up starts only these (--no-deps)
 #   env:  # per-worktree overrides (template-expanded; reach containers via overlay + entry env)
 #     DB_HOST: host.docker.internal
 #     DB_NAME: myapp_${slug_underscore}  # ${slug}, ${slug_underscore}, ${slug_dash}, ${shared_project}
 #   setup:  # per-worktree, before entry.setup (e.g. create the branch database); empty strings skipped
 #     - docker exec ${shared_project}-db-1 createdb -U postgres ${DB_NAME} || true
-# Local gateway: http://<slug>.localhost:8080 -> app port (stdlib reverse
-# proxy, no extra dependencies). Opt-in: `up`/`add`/dashboard ensure the
-# gateway when enabled, runner env gains APP_URL (not written into .env),
-# and `status` grows a URL column (the dashboard always shows one). Chrome/Firefox/Edge resolve .localhost with
-# no setup; Safari/curl need `wrk3 proxy hosts-sync` (sudo for /etc/hosts).
-proxy:
-  enabled: false
-  domain: localhost
-  addr: 127.0.0.1:8080
+# Optional local gateway: http://<slug>.localhost:8080 -> app port (stdlib
+# reverse proxy, no extra dependencies). Opt-in: `up`/`add`/dashboard ensure
+# the gateway when enabled, runner env gains APP_URL (not written into .env).
+# Chrome/Firefox/Edge resolve .localhost with no setup; Safari/curl need
+# `wrk3 proxy hosts-sync` (sudo for /etc/hosts). Addr ports < 1024 are rejected.
+# proxy:
+#   enabled: false
+#   domain: localhost
+#   addr: 127.0.0.1:8080

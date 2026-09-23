@@ -10,12 +10,13 @@ import (
 )
 
 var (
-	hexHashRe = regexp.MustCompile(`\b[0-9a-f]{7,40}\b`)
-	uuidRe    = regexp.MustCompile(`\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`)
-	emailRe   = regexp.MustCompile(`\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b`)
-	ipv4Re    = regexp.MustCompile(`\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`)
-	absPathRe = regexp.MustCompile(`(?:^|\s)(/[^\s:"]*(?:/[^\s:"]+)+)`)
-	quotedRe  = regexp.MustCompile(`"[^"\\]*(?:\\.[^"\\]*)*"`)
+	hexHashRe         = regexp.MustCompile(`\b[0-9a-f]{7,40}\b`)
+	uuidRe            = regexp.MustCompile(`\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`)
+	emailRe           = regexp.MustCompile(`\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b`)
+	ipv4Re            = regexp.MustCompile(`\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`)
+	absPathRe         = regexp.MustCompile(`(?:^|\s)(/[^\s:"]*(?:/[^\s:"]+)+)`)
+	quotedRe          = regexp.MustCompile(`"[^"\\]*(?:\\.[^"\\]*)*"`)
+	cobraUnknownCmdRe = regexp.MustCompile(`^unknown command ".*" for ".*"$`)
 )
 
 func Scrub(err error) string {
@@ -35,7 +36,9 @@ func Scrub(err error) string {
 
 func scrubString(s string) string {
 	s = scrubHomeDir(s)
-	s = quotedRe.ReplaceAllString(s, `"<name>"`)
+	if !cobraUnknownCmdRe.MatchString(strings.TrimSpace(s)) {
+		s = quotedRe.ReplaceAllString(s, `"<name>"`)
+	}
 	s = scrubAbsPaths(s)
 	s = uuidRe.ReplaceAllString(s, "<uuid>")
 	s = hexHashRe.ReplaceAllString(s, "<hash>")
