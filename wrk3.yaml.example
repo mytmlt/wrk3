@@ -18,11 +18,16 @@ runner:
     # slug-only (e.g. `projectPrefix: ""`). Slug-only names can collide
     # across repos sharing a daemon.
     projectPrefix: demo
-  # Alternative backend (set runner.type: podman and use `podman compose`
+  # Alternative compose backend (set runner.type: podman and use `podman compose`
   # in entry.*):
   # podman:
   #   composeFiles: [docker-compose.yml]
   #   projectPrefix: demo
+  # Local runner for CLI-only repos (no compose stack needed):
+  #   type: local
+  #   local:  # no required sub-fields
+  #     # Ports are optional for local runner; omit `ports:` entirely
+  #     # to skip port allocation and .env writing.
 entry:
   setup: ["docker compose up --wait --build"]
   run: "docker compose logs -f"

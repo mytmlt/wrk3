@@ -71,7 +71,7 @@ func AppURL(slug, domain string, gatewayPort int) string {
 // inherited verbatim from the seed .env.
 func ManagedValues(ports map[string]int) (map[string]string, error) {
 	if len(ports) == 0 {
-		return nil, fmt.Errorf("render .env: no ports allocated")
+		return map[string]string{}, nil
 	}
 	out := make(map[string]string, len(ports))
 	for name, v := range ports {
@@ -369,14 +369,19 @@ func checkPorts(ports map[string]int) error {
 // missing managed keys appended under managedHeader. Unmanaged lines are
 // never modified or deleted. It returns the keys appended (rewrites of
 // existing managed keys are not listed).
+// When ports is empty this is a no-op (local runner with no ports).
 func Ensure(worktreePath string, ports map[string]int) (added []string, err error) {
 	return EnsureExt(worktreePath, ports, nil, nil)
 }
 
 // EnsureExt is like Ensure but also handles URL vars from urlPorts/specs.
+// When ports is empty this is a no-op.
 func EnsureExt(worktreePath string, ports map[string]int, urlPorts map[string]int, specs []URLSpec) (added []string, err error) {
 	if worktreePath == "" {
 		return nil, fmt.Errorf("write .env: empty worktree path")
+	}
+	if len(ports) == 0 {
+		return nil, nil
 	}
 	if err := checkPorts(ports); err != nil {
 		return nil, err
@@ -462,9 +467,13 @@ func EnsureInherited(worktreePath, seedPath string, ports map[string]int) (added
 }
 
 // EnsureInheritedExt is like EnsureInherited but also handles URL vars.
+// When ports is empty this is a no-op.
 func EnsureInheritedExt(worktreePath, seedPath string, ports map[string]int, urlPorts map[string]int, specs []URLSpec) (added []string, err error) {
 	if worktreePath == "" {
 		return nil, fmt.Errorf("write .env: empty worktree path")
+	}
+	if len(ports) == 0 {
+		return nil, nil
 	}
 	if err := checkPorts(ports); err != nil {
 		return nil, err
@@ -531,6 +540,9 @@ func EnsureInheritedExt(worktreePath, seedPath string, ports map[string]int, url
 // holds no valid TCP port — callers then fall back to a fresh allocation
 // instead of adopting a partial/diverged set.
 func ReadPorts(worktreePath string, base map[string]int) (recovered map[string]int, ok bool) {
+	if len(base) == 0 {
+		return map[string]int{}, true
+	}
 	raw, err := os.ReadFile(filepath.Join(worktreePath, EnvFileName))
 	if err != nil {
 		return nil, false
@@ -575,7 +587,11 @@ func StripManaged(path string, ports map[string]int) (bool, error) {
 }
 
 // StripManagedExt is like StripManaged but also strips managed URL vars.
+// When ports is empty this is a no-op.
 func StripManagedExt(path string, ports map[string]int, urlPorts map[string]int, specs []URLSpec) (bool, error) {
+	if len(ports) == 0 {
+		return false, nil
+	}
 	desired, err := desiredEnv(ports, urlPorts, specs)
 	if err != nil {
 		return false, err

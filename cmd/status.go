@@ -13,6 +13,7 @@ import (
 
 	"github.com/mytmlt/wrk3/internal/config"
 	"github.com/mytmlt/wrk3/internal/ports"
+	"github.com/mytmlt/wrk3/internal/runner"
 )
 
 var statusCmd = &cobra.Command{
@@ -95,6 +96,9 @@ func liveStatusWithOrigin(cfg *config.Config, stateP, origin string, rec ports.W
 	raw, err := newRunner(cfg, rec.Slug)
 	if err != nil {
 		return "", err
+	}
+	if lr, ok := raw.(*runner.LocalRunner); ok {
+		lr.StatePath = stateP
 	}
 	rn := &loggedRunner{inner: raw, stateP: stateP, origin: origin, branch: rec.Branch, slug: rec.Slug, project: rec.ComposeProject}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

@@ -85,11 +85,15 @@ type PodmanConfig struct {
 	ProjectPrefix string   `yaml:"projectPrefix"`
 }
 
+// LocalConfig holds local runner options (no required sub-fields).
+type LocalConfig struct{}
+
 // RunnerConfig selects the Runner backend.
 type RunnerConfig struct {
 	Type   string       `yaml:"type"`
 	Docker DockerConfig `yaml:"docker"`
 	Podman PodmanConfig `yaml:"podman"`
+	Local  LocalConfig  `yaml:"local"`
 }
 
 // EntryConfig holds host entry commands run inside each worktree.
@@ -245,7 +249,8 @@ func proxyURLFor(domain, addr, slug string) string {
 }
 
 // ComposeOptions builds runner.Options for slug from the selected
-// compose backend (docker or podman).
+// compose backend (docker or podman). For local runner it returns
+// slug-only Options (no compose files, no prefix).
 func (c *Config) ComposeOptions(slug string) runner.Options {
 	if c.Runner.Type == "podman" {
 		return runner.Options{
@@ -253,6 +258,9 @@ func (c *Config) ComposeOptions(slug string) runner.Options {
 			ProjectPrefix: c.Runner.Podman.ProjectPrefix,
 			Slug:          slug,
 		}
+	}
+	if c.Runner.Type == "local" {
+		return runner.Options{Slug: slug}
 	}
 	return runner.Options{
 		ComposeFiles:  append([]string(nil), c.Runner.Docker.ComposeFiles...),
@@ -365,8 +373,6 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("runner.docker.composeFiles[%d] must not be empty", i)
 			}
 		}
-		// ProjectPrefix is optional: empty/missing/whitespace-only means
-		// slug-only compose project names (see runner.Options.ProjectName).
 		c.Runner.Docker.ProjectPrefix = strings.TrimSpace(c.Runner.Docker.ProjectPrefix)
 	}
 	if c.Runner.Type == "podman" {
@@ -378,27 +384,33 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("runner.podman.composeFiles[%d] must not be empty", i)
 			}
 		}
-		// ProjectPrefix is optional: empty/missing/whitespace-only means
-		// slug-only compose project names (see runner.Options.ProjectName).
 		c.Runner.Podman.ProjectPrefix = strings.TrimSpace(c.Runner.Podman.ProjectPrefix)
 	}
 	if strings.TrimSpace(c.Entry.Run) == "" {
 		return fmt.Errorf("entry.run must not be empty")
 	}
-	if strings.TrimSpace(c.Entry.Stop) == "" {
+	isLocal := c.Runner.Type == "local"
+	if !isLocal && strings.TrimSpace(c.Entry.Stop) == "" {
 		return fmt.Errorf("entry.stop must not be empty")
 	}
-	if c.Ports.Base == nil {
-		c.Ports.Base = ports.DefaultBase()
-	}
-	if c.Ports.Ranges == nil {
-		c.Ports.Ranges = ports.DefaultRanges()
+	if isLocal && c.Ports.Base == nil && c.Ports.Ranges == nil {
+		c.Ports.Base = map[string]int{}
+		c.Ports.Ranges = map[string][2]int{}
+	} else {
+		if c.Ports.Base == nil {
+			c.Ports.Base = ports.DefaultBase()
+		}
+		if c.Ports.Ranges == nil {
+			c.Ports.Ranges = ports.DefaultRanges()
+		}
 	}
 	if c.Ports.Step != nil {
 		return fmt.Errorf("ports.step was removed: delete `ports.step` and add per-service `ports.ranges` (e.g. ranges: {app: [8000, 8099]}); ports now increment by 1 with gap reuse")
 	}
-	if err := (ports.Allocator{Base: c.Ports.Base, Ranges: c.Ports.Ranges}).Validate(); err != nil {
-		return fmt.Errorf("ports: %w", err)
+	if len(c.Ports.Base) > 0 || len(c.Ports.Ranges) > 0 {
+		if err := (ports.Allocator{Base: c.Ports.Base, Ranges: c.Ports.Ranges}).Validate(); err != nil {
+			return fmt.Errorf("ports: %w", err)
+		}
 	}
 	if err := validateGitCopy(c.Source.Git.Copy); err != nil {
 		return err

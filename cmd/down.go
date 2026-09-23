@@ -106,6 +106,10 @@ func downOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf fu
 			logf("[%s] warning: stop %q: %v", rec.Slug, s, err)
 		}
 	}
+	if r.cfg.Runner.Type == "local" {
+		logf("[%s] down", rec.Slug)
+		return nil
+	}
 	logf("[%s] compose down (%s)", rec.Slug, rec.ComposeProject)
 	if err := rn.Down(ctx, rec.AbsPath, env); err != nil {
 		return fmt.Errorf("down %q: %w", rec.Branch, err)

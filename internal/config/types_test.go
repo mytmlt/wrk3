@@ -465,3 +465,151 @@ urls:
 		t.Errorf("BASE_URL base port = %d, want 443", bports["BASE_URL"])
 	}
 }
+
+func TestValidateLocalRunner(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    string
+		wantErr string
+	}{
+		{
+			"happy local no ports",
+			`project:
+  worktreeBase: .worktrees
+source:
+  type: git
+runner:
+  type: local
+entry:
+  run: "go build ./..."
+  stop: "echo stop"
+`,
+			"",
+		},
+		{
+			"happy local no stop",
+			`project:
+  worktreeBase: .worktrees
+source:
+  type: git
+runner:
+  type: local
+entry:
+  run: "go build ./..."
+`,
+			"",
+		},
+		{
+			"local with ports",
+			`project:
+  worktreeBase: .worktrees
+source:
+  type: git
+runner:
+  type: local
+entry:
+  run: "echo run"
+ports:
+  base: {app: 8000}
+  ranges:
+    app: [8000, 8099]
+`,
+			"",
+		},
+		{
+			"local empty run",
+			`project:
+  worktreeBase: .worktrees
+source:
+  type: git
+runner:
+  type: local
+entry:
+  run: ""
+`,
+			"entry.run",
+		},
+		{
+			"local bad ports section",
+			`project:
+  worktreeBase: .worktrees
+source:
+  type: git
+runner:
+  type: local
+entry:
+  run: "echo run"
+ports:
+  base: {app: 99999}
+  ranges:
+    app: [8000, 8099]
+`,
+			"outside its range",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cfg, err := Load(writeConfig(t, c.body))
+			if c.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Load = %v, want nil", err)
+				}
+				if c.name == "happy local no ports" {
+					if len(cfg.Ports.Base) != 0 {
+						t.Errorf("ports base = %v, want empty", cfg.Ports.Base)
+					}
+					if len(cfg.Ports.Ranges) != 0 {
+						t.Errorf("ports ranges = %v, want empty", cfg.Ports.Ranges)
+					}
+					if cfg.Runner.Type != "local" {
+						t.Errorf("runner.type = %q, want local", cfg.Runner.Type)
+					}
+				}
+				if c.name == "happy local no stop" {
+					if cfg.Entry.Stop != "" {
+						t.Errorf("entry.stop = %q, want empty", cfg.Entry.Stop)
+					}
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Load = nil, want error containing %q", c.wantErr)
+			}
+			if !strings.Contains(err.Error(), c.wantErr) {
+				t.Errorf("error %q should contain %q", err.Error(), c.wantErr)
+			}
+			if cfg != nil {
+				t.Logf("config loaded but expected error; runner.type = %q", cfg.Runner.Type)
+			}
+		})
+	}
+}
+
+func TestComposeOptionsLocal(t *testing.T) {
+	body := `project:
+  worktreeBase: .worktrees
+source:
+  type: git
+runner:
+  type: local
+entry:
+  run: "echo run"
+`
+	cfg, err := Load(writeConfig(t, body))
+	if err != nil {
+		t.Fatalf("Load = %v", err)
+	}
+	opts := cfg.ComposeOptions("feat-x")
+	if opts.Slug != "feat-x" {
+		t.Errorf("Slug = %q, want feat-x", opts.Slug)
+	}
+	if len(opts.ComposeFiles) != 0 {
+		t.Errorf("ComposeFiles = %v, want empty", opts.ComposeFiles)
+	}
+	if opts.ProjectPrefix != "" {
+		t.Errorf("ProjectPrefix = %q, want empty", opts.ProjectPrefix)
+	}
+	if got := cfg.ComposeFiles(); len(got) != 0 {
+		t.Errorf("ComposeFiles() = %v, want empty", got)
+	}
+}

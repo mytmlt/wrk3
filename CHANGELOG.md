@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `local` runner (`runner.type: local`): executes entry commands directly
+  on the host without compose, for CLI-only repos (Go binaries, CLI tools,
+  libraries). `up` runs `entry.setup` then `entry.run` in the worktree;
+  `down` runs `entry.stop`; `status` reads from the state file; `logs`
+  delegates to `entry.logs`. Ports and `.env` management are optional —
+  omit the entire `ports:` section to skip port allocation and `.env`
+  writing. `entry.stop` is optional for local runner (no-ops when absent).
+  Compose-based runners (docker/podman) are unchanged.
+- `runner.local` config struct (empty, no required sub-fields).
+- New tests in `internal/runner/local_test.go` covering Exec, Status
+  (state-file-based), Up/Down/Logs no-ops, registry, and error
+  propagation.
+- Dogfood `wrk3.yaml` switched to `type: local` (no compose stack needed
+  for the wrk3 repo itself).
+
+### Added
+
 - OpenCodeReview bot (`.github/workflows/open-code-review.yml`, pinned
   to `alibaba/open-code-review@v1.12.9`): posts inline + sticky summary
   review comments on collaborator PRs as `github-actions[bot]`.

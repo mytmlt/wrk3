@@ -72,10 +72,14 @@ func wrapSource(src source.Source, stateP, origin string) source.Source {
 // runnerFor builds the Runner backend for rec and decorates it so every
 // executed command (entry strings via sh -c, compose up/down) is persisted
 // to the system log. Status probes log only on error.
+// For the local runner, the state file path is set so Status() can read it.
 func (r *resolved) runnerFor(rec ports.WorktreeRecord) (runner.Runner, error) {
 	raw, err := newRunner(r.cfg, rec.Slug)
 	if err != nil {
 		return nil, err
+	}
+	if lr, ok := raw.(*runner.LocalRunner); ok {
+		lr.StatePath = r.stateP
 	}
 	return &loggedRunner{
 		inner:   raw,

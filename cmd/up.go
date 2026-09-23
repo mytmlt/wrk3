@@ -65,10 +65,8 @@ func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func
 	if err != nil {
 		return fmt.Errorf("up %q: %w", rec.Branch, err)
 	}
-	// Preflight before any setup entry (which typically runs
-	// `docker compose up --wait --build` and would otherwise fail
-	// minutes in with a container-name conflict). Applies to both
-	// compose backends (docker and podman).
+	// Preflight before any setup entry. For compose backends check that
+	// compose files exist. Skip for local runner which has no compose step.
 	if r.cfg.Runner.Type == "docker" || r.cfg.Runner.Type == "podman" {
 		if err := runner.CheckComposeFiles(rec.AbsPath, r.cfg.ComposeFiles()); err != nil {
 			return fmt.Errorf("up %q: %w", rec.Branch, err)
@@ -83,6 +81,16 @@ func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func
 		if err := rn.Exec(ctx, rec.AbsPath, shellCmd(s), env); err != nil {
 			return fmt.Errorf("up %q setup %q: %w", rec.Branch, s, err)
 		}
+	}
+	if r.cfg.Runner.Type == "local" {
+		if s := r.cfg.Entry.Run; s != "" {
+			logf("[%s] run: %s", rec.Slug, s)
+			if err := rn.Exec(ctx, rec.AbsPath, shellCmd(s), env); err != nil {
+				return fmt.Errorf("up %q run %q: %w", rec.Branch, s, err)
+			}
+		}
+		logf("[%s] up", rec.Slug)
+		return nil
 	}
 	logf("[%s] compose up (%s)", rec.Slug, rec.ComposeProject)
 	if err := rn.Up(ctx, rec.AbsPath, env); err != nil {
