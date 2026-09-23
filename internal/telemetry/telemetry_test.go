@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -374,6 +375,11 @@ func TestErrorTypeName(t *testing.T) {
 			name: "exec exit wrapped in message",
 			err:  execWrapped,
 			want: "*exec.ExitError",
+		},
+		{
+			name: "errors.Join with sentinel",
+			err:  errors.Join(base, fmt.Errorf("other error")),
+			want: "telemetry.errSentinel",
 		},
 		{
 			name: "nil error",
