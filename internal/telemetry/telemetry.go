@@ -184,17 +184,27 @@ func errorTypeName(err error) string {
 	}
 	for cur := err; ; {
 		name := fmt.Sprintf("%T", cur)
-		next := errors.Unwrap(cur)
-		if !isGenericWrap(name) || next == nil {
+		if !isGenericWrap(name) {
 			return name
 		}
-		cur = next
+		next := errors.Unwrap(cur)
+		if next != nil {
+			cur = next
+			continue
+		}
+		if uw, ok := cur.(interface{ Unwrap() []error }); ok {
+			if errs := uw.Unwrap(); len(errs) > 0 {
+				cur = errs[0]
+				continue
+			}
+		}
+		return name
 	}
 }
 
 func isGenericWrap(name string) bool {
 	switch name {
-	case "*fmt.wrapError", "*fmt.wrapErrors":
+	case "*fmt.wrapError", "*fmt.wrapErrors", "*errors.joinError":
 		return true
 	}
 	return false
