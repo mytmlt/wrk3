@@ -186,8 +186,8 @@ func TestMigrateTrackedURLs_RewritesDiverged(t *testing.T) {
 	}
 	recs := []ports.WorktreeRecord{
 		{Branch: "feat", Slug: "feat", AbsPath: wt, Index: 1,
-			Ports: map[string]int{"app": 8001, "public_api": 8001},
-			Urls:  map[string]int{"BASE_URL": 8002, "ALLOWED_WS_ORIGINS": 8002, "DOCS_URL": 9000},
+			Ports:  map[string]int{"app": 8001, "public_api": 8001},
+			Urls:   map[string]int{"BASE_URL": 8002, "ALLOWED_WS_ORIGINS": 8002, "DOCS_URL": 9000},
 			Status: ports.StatusStopped},
 	}
 	updated, moved, warns, err := migrateTrackedURLs(r, recs)
@@ -222,11 +222,11 @@ func TestMigrateTrackedURLs_NoOpWhenAligned(t *testing.T) {
 	r := &resolved{cfg: cfg, src: &source.GitSource{}, base: cfg.AbsWorktreeBase(), stateP: cfg.StatePath()}
 	recs := []ports.WorktreeRecord{
 		{Branch: "feat", Slug: "feat", AbsPath: filepath.Join(repo, ".worktrees", "missing"), Index: 1,
-			Ports: map[string]int{"app": 8001, "public_api": 8001},
-			Urls:  map[string]int{"BASE_URL": 8001, "ALLOWED_WS_ORIGINS": 8001, "DOCS_URL": 9000},
+			Ports:  map[string]int{"app": 8001, "public_api": 8001},
+			Urls:   map[string]int{"BASE_URL": 8001, "ALLOWED_WS_ORIGINS": 8001, "DOCS_URL": 9000},
 			Status: ports.StatusStopped},
 		{Branch: "old", Slug: "old", AbsPath: filepath.Join(repo, ".worktrees", "missing2"), Index: 2,
-			Ports: map[string]int{"app": 8002, "public_api": 8002},
+			Ports:  map[string]int{"app": 8002, "public_api": 8002},
 			Status: ports.StatusStopped},
 	}
 	updated, moved, _, err := migrateTrackedURLs(r, recs)
