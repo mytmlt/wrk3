@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/task` package: intermediate representation (IR) for runnable
+  service definitions. Parses Docker Compose YAML into a `Task` struct and
+  converts it to Docker Compose, Docker Swarm, Portainer stack JSON, and
+  direct host execution scripts. Supports service merging for compose
+  override files. Round-trip compose→IR→compose preserves all parsed fields.
+
 - OpenCodeReview bot (`.github/workflows/open-code-review.yml`, pinned
   to `alibaba/open-code-review@v1.12.9`): posts inline + sticky summary
   review comments on collaborator PRs as `github-actions[bot]`.
