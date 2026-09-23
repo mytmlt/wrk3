@@ -61,6 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Dashboard keeps the implicit main worktree on `setting up`/`stopping`
+  while its `up`/`down`/`reload` op is still running. Main has no
+  state-file entry, so the next poll refresh used to overwrite the
+  optimistic row with the live `stopped` probe (spinner on, status
+  stopped); in-flight op targets are now re-applied after every refresh.
+
 - `urls` entries whose base port matches a `ports.base` value (e.g.
   `BASE_URL` on `http://localhost:8000` with `base: {app: 8000}`) now
   track that host allocation instead of taking their own port: every
