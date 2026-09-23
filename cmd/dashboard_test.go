@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/mytmlt/wrk3/internal/ports"
@@ -173,6 +174,7 @@ func testDashboardModel() dashboardModel {
 		workSel: map[string]bool{},
 		brSel:   map[string]bool{},
 		poll:    0,
+		console: map[string][]string{},
 	}
 	m.rows = []dashboardRow{
 		{Rec: ports.WorktreeRecord{Branch: "feature-a", Slug: "feature-a", Index: 0}, Status: "running", Ports: "app=8000"},
@@ -395,6 +397,12 @@ func dashboardViewModel(t *testing.T) dashboardModel {
 	m.projects[0].remote = "origin"
 	m.keys = newDashboardKeys()
 	m.log = []string{"dashboard started — r refresh, R fetch, ? menu"}
+	m.eventLogView = viewport.New(78, dashboardLogFallbackHeight)
+	m.eventLogView.SetContent(strings.Join(wrapLogLines(m.log, 78), "\n"))
+	m.eventLogView.GotoBottom()
+	m.consoleView = viewport.New(78, dashboardLogFallbackHeight)
+	m.consoleView.SetContent("(console idle — run u/d/l/x on a worktree to stream output here)")
+	m.consoleView.GotoBottom()
 	return m
 }
 
@@ -403,12 +411,11 @@ func TestDashboardView_TablesAndHelp(t *testing.T) {
 	out := m.View()
 	for _, want := range []string{
 		"wrk3 dashboard", "myapp",
-		"Worktrees", "Branches", "Logs", "Details", "Projects",
+		"Worktrees", "Branches", "Console", "Details", "Event Log",
 		"SLUG", "STATUS", "STATE",
 		"1 of ", "of 2",
 		"feature-a", "feature-b", "pr-1", "pr-2",
 		"running", "stopped", "registered",
-		"console", "dashboard (1)",
 		"space", "select", "quit", "menu",
 	} {
 		if !strings.Contains(out, want) {
@@ -469,7 +476,7 @@ func TestDashboardMenuItems_MatchBindings(t *testing.T) {
 		seen[it.Run] = true
 	}
 	// Every Run value must dispatch through the normal key handler.
-	for _, run := range []string{"u", "d", "l", "p", "a", "o", "O", "e", "x", "X", "r", "R", "m", "P", "1", "2", "3", "t", "tab", "q"} {
+	for _, run := range []string{"u", "d", "l", "p", "a", "o", "O", "e", "x", "X", "r", "R", "m", "P", "1", "2", "3", "4", "tab", "q"} {
 		if !seen[run] {
 			t.Errorf("menu missing run %q (drift from newDashboardKeys)", run)
 		}
@@ -618,7 +625,7 @@ func TestDashboardView_Smoke(t *testing.T) {
 	m.projects[0].cfg = cfg
 	m.projects[0].remote = "origin"
 	out := m.View()
-	for _, want := range []string{"wrk3 dashboard", "myapp", "Worktrees", "Branches", "Logs", "feature-a", "pr-1"} {
+	for _, want := range []string{"wrk3 dashboard", "myapp", "Worktrees", "Branches", "Console", "feature-a", "pr-1"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("view missing %q:\n%s", want, out)
 		}
@@ -1133,9 +1140,9 @@ func seedLogModel(t *testing.T, m dashboardModel) dashboardModel {
 		lines = append(lines, strings.Repeat("log line ", 20)+strings.Repeat("x", i))
 	}
 	m.log = lines
-	m.logView.SetContent(strings.Join(wrapLogLines(lines, 60), "\n"))
-	m.logView.GotoBottom()
-	m.console = append([]string(nil), lines...)
+	m.eventLogView.SetContent(strings.Join(wrapLogLines(lines, 60), "\n"))
+	m.eventLogView.GotoBottom()
+	m.console = map[string][]string{"feature-a": append([]string(nil), lines...)}
 	m.consoleView.SetContent(strings.Join(wrapLogLines(lines, 60), "\n"))
 	m.consoleView.GotoBottom()
 	return m
@@ -1143,27 +1150,42 @@ func seedLogModel(t *testing.T, m dashboardModel) dashboardModel {
 
 func TestDashboardModel_LogPaneFocusAndScroll(t *testing.T) {
 	m := seedLogModel(t, testDashboardModel())
+	// Focus event log pane (pane 2).
 	m = applyKey(t, m, "3")
 	if m.pane != 2 {
-		t.Fatalf("3: pane = %d, want 2 (logs)", m.pane)
+		t.Fatalf("3: pane = %d, want 2 (event log)", m.pane)
 	}
-	top := m.consoleView.YOffset
+	top := m.eventLogView.YOffset
 	m = applyKey(t, m, "k")
-	if m.consoleView.YOffset >= top {
-		t.Errorf("k in log pane should scroll up: %d -> %d", top, m.consoleView.YOffset)
+	if m.eventLogView.YOffset >= top {
+		t.Errorf("k in event log pane should scroll up: %d -> %d", top, m.eventLogView.YOffset)
 	}
 	if m.workCursor != 0 || m.brCursor != 0 {
-		t.Errorf("j/k in log pane must not move cursors: work=%d br=%d", m.workCursor, m.brCursor)
+		t.Errorf("j/k in event log pane must not move cursors: work=%d br=%d", m.workCursor, m.brCursor)
 	}
 	m = applyKey(t, m, "j")
-	if m.consoleView.YOffset != top {
-		t.Errorf("j in log pane should scroll back down to %d, got %d", top, m.consoleView.YOffset)
+	if m.eventLogView.YOffset != top {
+		t.Errorf("j in event log pane should scroll back down to %d, got %d", top, m.eventLogView.YOffset)
+	}
+	// Focus console pane (pane 3).
+	m = applyKey(t, m, "4")
+	if m.pane != 3 {
+		t.Fatalf("4: pane = %d, want 3 (console)", m.pane)
+	}
+	cTop := m.consoleView.YOffset
+	m = applyKey(t, m, "k")
+	if m.consoleView.YOffset >= cTop {
+		t.Errorf("k in console pane should scroll up: %d -> %d", cTop, m.consoleView.YOffset)
+	}
+	m = applyKey(t, m, "j")
+	if m.consoleView.YOffset != cTop {
+		t.Errorf("j in console pane should scroll back down to %d, got %d", cTop, m.consoleView.YOffset)
 	}
 	m = applyKey(t, m, " ")
 	if len(m.workSel) != 0 || len(m.brSel) != 0 {
-		t.Errorf("space in log pane must not select: %v %v", m.workSel, m.brSel)
+		t.Errorf("space in console pane must not select: %v %v", m.workSel, m.brSel)
 	}
-	// left/right cycles worktrees -> branches -> logs.
+	// left/right cycles worktrees -> branches -> event log -> console.
 	m.pane = 0
 	m = applyKey(t, m, "right")
 	if m.pane != 1 {
@@ -1174,12 +1196,33 @@ func TestDashboardModel_LogPaneFocusAndScroll(t *testing.T) {
 		t.Errorf("right from 1: pane = %d, want 2", m.pane)
 	}
 	m = applyKey(t, m, "right")
+	if m.pane != 3 {
+		t.Errorf("right from 2: pane = %d, want 3", m.pane)
+	}
+	m = applyKey(t, m, "right")
 	if m.pane != 0 {
-		t.Errorf("right from 2: pane = %d, want 0 (wrap)", m.pane)
+		t.Errorf("right from 3: pane = %d, want 0 (wrap)", m.pane)
 	}
 	m = applyKey(t, m, "left")
-	if m.pane != 2 {
-		t.Errorf("left from 0: pane = %d, want 2 (wrap)", m.pane)
+	if m.pane != 3 {
+		t.Errorf("left from 0: pane = %d, want 3 (wrap)", m.pane)
+	}
+	// Console view switches when cursor moves.
+	m.pane = 3
+	m.width, m.height = 140, 40
+	m.console["feature-a"] = []string{"line for feature-a"}
+	m.console["feature-b"] = []string{"line for feature-b"}
+	m.workCursor = 0
+	m.syncConsoleView()
+	content := m.consoleView.View()
+	if !strings.Contains(content, "feature-a") {
+		t.Errorf("console should show feature-a content for cursor 0:\n%s", content)
+	}
+	m.workCursor = 1
+	m.syncConsoleView()
+	content = m.consoleView.View()
+	if !strings.Contains(content, "feature-b") {
+		t.Errorf("console should show feature-b content for cursor 1:\n%s", content)
 	}
 }
 
@@ -1213,22 +1256,27 @@ func TestDashboardView_RedesignedLayout(t *testing.T) {
 		m.width, m.height = w, 40
 		out := m.View()
 		for _, want := range []string{
-			"Worktrees", "Branches", "Details", "Logs", "Projects",
-			"[1]-Worktrees", "[2]-Branches", "Details", "[3]-Logs", "Projects",
+			"Worktrees", "Branches", "Details", "Console", "Event Log",
+			"[1]-Worktrees", "[2]-Branches", "Details", "[4]-Console", "[3]-Event Log",
 			"1 of ", "of 2", "of 3",
-			"feature-a", "pr-1", "1/2/3",
+			"feature-a", "pr-1", "1-4/arrows",
 		} {
 			if !strings.Contains(out, want) {
 				t.Errorf("width %d: view missing %q:\n%s", w, want, out)
 			}
 		}
 	}
-	// Focused log pane is visibly marked.
+	// Focused event log pane is visibly marked.
 	m := dashboardViewModel(t)
 	m.width, m.height = 140, 40
 	m.pane = 2
-	if out := m.View(); !strings.Contains(out, "[3]-Logs (3") || !strings.Contains(out, "●") {
-		t.Errorf("focused log pane should mark [3]-Logs (3) ●:\n%s", out)
+	if out := m.View(); !strings.Contains(out, "[3]-Event Log - 2 lines") || !strings.Contains(out, "●") {
+		t.Errorf("focused event log pane should mark [3]-Event Log - 2 lines ●:\n%s", out)
+	}
+	// Focused console pane is visibly marked.
+	m.pane = 3
+	if out := m.View(); !strings.Contains(out, "[4]-Console") || !strings.Contains(out, "●") {
+		t.Errorf("focused console pane should mark [4]-Console ●:\n%s", out)
 	}
 }
 
@@ -1266,13 +1314,13 @@ func TestDashboardWorkStatusText_SlugHealthOnly(t *testing.T) {
 	}
 }
 
-func TestDashboardView_ProjectPane(t *testing.T) {
+func TestDashboardView_EventLogPane(t *testing.T) {
 	m := dashboardViewModel(t)
 	m.width, m.height = 140, 40
 	out := m.View()
-	for _, want := range []string{"Projects", "myapp", "remote origin", "proxy off"} {
+	for _, want := range []string{"Event Log", "dashboard started", "r refresh"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("project pane missing %q:\n%s", want, out)
+			t.Errorf("event log pane missing %q:\n%s", want, out)
 		}
 	}
 }

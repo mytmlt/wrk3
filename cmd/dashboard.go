@@ -159,17 +159,13 @@ type dashboardOp struct {
 	id       int
 	label    string
 	branches []string
+	slugs    []string // resolved at startOp time for console routing
 	proj     int
 }
 
-// dashboardModel is the BubbleTea model for the whole dashboard. The log
-// area has two tabs sharing the right-bottom box: "console" shows live
-// command output from up/down/reload/remove (docker compose, entry
-// strings) as it streams, and "dashboard" shows the brief event lines
-// (op starts, refreshes, fetch, copy/open notes) the pane always had.
-// Console lines bypass the 200-line cap only in the sense that overflow
-// drops from the console buffer itself: both stay bounded, both scroll
-// with the same viewport (j/k, pgup/pgdn, home/end).
+// dashboardModel is the BubbleTea model for the whole dashboard.
+// Console output is stored per-worktree slug and follows the cursor.
+// Event log lines are shown in the bottom-left pane.
 type dashboardModel struct {
 	projects        []*dashboardProject
 	cur             int
@@ -177,12 +173,11 @@ type dashboardModel struct {
 	branches        []branchEntry
 	workCursor      int
 	brCursor        int
-	pane            int // 0 = worktrees, 1 = branches, 2 = logs
+	pane            int // 0 = worktrees, 1 = branches, 2 = event log, 3 = console
 	workSel         map[string]bool
 	brSel           map[string]bool
-	log             []string
-	console         []string
-	logTab          int // 0 = console, 1 = dashboard; sticky per model
+	log             []string            // event log (bottom-left)
+	console         map[string][]string // per-worktree console buffers
 	statusMsg       string
 	proxyInfo       string // gateway status for the meta line (set on refresh)
 	fetchedAt       time.Time
@@ -202,7 +197,7 @@ type dashboardModel struct {
 	menuCursor      int
 	keys            dashboardKeys
 	help            help.Model
-	logView         viewport.Model
+	eventLogView    viewport.Model
 	consoleView     viewport.Model
 	telemetryPrompt bool
 	telemetryCursor int // 0 = No (default), 1 = Yes
@@ -215,10 +210,10 @@ func newDashboardModel(descs []dashboardProjectDesc, poll time.Duration, remote 
 	}
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
-	lv := viewport.New(78, dashboardLogFallbackHeight)
+	ev := viewport.New(78, dashboardLogFallbackHeight)
 	seed := []string{"dashboard started — r refresh, R fetch, ? menu"}
-	lv.SetContent(strings.Join(wrapLogLines(seed, 78), "\n"))
-	lv.GotoBottom()
+	ev.SetContent(strings.Join(wrapLogLines(seed, 78), "\n"))
+	ev.GotoBottom()
 	cv := viewport.New(78, dashboardLogFallbackHeight)
 	cv.SetContent("(console idle — run u/d/l/x on a worktree to stream output here)")
 	cv.GotoBottom()
@@ -240,10 +235,9 @@ func newDashboardModel(descs []dashboardProjectDesc, poll time.Duration, remote 
 		spinner:         sp,
 		keys:            newDashboardKeys(),
 		help:            hp,
-		logView:         lv,
+		eventLogView:    ev,
 		consoleView:     cv,
-		console:         []string{},
-		logTab:          0,
+		console:         map[string][]string{},
 		log:             []string{"dashboard started — r refresh, R fetch, ? menu"},
 		telemetryPrompt: showPrompt,
 		telemetryCursor: 0,
@@ -275,7 +269,8 @@ func (m dashboardModel) busyTitle() string {
 func (m *dashboardModel) startOp(label string, branches []string) int {
 	id := m.nextOpID
 	m.nextOpID++
-	m.ops = append(m.ops, dashboardOp{id: id, label: label, branches: append([]string(nil), branches...), proj: m.cur})
+	slugs := resolveSlugs(m.rows, branches)
+	m.ops = append(m.ops, dashboardOp{id: id, label: label, branches: append([]string(nil), branches...), slugs: slugs, proj: m.cur})
 	return id
 }
 
@@ -295,6 +290,26 @@ func (m *dashboardModel) popOp(id int) (dashboardOp, bool) {
 		}
 	}
 	return dashboardOp{}, false
+}
+
+// resolveSlugs maps branch names to slugs: matches existing rows first,
+// then falls back to source.Slugify for branches added before rows appear.
+func resolveSlugs(rows []dashboardRow, branches []string) []string {
+	slugs := make([]string, 0, len(branches))
+	for _, b := range branches {
+		found := false
+		for _, row := range rows {
+			if row.Rec.Branch == b {
+				slugs = append(slugs, row.Rec.Slug)
+				found = true
+				break
+			}
+		}
+		if !found {
+			slugs = append(slugs, source.Slugify(b))
+		}
+	}
+	return slugs
 }
 
 // conflictingOp returns the running op in the same project that already
@@ -569,26 +584,38 @@ func (m dashboardModel) appendLog(line string) dashboardModel {
 	if len(m.log) > 200 {
 		m.log = m.log[len(m.log)-200:]
 	}
-	m.syncLogView()
+	m.syncEventLogView()
 	return m
 }
 
-// appendConsole appends raw command output to the console tab buffer and
-// syncs the console viewport. Console holds up to 500 lines (command
-// output is verbose); overflow drops the oldest. Follows the same
-// follow-mode rule as the dashboard log: sticks to the bottom only when
-// already there so reading earlier output is never yanked away.
-func (m dashboardModel) appendConsole(line string) dashboardModel {
-	m.console = append(m.console, line)
-	if len(m.console) > 500 {
-		m.console = m.console[len(m.console)-500:]
+// appendConsole appends a line to the per-worktree console buffer for the
+// given slug. The buffer caps at 500 lines.
+func (m dashboardModel) appendConsole(slug, line string) dashboardModel {
+	if m.console == nil {
+		m.console = map[string][]string{}
 	}
-	m.syncConsoleView()
+	m.console[slug] = append(m.console[slug], line)
+	if len(m.console[slug]) > 500 {
+		m.console[slug] = m.console[slug][len(m.console[slug])-500:]
+	}
+	if slug == m.selectedSlug() {
+		m.syncConsoleView()
+	}
 	return m
 }
 
-// syncConsoleView rewraps m.console to the console viewport width and
-// refreshes content, preserving scroll position like syncLogView.
+// selectedSlug returns the slug of the cursor worktree (follows selection
+// then cursor, matching detailRecord logic).
+func (m dashboardModel) selectedSlug() string {
+	rec := m.detailRecord()
+	if rec == nil {
+		return ""
+	}
+	return rec.Rec.Slug
+}
+
+// syncConsoleView rewraps the currently selected worktree's console to the
+// console viewport width and refreshes content.
 func (m *dashboardModel) syncConsoleView() {
 	w := m.consoleView.Width
 	if w <= 0 {
@@ -599,49 +626,35 @@ func (m *dashboardModel) syncConsoleView() {
 		m.consoleView.Height = dashboardLogViewportHeight(m.height)
 	}
 	wasBottom := m.consoleView.AtBottom()
-	m.consoleView.SetContent(strings.Join(wrapLogLines(m.console, max(w, 10)), "\n"))
+	slug := m.selectedSlug()
+	var lines []string
+	if slug != "" {
+		lines = m.console[slug]
+	}
+	if len(lines) == 0 {
+		m.consoleView.SetContent("(console idle — run u/d/l/x on a worktree to stream output here)")
+	} else {
+		m.consoleView.SetContent(strings.Join(wrapLogLines(lines, max(w, 10)), "\n"))
+	}
 	if wasBottom {
 		m.consoleView.GotoBottom()
 	}
 }
 
-// activeLogView returns the viewport for the visible log tab (console by
-// default, dashboard events after `t`). Scroll keys operate on this so
-// both tabs share j/k/pgup/pgdn/home/end.
-func (m *dashboardModel) activeLogView() *viewport.Model {
-	if m.logTab == 1 {
-		return &m.logView
-	}
-	return &m.consoleView
-}
-
-// syncActiveLogView re-syncs the visible tab after a `t` toggle so the
-// newly shown buffer wraps to the current width instead of stale content.
-func (m *dashboardModel) syncActiveLogView() {
-	if m.logTab == 1 {
-		m.syncLogView()
-	} else {
-		m.syncConsoleView()
-	}
-}
-
-// syncLogView rewraps m.log to the viewport width and refreshes content.
-// It preserves the user's scroll position: only sticks to the bottom when
-// the view was already at the bottom (follow mode). New log lines must go
-// through here (via appendLog) so scrolling up is never yanked away.
-func (m *dashboardModel) syncLogView() {
-	w := m.logView.Width
+// syncEventLogView rewraps the event log to the eventLogView width.
+func (m *dashboardModel) syncEventLogView() {
+	w := m.eventLogView.Width
 	if w <= 0 {
 		w = 78
-		m.logView.Width = w
+		m.eventLogView.Width = w
 	}
-	if m.logView.Height <= 0 {
-		m.logView.Height = dashboardLogViewportHeight(m.height)
+	if m.eventLogView.Height <= 0 {
+		m.eventLogView.Height = dashboardLogViewportHeight(m.height)
 	}
-	wasBottom := m.logView.AtBottom()
-	m.logView.SetContent(strings.Join(wrapLogLines(m.log, max(w, 10)), "\n"))
+	wasBottom := m.eventLogView.AtBottom()
+	m.eventLogView.SetContent(strings.Join(wrapLogLines(m.log, max(w, 10)), "\n"))
 	if wasBottom {
-		m.logView.GotoBottom()
+		m.eventLogView.GotoBottom()
 	}
 }
 
@@ -1000,24 +1013,27 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Keep both log viewports in sync with the rendered grid geometry
-		// so the rewrapped line count (and maxYOffset) stays valid for
-		// scrolling: logPane renders logViewW wide and logViewH tall.
-		wasBottom := m.logView.AtBottom()
+		// Keep both viewports in sync with the rendered grid geometry.
+		wasEventBottom := m.eventLogView.AtBottom()
 		wasConsoleBottom := m.consoleView.AtBottom()
 		grid := computeDashboardGrid(msg.Width, msg.Height)
-		m.logView.Width = grid.logViewW
-		m.logView.Height = grid.logViewH
-		m.logView.SetContent(strings.Join(wrapLogLines(m.log, m.logView.Width), "\n"))
-		if wasBottom || len(m.log) == 0 {
-			m.logView.GotoBottom()
+		m.eventLogView.Width = max(grid.leftW-4, 10)
+		m.eventLogView.Height = grid.eventLogInnerH
+		m.eventLogView.SetContent(strings.Join(wrapLogLines(m.log, m.eventLogView.Width), "\n"))
+		if wasEventBottom || len(m.log) == 0 {
+			m.eventLogView.GotoBottom()
 		} else {
-			m.logView.SetYOffset(m.logView.YOffset)
+			m.eventLogView.SetYOffset(m.eventLogView.YOffset)
 		}
 		m.consoleView.Width = grid.logViewW
-		m.consoleView.Height = grid.logViewH
-		m.consoleView.SetContent(strings.Join(wrapLogLines(m.console, m.consoleView.Width), "\n"))
-		if wasConsoleBottom || len(m.console) == 0 {
+		m.consoleView.Height = grid.consoleViewH
+		slug := m.selectedSlug()
+		var lines []string
+		if slug != "" {
+			lines = m.console[slug]
+		}
+		m.consoleView.SetContent(strings.Join(wrapLogLines(lines, m.consoleView.Width), "\n"))
+		if wasConsoleBottom || len(lines) == 0 {
 			m.consoleView.GotoBottom()
 		} else {
 			m.consoleView.SetYOffset(m.consoleView.YOffset)
@@ -1051,6 +1067,16 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for k := range m.workSel {
 				if !alive[k] {
 					delete(m.workSel, k)
+				}
+			}
+			// Prune vanished slugs from the console map.
+			aliveSlugs := map[string]bool{}
+			for _, row := range m.rows {
+				aliveSlugs[row.Rec.Slug] = true
+			}
+			for slug := range m.console {
+				if !aliveSlugs[slug] {
+					delete(m.console, slug)
 				}
 			}
 			if m.workCursor >= len(m.rows) {
@@ -1090,8 +1116,9 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case dashboardConsoleLineMsg:
-		m = m.appendConsole("[" + msg.label + "] " + msg.line)
-		m.logTab = 0
+		if s := m.selectedSlug(); s != "" {
+			m = m.appendConsole(s, "["+msg.label+"] "+msg.line)
+		}
 		return m, nil
 	case dashboardOpDoneMsg:
 		op, _ := m.popOp(msg.opID)
@@ -1101,16 +1128,29 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for _, l := range msg.lines {
 			m = m.appendLog("[" + msg.label + "] " + l)
 		}
-		for _, l := range msg.console {
-			m = m.appendConsole(l)
-		}
-		if len(msg.console) > 0 {
-			// Command output landed: flip to the console tab and stick
-			// to the bottom (follow mode) so the result is visible
-			// immediately. A scrolled-up console stays put on later
-			// appends via appendConsole's own follow rule.
-			m.logTab = 0
-			m.consoleView.GotoBottom()
+		// Route console output to target slugs resolved at startOp time.
+		// Skip if the user switched to another project while the op ran.
+		if op.proj == m.cur {
+			for _, l := range msg.console {
+				for _, slug := range op.slugs {
+					m = m.appendConsole(slug, l)
+				}
+			}
+			if len(msg.console) > 0 {
+				// Command output landed: stick to the bottom only when
+				// the visible buffer received output.
+				s := m.selectedSlug()
+				received := false
+				for _, slug := range op.slugs {
+					if slug == s {
+						received = true
+						break
+					}
+				}
+				if received {
+					m.consoleView.GotoBottom()
+				}
+			}
 		}
 		if msg.err != nil {
 			m.statusMsg = msg.label + ": " + msg.err.Error()
@@ -1397,24 +1437,38 @@ func dashboardKeyMsg(s string) tea.KeyMsg {
 }
 
 func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Log pane scrolling always works (menu closed, no pending confirm)
-	// and follows the active tab: console or dashboard.
 	switch msg.String() {
 	case "pgup":
-		m.activeLogView().ScrollUp(max(m.activeLogView().Height, 1))
+		switch m.pane {
+		case 2:
+			m.eventLogView.ScrollUp(max(m.eventLogView.Height, 1))
+		case 3:
+			m.consoleView.ScrollUp(max(m.consoleView.Height, 1))
+		}
 		return m, nil
 	case "pgdown":
-		m.activeLogView().ScrollDown(max(m.activeLogView().Height, 1))
+		switch m.pane {
+		case 2:
+			m.eventLogView.ScrollDown(max(m.eventLogView.Height, 1))
+		case 3:
+			m.consoleView.ScrollDown(max(m.consoleView.Height, 1))
+		}
 		return m, nil
 	case "home":
-		m.activeLogView().GotoTop()
+		switch m.pane {
+		case 2:
+			m.eventLogView.GotoTop()
+		case 3:
+			m.consoleView.GotoTop()
+		}
 		return m, nil
 	case "end":
-		m.activeLogView().GotoBottom()
-		return m, nil
-	case "t", "T":
-		m.logTab = 1 - m.logTab
-		m.syncActiveLogView()
+		switch m.pane {
+		case 2:
+			m.eventLogView.GotoBottom()
+		case 3:
+			m.consoleView.GotoBottom()
+		}
 		return m, nil
 	}
 	switch msg.String() {
@@ -1458,40 +1512,52 @@ func (m dashboardModel) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "3":
 		m.pane = 2
 		return m, nil
+	case "4":
+		m.pane = 3
+		return m, nil
 	case "left", "right":
-		// Cycle worktrees -> branches -> logs (detail preview is not
-		// focusable; it follows the worktree cursor/selection).
+		// Cycle worktrees -> branches -> event log -> console.
 		if msg.String() == "left" {
-			m.pane = (m.pane + 2) % 3
+			m.pane = (m.pane + 3) % 4
 		} else {
-			m.pane = (m.pane + 1) % 3
+			m.pane = (m.pane + 1) % 4
 		}
 		return m, nil
 	case "up", "k":
 		if m.pane == 2 {
-			m.activeLogView().ScrollUp(1)
+			m.eventLogView.ScrollUp(1)
+			return m, nil
+		}
+		if m.pane == 3 {
+			m.consoleView.ScrollUp(1)
 			return m, nil
 		}
 		if m.pane == 0 && m.workCursor > 0 {
 			m.workCursor--
+			m.syncConsoleView()
 		} else if m.pane == 1 && m.brCursor > 0 {
 			m.brCursor--
 		}
 		return m, nil
 	case "down", "j":
 		if m.pane == 2 {
-			m.activeLogView().ScrollDown(1)
+			m.eventLogView.ScrollDown(1)
+			return m, nil
+		}
+		if m.pane == 3 {
+			m.consoleView.ScrollDown(1)
 			return m, nil
 		}
 		if m.pane == 0 && m.workCursor < len(m.rows)-1 {
 			m.workCursor++
+			m.syncConsoleView()
 		} else if m.pane == 1 && m.brCursor < len(m.branches)-1 {
 			m.brCursor++
 		}
 		return m, nil
 	case " ":
 		// Selection never blocks, even while ops run.
-		if m.pane == 2 {
+		if m.pane == 2 || m.pane == 3 {
 			return m, nil
 		}
 		if m.pane == 0 {
@@ -1764,7 +1830,7 @@ type dashboardKeys struct {
 	Move, Select, Pane, Project                                                                  key.Binding
 	OpUp, OpDown, OpReload, OpPull, OpAdd, OpOpen, OpCopyURL, OpEditEnv, OpRemove, OpForceRemove key.Binding
 	Refresh, Fetch, Mine, MyPRS                                                                  key.Binding
-	LogScroll, LogTab                                                                            key.Binding
+	LogScroll                                                                                    key.Binding
 	Help, Quit                                                                                   key.Binding
 }
 
@@ -1772,7 +1838,7 @@ func newDashboardKeys() dashboardKeys {
 	return dashboardKeys{
 		Move:          key.NewBinding(key.WithKeys("j", "k", "up", "down"), key.WithHelp("j/k", "move/scroll")),
 		Select:        key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "select")),
-		Pane:          key.NewBinding(key.WithKeys("1", "2", "3", "left", "right"), key.WithHelp("1/2/3", "pane")),
+		Pane:          key.NewBinding(key.WithKeys("1", "2", "3", "4", "left", "right"), key.WithHelp("1-4/arrows", "pane")),
 		Project:       key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "project")),
 		OpUp:          key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "up")),
 		OpDown:        key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "down")),
@@ -1790,11 +1856,10 @@ func newDashboardKeys() dashboardKeys {
 		MyPRS:         key.NewBinding(key.WithKeys("P"), key.WithHelp("P", "myprs")),
 		LogScroll: key.NewBinding(
 			key.WithKeys("pgup", "pgdown", "home", "end"),
-			key.WithHelp("pgup/pgdn", "scroll log"),
+			key.WithHelp("pgup/pgdn", "scroll log/console"),
 		),
-		LogTab: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "console/dashboard")),
-		Help:   key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "menu")),
-		Quit:   key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		Help: key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "menu")),
+		Quit: key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 	}
 }
 
@@ -1821,7 +1886,7 @@ func (k dashboardKeys) FullHelp() [][]key.Binding {
 		{k.Move, k.Select, k.Pane, k.Project},
 		{k.OpUp, k.OpDown, k.OpReload, k.OpPull, k.OpAdd, k.OpOpen, k.OpCopyURL, k.OpEditEnv, k.OpRemove, k.OpForceRemove},
 		{k.Refresh, k.Fetch, k.Mine, k.MyPRS},
-		{k.LogScroll, k.LogTab, k.Help, k.Quit},
+		{k.LogScroll, k.Help, k.Quit},
 	}
 }
 
@@ -1924,11 +1989,9 @@ var (
 
 	// Lazygit-inspired pane titles: focused is bright cyan, blurred is
 	// dim gray. Borders follow the same scheme (blue focus, gray blur).
-	dashPaneTitleFocused  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("51"))
-	dashPaneTitleBlurred  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247"))
-	dashLogTitleStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247"))
-	dashLogTabStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
-	dashLogTabActiveStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("51"))
+	dashPaneTitleFocused = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("51"))
+	dashPaneTitleBlurred = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247"))
+	dashLogTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247"))
 
 	dashMenuTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
 	dashMenuSelectedStyle = lipgloss.NewStyle().Bold(true).
@@ -2209,61 +2272,6 @@ func dashboardFitLines(lines []string, width, height int) []string {
 	return out
 }
 
-// projectPane is the small bottom-left box: project switcher plus the
-// status meta (remote/fetch/poll/proxy). Never focusable; tab switches.
-func (m dashboardModel) projectPane(width, height int) string {
-	title := dashPaneTitleBlurred.Render("Projects - " + dashboardCountLabel(m.cur, len(m.projects)))
-	lines := make([]string, 0, len(m.projects)+4)
-	for i, p := range m.projects {
-		marker := "  "
-		var name string
-		if p == nil {
-			name = "?"
-		} else {
-			name = p.desc.Name
-			if p.loadErr != nil || p.cfg == nil {
-				name += " (error)"
-			}
-		}
-		if i == m.cur {
-			marker = "* "
-		}
-		lines = append(lines, marker+name)
-	}
-	if len(m.projects) > 1 {
-		lines = append(lines, "tab to switch")
-	}
-	if cur := m.curProject(); cur != nil {
-		fetchInfo := "never"
-		if !m.fetchedAt.IsZero() {
-			fetchInfo = m.fetchedAt.Format("15:04:05")
-		}
-		pollInfo := "off"
-		if m.poll > 0 {
-			pollInfo = m.poll.String()
-		}
-		proxySeg := m.proxyInfo
-		if proxySeg == "" {
-			if cur.cfg != nil && cur.cfg.Proxy.Enabled {
-				proxySeg = "proxy " + cur.cfg.ProxyAddr()
-			} else {
-				proxySeg = "proxy off"
-			}
-		}
-		remote := cur.remote
-		if remote == "" {
-			remote = "origin"
-		}
-		lines = append(lines,
-			"remote "+remote+" · fetch "+fetchInfo,
-			"poll "+pollInfo+" · "+proxySeg,
-		)
-	}
-	lines = dashboardFitLines(lines, width, height)
-	return dashboardPaneStyle(false).Width(width).Render(
-		title + "\n" + strings.Join(lines, "\n"))
-}
-
 // detailRecord follows the worktree selection: first selected row in table
 // order, else the cursor row. The detail pane is a read-only preview, never
 // focusable.
@@ -2401,52 +2409,42 @@ func (m dashboardModel) telemetryPromptView(width int) string {
 }
 
 func (m dashboardModel) logPane(width, height int) string {
-	focused := m.pane == 2
-	// Same chrome as the table panes (border 2 + padding 2): wrapping
-	// wider would let lipgloss clip the tail of every long log line.
+	focused := m.pane == 3
 	w := max(width-4, 10)
-	// Title (1) + tab bar (1) + top/bottom borders (2); the rest is viewport.
-	vpH := max(height-4, 3)
+	vpH := max(height-3, 3)
 	if height <= 0 {
-		vpH = m.logView.Height
+		vpH = m.consoleView.Height
 		if vpH <= 0 {
 			vpH = dashboardLogViewportHeight(m.height)
 		}
 	}
 	vpH = max(vpH, 3)
-	// Wrap to the current pane width so long lines become multiple lines
-	// instead of being cut off horizontally (viewport truncates MaxWidth).
+	slug := m.selectedSlug()
 	var wrapped []string
-	var lv viewport.Model
-	if m.logTab == 1 {
-		wrapped = wrapLogLines(m.log, w)
-		lv = m.logView
-	} else if len(m.console) == 0 {
+	buf, has := m.console[slug]
+	if !has || len(buf) == 0 {
 		wrapped = []string{"(console idle — run u/d/l/x on a worktree to stream output here)"}
-		lv = m.consoleView
 	} else {
-		wrapped = wrapLogLines(m.console, w)
-		lv = m.consoleView
+		wrapped = wrapLogLines(buf, w)
 	}
-	lv.Width = w
-	lv.Height = vpH
-	lv.SetContent(strings.Join(wrapped, "\n"))
-	// Preserve the user's scroll position: only stick to the bottom when
-	// the model view was already there. Never force GotoBottom here —
-	// doing so every frame is what made the log unscrollable.
-	active := m.activeLogView()
-	if active.AtBottom() {
-		lv.GotoBottom()
+	m.consoleView.Width = w
+	m.consoleView.Height = vpH
+	m.consoleView.SetContent(strings.Join(wrapped, "\n"))
+	if m.consoleView.AtBottom() {
+		m.consoleView.GotoBottom()
 	} else {
-		lv.SetYOffset(active.YOffset)
+		m.consoleView.SetYOffset(m.consoleView.YOffset)
 	}
-	tabBar := m.logTabBar()
-	title := "[3]-Logs (3, j/k scroll, t tab) - " + fmt.Sprintf("%d lines", len(wrapped))
+	prefix := "[4]-Console"
+	if slug != "" {
+		prefix += " (" + slug + ")"
+	}
+	title := prefix + " - " + fmt.Sprintf("%d lines", len(wrapped))
 	if focused {
 		title += " ●"
 	}
 	if total := len(wrapped); total > vpH {
-		remaining := total - vpH - lv.YOffset
+		remaining := total - vpH - m.consoleView.YOffset
 		if remaining > 0 {
 			title += fmt.Sprintf(" ↑%d more", remaining)
 		} else {
@@ -2458,37 +2456,65 @@ func (m dashboardModel) logPane(width, height int) string {
 		titleStyled = dashPaneTitleFocused.Render(title)
 	}
 	return dashboardPaneStyle(focused).Width(width).Render(
-		titleStyled + "\n" + tabBar + "\n" + lv.View())
+		titleStyled + "\n" + m.consoleView.View())
 }
 
-// logTabBar renders the console/dashboard tab selector above the log
-// viewport. The active tab is highlighted; `t` toggles. Console is the
-// default: command output from up/down/reload/remove lands there.
-func (m dashboardModel) logTabBar() string {
-	consoleCount := len(m.console)
-	dashCount := len(m.log)
-	consoleLabel := fmt.Sprintf("console (%d)", consoleCount)
-	dashLabel := fmt.Sprintf("dashboard (%d)", dashCount)
-	if m.logTab == 0 {
-		return dashLogTabActiveStyle.Render("● "+consoleLabel) + "  " + dashLogTabStyle.Render("○ "+dashLabel)
+// eventLogPane is the small bottom-left box: event log lines (op starts,
+// refreshes, fetch, copy/open notes). Never focusable; the event log pane is
+// pane index 2 and scrollable with j/k when focused.
+func (m dashboardModel) eventLogPane(width, height int) string {
+	focused := m.pane == 2
+	w := max(width-4, 10)
+	vpH := max(height, 3)
+	if height <= 0 {
+		vpH = m.eventLogView.Height
+		if vpH <= 0 {
+			vpH = dashboardLogViewportHeight(m.height)
+		}
 	}
-	return dashLogTabStyle.Render("○ "+consoleLabel) + "  " + dashLogTabActiveStyle.Render("● "+dashLabel)
+	vpH = max(vpH, 3)
+	wrapped := wrapLogLines(m.log, w)
+	m.eventLogView.Width = w
+	m.eventLogView.Height = vpH
+	m.eventLogView.SetContent(strings.Join(wrapped, "\n"))
+	if m.eventLogView.AtBottom() {
+		m.eventLogView.GotoBottom()
+	} else {
+		m.eventLogView.SetYOffset(m.eventLogView.YOffset)
+	}
+	title := "[3]-Event Log - " + fmt.Sprintf("%d lines", len(wrapped))
+	if focused {
+		title += " ●"
+	}
+	if total := len(wrapped); total > vpH {
+		remaining := total - vpH - m.eventLogView.YOffset
+		if remaining > 0 {
+			title += fmt.Sprintf(" ↑%d more", remaining)
+		} else {
+			title += " [bottom]"
+		}
+	}
+	titleStyled := dashLogTitleStyle.Render(title)
+	if focused {
+		titleStyled = dashPaneTitleFocused.Render(title)
+	}
+	return dashboardPaneStyle(focused).Width(width).Render(
+		titleStyled + "\n" + m.eventLogView.View())
 }
 
 // dashboardGrid splits the body (header/footer excluded) into the
 // lazygit 5-box grid. Wide terminals (>= dashboardWideLayout) use two
-// columns — left: worktrees/branches/projects, right: details/logs.
+// columns — left: worktrees/branches/event log, right: details/console.
 // Narrow terminals stack all five panes in a single bodyH budget so
 // nothing is pushed off-screen. Table/inner heights exclude the 3
-// lines of pane chrome (title + top/bottom borders); logViewH is the
-// matching log viewport height so Update (paging, scroll) and View
-// (render) agree on geometry.
+// lines of pane chrome (title + top/bottom borders); consoleViewH is
+// the matching console viewport height.
 type dashboardGrid struct {
-	wide                                            bool
-	leftW, rightW                                   int
-	workTableH, branchTableH, projInnerH, detInnerH int
-	logH                                            int
-	logViewW, logViewH                              int
+	wide                                                bool
+	leftW, rightW                                       int
+	workTableH, branchTableH, eventLogInnerH, detInnerH int
+	logH                                                int
+	logViewW, consoleViewH                              int
 }
 
 func computeDashboardGrid(w, h int) dashboardGrid {
@@ -2500,28 +2526,30 @@ func computeDashboardGrid(w, h int) dashboardGrid {
 		rightW := max(w-3-leftW, 20)
 		workH := max(bodyH*32/100, 5)
 		branchH := max(bodyH*40/100, 5)
-		projH := max(bodyH-workH-branchH, 4)
+		eventLogH := max(bodyH-workH-branchH, 4)
 		detH := max(bodyH*35/100, 5)
 		logH := max(bodyH-detH, 6)
 		return dashboardGrid{
 			wide: true, leftW: leftW, rightW: rightW,
 			workTableH: max(workH-3, 3), branchTableH: max(branchH-3, 3),
-			projInnerH: max(projH-3, 3), detInnerH: max(detH-3, 3),
-			logH:     logH,
-			logViewW: max(rightW-4, 10), logViewH: max(logH-3, 3),
+			eventLogInnerH: max(eventLogH-3, 3), detInnerH: max(detH-3, 3),
+			logH:         logH,
+			logViewW:     max(rightW-4, 10),
+			consoleViewH: max(logH-3, 3),
 		}
 	}
 	workH := max(bodyH*25/100, 4)
 	branchH := max(bodyH*25/100, 4)
 	detH := max(bodyH*15/100, 3)
-	projH := max(bodyH*10/100, 3)
-	logH := max(bodyH-workH-branchH-detH-projH, 4)
+	eventLogH := max(bodyH*10/100, 3)
+	logH := max(bodyH-workH-branchH-detH-eventLogH, 4)
 	return dashboardGrid{
 		wide: false, leftW: max(w-2, 10), rightW: max(w-2, 10),
 		workTableH: max(workH-3, 3), branchTableH: max(branchH-3, 3),
-		projInnerH: max(projH-3, 3), detInnerH: max(detH-3, 3),
-		logH:     logH,
-		logViewW: max(w-6, 10), logViewH: max(logH-3, 3),
+		eventLogInnerH: max(eventLogH-3, 3), detInnerH: max(detH-3, 3),
+		logH:         logH,
+		logViewW:     max(w-6, 10),
+		consoleViewH: max(logH-3, 3),
 	}
 }
 
@@ -2569,16 +2597,16 @@ func (m dashboardModel) View() string {
 	}
 
 	// Lazygit-style 5-box grid (see computeDashboardGrid): left column
-	// [1] worktrees (slug+health only), [2] branches, projects/status;
+	// [1] worktrees (slug+health only), [2] branches, [4] event log;
 	// right column details of the selected worktree, large scrollable
-	// [3] logs (focused pane scrolls with j/k, arrows switch panes).
+	// [3] console (per-worktree, follows cursor).
 	grid := computeDashboardGrid(w, h)
 
 	if grid.wide {
 		left := lipgloss.JoinVertical(lipgloss.Left,
 			m.worktreePane(grid.leftW, grid.workTableH),
 			m.branchPane(grid.leftW, grid.branchTableH),
-			m.projectPane(grid.leftW, grid.projInnerH),
+			m.eventLogPane(grid.leftW, grid.eventLogInnerH),
 		)
 		right := lipgloss.JoinVertical(lipgloss.Left,
 			m.detailPane(grid.rightW, grid.detInnerH),
@@ -2589,7 +2617,7 @@ func (m dashboardModel) View() string {
 		b.WriteString(m.worktreePane(w-2, grid.workTableH) + "\n")
 		b.WriteString(m.detailPane(w-2, grid.detInnerH) + "\n")
 		b.WriteString(m.branchPane(w-2, grid.branchTableH) + "\n")
-		b.WriteString(m.projectPane(w-2, grid.projInnerH) + "\n")
+		b.WriteString(m.eventLogPane(w-2, grid.eventLogInnerH) + "\n")
 		b.WriteString(m.logPane(w-2, grid.logH) + "\n")
 	}
 	if m.statusMsg != "" {

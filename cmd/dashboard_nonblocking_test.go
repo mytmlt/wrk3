@@ -79,7 +79,7 @@ func TestDashboardModel_InteractiveWhileOpsRun(t *testing.T) {
 	}
 	// Log scrolling works.
 	dm.pane = 2
-	top := dm.logView.YOffset
+	top := dm.eventLogView.YOffset
 	_ = top
 	dm = applyKey(t, dm, "3")
 }
