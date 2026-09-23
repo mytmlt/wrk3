@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `add` now fails with a clear, actionable error when the target worktree
+  directory already exists on disk (e.g. a stale directory left over from a
+  prior failed operation) instead of surfacing git's cryptic "already
+  exists" failure. The error names the conflicting path and suggests
+  removing it (`rm -rf`) or running `git worktree prune`.
+
 - `OpenCodeReview` workflow shipped with duplicate `concurrency` and
   `timeout-minutes` keys, which made the workflow file invalid — GitHub
   never created the review check on PRs (only a 0-job failed `push` run

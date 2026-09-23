@@ -92,6 +92,34 @@ func TestAddOrAdoptOne_AdoptsOrphan(t *testing.T) {
 	}
 }
 
+// createWorktreeRecord must surface a clean, actionable error when the
+// target worktree directory already exists on disk (a stale directory from
+// a prior failed operation) instead of falling through to a raw git
+// "already exists" failure.
+func TestAddOne_StaleDirectoryError(t *testing.T) {
+	src := &createTestSource{}
+	r := newCreateTestResolved(t, src)
+	path := filepath.Join(r.base, source.Slugify("feature-foo"))
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var recs []ports.WorktreeRecord
+	alloc := r.cfg.Allocator()
+	_, err := addOne(r, &recs, &alloc, "feature-foo", "origin")
+	if err == nil {
+		t.Fatal("expected stale-directory error")
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Errorf("error should name the conflicting path %q, got: %v", path, err)
+	}
+	if !strings.Contains(err.Error(), "rm -rf") || !strings.Contains(err.Error(), "worktree prune") {
+		t.Errorf("error should give actionable advice (rm -rf / git worktree prune), got: %v", err)
+	}
+	if len(src.addCalls) != 0 {
+		t.Errorf("addCalls = %v, want git add never called", src.addCalls)
+	}
+}
+
 // addOne must hint at adoption instead of surfacing a raw git failure
 // when the branch is already checked out somewhere.
 func TestAddOne_HintsAdoptWhenCheckedOut(t *testing.T) {
