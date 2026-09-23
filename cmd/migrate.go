@@ -202,6 +202,9 @@ func migrateTrackedURLs(r *resolved, recs []ports.WorktreeRecord) (updated []por
 			if !ok {
 				continue
 			}
+			if tp < s.Range[0] || tp > s.Range[1] {
+				return recs, nil, nil, fmt.Errorf("migrate worktree %q: tracked host port %d outside range for %q in [%d,%d]", out[di].Branch, tp, s.Var, s.Range[0], s.Range[1])
+			}
 			if cur, ok := fixed[s.Var]; !ok || cur != tp {
 				fixed[s.Var] = tp
 			}

@@ -240,3 +240,49 @@ func TestMigrateTrackedURLs_NoOpWhenAligned(t *testing.T) {
 		t.Errorf("len(updated) = %d, want 2", len(updated))
 	}
 }
+
+func TestMigrateTrackedURLs_TrackedOutsideRange(t *testing.T) {
+	repo := initMainTestRepo(t)
+	content := `project:
+  worktreeBase: .worktrees
+source:
+  type: git
+  git: {remote: origin, fetchPrune: true}
+runner:
+  type: docker
+  docker:
+    composeFiles: [docker-compose.yml]
+    projectPrefix: demo
+entry:
+  setup: ["echo setup"]
+  run: "echo run"
+  stop: "echo stop"
+  logs: "echo logs"
+ports:
+  base: {app: 8000}
+  ranges:
+    app: [8000, 8099]
+urls:
+  - {var: BASE_URL, base: http://localhost:8000, range: [8000, 8000]}
+`
+	path := filepath.Join(repo, "wrk3-narrow-url.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &resolved{cfg: cfg, src: &source.GitSource{}, base: cfg.AbsWorktreeBase(), stateP: cfg.StatePath()}
+	recs := []ports.WorktreeRecord{
+		{Branch: "feat", Slug: "feat", AbsPath: filepath.Join(repo, ".worktrees", "missing"), Index: 1,
+			Ports:  map[string]int{"app": 8001},
+			Urls:   map[string]int{"BASE_URL": 8000},
+			Status: ports.StatusStopped},
+	}
+	if _, _, _, err := migrateTrackedURLs(r, recs); err == nil {
+		t.Fatal("migrateTrackedURLs = nil, want out-of-range tracked host port error")
+	} else if !strings.Contains(err.Error(), "outside range") {
+		t.Fatalf("migrateTrackedURLs err = %v, want outside-range error", err)
+	}
+}
