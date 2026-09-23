@@ -50,6 +50,14 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 	}
 	mainPorts := alloc.BaseAllocation()
 	taken := takenWithMain(alloc, recs)
+	// Seed URL ports like host ports: existing records hold theirs, and
+	// the implicit main checkout owns exactly the base-URL allocation.
+	for p := range ports.TakenFromURLRecords(recs) {
+		taken[p] = struct{}{}
+	}
+	for _, p := range r.cfg.URLBasePorts() {
+		taken[p] = struct{}{}
+	}
 
 	all := append([]ports.WorktreeRecord(nil), recs...)
 
@@ -92,15 +100,16 @@ func reconcileState(r *resolved, recs []ports.WorktreeRecord) (updated []ports.W
 			taken[p] = struct{}{}
 		}
 		if len(urlSpecs) > 0 {
+			tracked := alloc.HostPortsByBase(allocation)
 			if recovered, ok := ports.ReadURLs(path, urlSpecs); ok {
-				if urlRecoveredReusable(recovered, taken) {
+				if urlRecoveredReusable(recovered, taken, urlSpecs, tracked) {
 					urlAlloc = recovered
 				} else {
 					warns = append(warns, fmt.Sprintf("worktree %q .env URL ports cannot be adopted; allocating a free set", branch))
 				}
 			}
 			if urlAlloc == nil {
-				fresh, err := ports.AllocateURLs(urlSpecs, taken, osPortFree)
+				fresh, err := ports.AllocateURLs(urlSpecs, tracked, taken, osPortFree)
 				if err != nil {
 					return recs, nil, false, fmt.Errorf("reconcile worktree %q urls: %w", branch, err)
 				}
@@ -223,20 +232,64 @@ func recoveredReusable(alloc ports.Allocator, base, recovered map[string]int, ta
 }
 
 // urlRecoveredReusable reports whether .env-recovered URL ports can be
-// reused: no collision with taken ports, distinct values, and OS-free.
-func urlRecoveredReusable(recovered map[string]int, taken map[int]struct{}) bool {
+// reused: no collision with taken ports, tracked values equal the host
+// allocation they follow (vars whose base port matches a host base must
+// name that tracked port), alias-consistent values otherwise (vars
+// sharing one base port must share one recovered value; distinct base
+// ports must stay distinct), and OS-free.
+func urlRecoveredReusable(recovered map[string]int, taken map[int]struct{}, specs []ports.URLSpec, tracked map[int]int) bool {
 	if len(recovered) == 0 {
 		return false
 	}
-	if collidesTaken(taken, recovered) {
-		return false
+	baseOf := make(map[string]int, len(specs))
+	for _, s := range specs {
+		baseOf[s.Var] = s.BasePort()
 	}
-	seen := make(map[int]struct{}, len(recovered))
-	for _, v := range recovered {
-		if _, dup := seen[v]; dup {
+	// Tracked values name the worktree's own host port (already validated
+	// against taken when the host allocation was recovered or assigned),
+	// so only untracked values collide-check against taken.
+	untracked := make(map[string]int, len(recovered))
+	for v, p := range recovered {
+		b, ok := baseOf[v]
+		if !ok {
 			return false
 		}
-		seen[v] = struct{}{}
+		if tp, ok := tracked[b]; ok {
+			if p != tp {
+				return false
+			}
+			continue
+		}
+		untracked[v] = p
+	}
+	if collidesTaken(taken, untracked) {
+		return false
+	}
+	seen := make(map[int]string, len(recovered))
+	for v, p := range recovered {
+		if other, dup := seen[p]; dup {
+			bv, okV := baseOf[v]
+			bo, okO := baseOf[other]
+			if !okV || !okO || bv != bo {
+				return false
+			}
+			continue
+		}
+		seen[p] = v
+	}
+	byBase := make(map[int]int, len(recovered))
+	for v, p := range recovered {
+		b, ok := baseOf[v]
+		if !ok {
+			return false
+		}
+		if prev, dup := byBase[b]; dup {
+			if prev != p {
+				return false
+			}
+			continue
+		}
+		byBase[b] = p
 	}
 	for _, v := range recovered {
 		if !osPortFree(v) {
@@ -270,6 +323,16 @@ func reconcileAndSave(r *resolved, recs []ports.WorktreeRecord) (updated []ports
 		updated = migratedRecs
 		dirty = true
 		warns = append(warns, "migrated legacy collides with main (ports.base): "+strings.Join(moved, ", "))
+	}
+	urlRecs, urlMoved, urlWarns, err := migrateTrackedURLs(r, updated)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	warns = append(warns, urlWarns...)
+	if len(urlMoved) > 0 {
+		updated = urlRecs
+		dirty = true
+		warns = append(warns, "migrated diverged URL ports to tracked host ports: "+strings.Join(urlMoved, ", "))
 	}
 	if !dirty {
 		return updated, nil, warns, nil

@@ -157,8 +157,16 @@ it to exit before moving on.
 - Managed keys: one `<NAME>_PORT` per `ports.base` entry. Names sharing one
   `ports.base` value are aliases for a single host port (e.g. `app` and
   `public_api` both `8000`): every worktree assigns them the same port so
-  they stay in lockstep. App URLs such
-  as `BASE_URL` and a user-set `APP_URL` are never managed: they copy
+  they stay in lockstep. A `urls` entry whose base port matches a
+  `ports.base` value tracks that host allocation (e.g. `BASE_URL` on
+  `http://localhost:8000` follows `APP_PORT`): every worktree's URL names
+  the port its service actually listens on. `urls` entries sharing one
+  base port stay equal to each other; entries with no matching host base
+  allocate their own lowest free port. Host and URL allocations share one
+  taken set, so a new worktree's ports never collide with another
+  worktree's host or URL ports. URL vars not
+  listed in `urls` (e.g. a user-set `APP_URL` with no `urls` entry) are
+  never managed: they copy
   verbatim from the repo-root `.env` seed into fresh worktrees. When
   `proxy.enabled`, runner env still receives `APP_URL`
   (`http://<slug>.<domain>[:port]`); it is not written into the `.env`.

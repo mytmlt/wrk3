@@ -28,6 +28,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `urls` entries whose base port matches a `ports.base` value (e.g.
+  `BASE_URL` on `http://localhost:8000` with `base: {app: 8000}`) now
+  track that host allocation instead of taking their own port: every
+  worktree's `BASE_URL` names the port its service actually listens on
+  (`APP_PORT`), instead of diverging to the next free port (`8002` vs
+  `8001`). Entries sharing one base port stay equal to each other, and
+  entries with no matching host base still allocate their own lowest
+  free port. Existing diverged records migrate on next read (with a
+  warning): stored URL values are rewritten to the tracked host port
+  and the worktree `.env` is ensured. `.env` recovery enforces tracking
+  (diverged values warn and are rewritten to the tracked port), and host
+  allocation skips ports held by existing `urls` vars (and the main
+  checkout's base-URL ports), so a new worktree's `<NAME>_PORT` can no
+  longer collide with another worktree's managed URL.
+
 - `OpenCodeReview` workflow shipped with duplicate `concurrency` and
   `timeout-minutes` keys, which made the workflow file invalid — GitHub
   never created the review check on PRs (only a 0-job failed `push` run
