@@ -41,7 +41,7 @@ hermetic (temp git repos, temp dirs — no network).
 ## Rules
 
 - Docs + skills stay in sync with behavior — no exceptions. Every change
-  to CLI behavior, config shape (`ports`/`urls`/`proxy`/`shared`/`health`/
+  to CLI behavior, config shape (`ports`/`urls`/`proxy`/`health`/
   `entry`/`runner`/`source`), dashboard UX, port allocation, `.env`
   management, or setup flow **must** update `docs/` (`USAGE.md` /
   `CONFIGURATION.md`), `skills/wrk3-setup/SKILL.md` (+ `examples/` when the

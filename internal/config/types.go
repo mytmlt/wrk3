@@ -17,8 +17,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -28,7 +26,6 @@ import (
 
 	"github.com/mytmlt/wrk3/internal/ports"
 	"github.com/mytmlt/wrk3/internal/runner"
-	"github.com/mytmlt/wrk3/internal/shared"
 	"github.com/mytmlt/wrk3/internal/source"
 )
 
@@ -37,7 +34,6 @@ type Config struct {
 	Project ProjectConfig `yaml:"project"`
 	Source  SourceConfig  `yaml:"source"`
 	Runner  RunnerConfig  `yaml:"runner"`
-	Shared  SharedConfig  `yaml:"shared"`
 	Entry   EntryConfig   `yaml:"entry"`
 	Ports   PortsConfig   `yaml:"ports"`
 	Urls    []URLConfig   `yaml:"urls"`
@@ -94,43 +90,6 @@ type RunnerConfig struct {
 	Type   string       `yaml:"type"`
 	Docker DockerConfig `yaml:"docker"`
 	Podman PodmanConfig `yaml:"podman"`
-}
-
-// SharedServiceConfig holds one shared service's overlay options.
-// Ports lists short-syntax host publishes (e.g. ["5432:5432"]) the
-// shared overlay adds so worktree containers can reach the service
-// over the host gateway. Empty means no published ports.
-type SharedServiceConfig struct {
-	Ports []string `yaml:"ports"`
-}
-
-// SharedComposeConfig holds one engine's shared compose options.
-// ComposeFiles resolve against the repo root (config dir), not a
-// worktree: shared services run once per repo, not once per branch.
-// Project is the fixed compose project name (sanitized); Services
-// maps compose service names started by `shared up` and scoped by
-// `up -d <services>` in the shared project.
-type SharedComposeConfig struct {
-	ComposeFiles []string                       `yaml:"composeFiles"`
-	Project      string                         `yaml:"project"`
-	Services     map[string]SharedServiceConfig `yaml:"services"`
-}
-
-// SharedConfig holds optional shared services (databases, brokers).
-// When no shared key is set the block is disabled and every command
-// behaves exactly as before. When enabled, per-worktree compose up
-// starts only WorktreeServices (with --no-deps, so shared services
-// are never duplicated), Env values (template-expanded per slug)
-// reach worktree containers via a generated overlay plus runner env,
-// and Setup commands run per worktree before entry.setup (e.g.
-// create-once-per-branch databases). `down` never touches the shared
-// project: only `shared down` stops it.
-type SharedConfig struct {
-	Docker           SharedComposeConfig `yaml:"docker"`
-	Podman           SharedComposeConfig `yaml:"podman"`
-	WorktreeServices []string            `yaml:"worktreeServices"`
-	Env              map[string]string   `yaml:"env"`
-	Setup            []string            `yaml:"setup"`
 }
 
 // EntryConfig holds host entry commands run inside each worktree.
@@ -286,198 +245,20 @@ func proxyURLFor(domain, addr, slug string) string {
 }
 
 // ComposeOptions builds runner.Options for slug from the selected
-// compose backend (docker or podman). When shared services are
-// configured the worktree scope narrows to WorktreeServices started
-// with --no-deps (shared dependencies live in the shared project),
-// plus the per-slug worktree overlay when it has been written (up
-// writes it before use; other commands attach it only when present
-// so probes on never-started worktrees keep working).
+// compose backend (docker or podman).
 func (c *Config) ComposeOptions(slug string) runner.Options {
 	if c.Runner.Type == "podman" {
 		return runner.Options{
 			ComposeFiles:  append([]string(nil), c.Runner.Podman.ComposeFiles...),
 			ProjectPrefix: c.Runner.Podman.ProjectPrefix,
 			Slug:          slug,
-			Services:      c.sharedWorktreeServices(),
-			NoDeps:        c.HasShared(),
-			ExtraFiles:    c.worktreeOverlayIfExists(slug),
 		}
 	}
 	return runner.Options{
 		ComposeFiles:  append([]string(nil), c.Runner.Docker.ComposeFiles...),
 		ProjectPrefix: c.Runner.Docker.ProjectPrefix,
 		Slug:          slug,
-		Services:      c.sharedWorktreeServices(),
-		NoDeps:        c.HasShared(),
-		ExtraFiles:    c.worktreeOverlayIfExists(slug),
 	}
-}
-
-// sharedWorktreeServices returns a copy of the worktree service scope,
-// or nil when shared services are disabled (meaning: all services).
-func (c *Config) sharedWorktreeServices() []string {
-	if !c.HasShared() {
-		return nil
-	}
-	return append([]string(nil), c.Shared.WorktreeServices...)
-}
-
-// worktreeOverlayIfExists returns the per-slug overlay path when the
-// file has been written, else nil.
-func (c *Config) worktreeOverlayIfExists(slug string) []string {
-	if !c.HasShared() || strings.TrimSpace(slug) == "" {
-		return nil
-	}
-	p := shared.WorktreeOverlayPath(c.AbsWorktreeBase(), slug)
-	if st, err := os.Stat(p); err != nil || st.IsDir() {
-		return nil
-	}
-	return []string{p}
-}
-
-// HasShared reports whether any shared-services key is set.
-func (c *Config) HasShared() bool {
-	return c.Shared.isSet()
-}
-
-func (s SharedConfig) isSet() bool {
-	return s.Docker.isSet() || s.Podman.isSet() ||
-		len(s.WorktreeServices) > 0 || len(s.Env) > 0 || len(s.Setup) > 0
-}
-
-func (s SharedComposeConfig) isSet() bool {
-	return len(s.ComposeFiles) > 0 || strings.TrimSpace(s.Project) != "" || len(s.Services) > 0
-}
-
-// sharedBackendName is the compose backend selected by runner.type for
-// shared operations ("" for non-compose runners).
-func (c *Config) sharedBackendName() string {
-	switch c.Runner.Type {
-	case "docker", "podman":
-		return c.Runner.Type
-	default:
-		return ""
-	}
-}
-
-// SharedBackend returns the shared compose block for the selected
-// backend. Callers must check HasShared and Validate first.
-func (c *Config) SharedBackend() SharedComposeConfig {
-	if c.Runner.Type == "podman" {
-		return c.Shared.Podman
-	}
-	return c.Shared.Docker
-}
-
-// SharedProject returns the sanitized fixed compose project name for
-// shared services.
-func (c *Config) SharedProject() string {
-	return runner.SanitizeProjectName(strings.TrimSpace(c.SharedBackend().Project))
-}
-
-// SharedServiceNames returns the sorted shared compose service names.
-func (c *Config) SharedServiceNames() []string {
-	out := make([]string, 0, len(c.SharedBackend().Services))
-	for name := range c.SharedBackend().Services {
-		out = append(out, name)
-	}
-	sort.Strings(out)
-	return out
-}
-
-// SharedRunnerOptions builds runner.Options for the shared project:
-// fixed project name, shared compose files, and the shared service
-// scope, plus the shared overlay when written. Slug stays empty so
-// the project name is exactly the shared project.
-func (c *Config) SharedRunnerOptions() runner.Options {
-	be := c.SharedBackend()
-	var extra []string
-	if p := c.SharedOverlayPath(); statExists(p) {
-		extra = []string{p}
-	}
-	return runner.Options{
-		ComposeFiles:  append([]string(nil), be.ComposeFiles...),
-		ProjectPrefix: strings.TrimSpace(be.Project),
-		Services:      c.SharedServiceNames(),
-		ExtraFiles:    extra,
-		// Wait for running/healthy before returning: per-worktree
-		// isolation hooks (createdb, vhost provisioning) assume
-		// the shared services are actually ready, and a published
-		// host port can accept TCP while the service inside is
-		// still initializing.
-		Wait: true,
-	}
-}
-
-// SharedOverlayPath returns the generated shared overlay path.
-func (c *Config) SharedOverlayPath() string {
-	return shared.SharedOverlayPath(c.AbsWorktreeBase(), c.SharedProject())
-}
-
-// WorktreeOverlayPath returns the generated per-slug overlay path.
-func (c *Config) WorktreeOverlayPath(slug string) string {
-	return shared.WorktreeOverlayPath(c.AbsWorktreeBase(), slug)
-}
-
-// SharedContext returns the template context for slug.
-func (c *Config) SharedContext(slug string) shared.Context {
-	return shared.Context{Slug: slug, SharedProject: c.SharedProject()}
-}
-
-// ExpandSharedEnv returns the shared env block with per-slug
-// template variables expanded.
-func (c *Config) ExpandSharedEnv(slug string) map[string]string {
-	return shared.ExpandMap(c.Shared.Env, c.SharedContext(slug))
-}
-
-// ExpandSharedSetup returns the shared setup commands with per-slug
-// template variables expanded (empty strings preserved; callers
-// skip them like entry.setup).
-func (c *Config) ExpandSharedSetup(slug string) []string {
-	if len(c.Shared.Setup) == 0 {
-		return nil
-	}
-	ctx := c.SharedContext(slug)
-	out := make([]string, 0, len(c.Shared.Setup))
-	for _, s := range c.Shared.Setup {
-		out = append(out, shared.Expand(s, ctx))
-	}
-	return out
-}
-
-// SharedServicePorts returns the shared services as overlay input.
-func (c *Config) SharedServicePorts() map[string]shared.ServicePorts {
-	be := c.SharedBackend()
-	out := make(map[string]shared.ServicePorts, len(be.Services))
-	for name, svc := range be.Services {
-		out[name] = shared.ServicePorts{Ports: append([]string(nil), svc.Ports...)}
-	}
-	return out
-}
-
-// SharedHostPorts returns the sorted distinct explicit host ports
-// published by shared services (short-syntax only; ephemeral or
-// unparsable publishes are skipped). Used for the readiness wait.
-func (c *Config) SharedHostPorts() []int {
-	seen := map[int]struct{}{}
-	var out []int
-	for _, svc := range c.SharedBackend().Services {
-		for _, p := range shared.HostPorts(svc.Ports) {
-			if _, ok := seen[p]; ok {
-				continue
-			}
-			seen[p] = struct{}{}
-			out = append(out, p)
-		}
-	}
-	sort.Ints(out)
-	return out
-}
-
-// statExists reports whether path exists as a regular file.
-func statExists(path string) bool {
-	st, err := os.Stat(path)
-	return err == nil && !st.IsDir()
 }
 
 // ComposeFiles returns the compose files of the selected compose backend
@@ -625,9 +406,6 @@ func (c *Config) Validate() error {
 	if err := c.validateURLs(); err != nil {
 		return err
 	}
-	if err := c.validateShared(); err != nil {
-		return err
-	}
 	if err := c.validateProxy(); err != nil {
 		return err
 	}
@@ -718,113 +496,6 @@ func (c *Config) validateURLs() error {
 		}
 		if n < u.Range[0] || n > u.Range[1] {
 			return fmt.Errorf("urls[%d].base port %d outside its range [%d,%d]", i, n, u.Range[0], u.Range[1])
-		}
-	}
-	return nil
-}
-
-// serviceNameRe matches compose service names ([a-zA-Z0-9._-],
-// non-empty), used for shared service and worktree service entries.
-var serviceNameRe = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
-
-// validateShared checks the optional shared-services block. A fully
-// empty block disables the feature; any shared key set enables it
-// and requires the backend matching runner.type plus an explicit
-// per-worktree service scope. Only the matching backend block is
-// honored — setting the other backend's block errors so a docker-vs-
-// podman typo fails fast instead of silently doing nothing.
-func (c *Config) validateShared() error {
-	if !c.HasShared() {
-		return nil
-	}
-	backend := c.sharedBackendName()
-	if backend == "" {
-		return fmt.Errorf("shared services require runner.type docker or podman (got %q)", c.Runner.Type)
-	}
-	var other SharedComposeConfig
-	var otherName string
-	if backend == "docker" {
-		other, otherName = c.Shared.Podman, "podman"
-	} else {
-		other, otherName = c.Shared.Docker, "docker"
-	}
-	if other.isSet() {
-		return fmt.Errorf("shared.%s is set but runner.type is %q (only shared.%s applies)", otherName, backend, backend)
-	}
-	be := c.SharedBackend()
-	if len(be.ComposeFiles) == 0 {
-		return fmt.Errorf("shared.%s.composeFiles must list at least one compose file", backend)
-	}
-	for i, f := range be.ComposeFiles {
-		if strings.TrimSpace(f) == "" {
-			return fmt.Errorf("shared.%s.composeFiles[%d] must not be empty", backend, i)
-		}
-	}
-	if strings.TrimSpace(be.Project) == "" {
-		return fmt.Errorf("shared.%s.project must not be empty (fixed compose project for shared services)", backend)
-	}
-	if len(be.Services) == 0 {
-		return fmt.Errorf("shared.%s.services must list at least one service", backend)
-	}
-	for name, svc := range be.Services {
-		if !serviceNameRe.MatchString(name) {
-			return fmt.Errorf("shared.%s.services %q is not a valid compose service name", backend, name)
-		}
-		for i, p := range svc.Ports {
-			if strings.TrimSpace(p) == "" {
-				return fmt.Errorf("shared.%s.services.%s.ports[%d] must not be empty", backend, name, i)
-			}
-		}
-	}
-	if len(c.Shared.WorktreeServices) == 0 {
-		return fmt.Errorf("shared.worktreeServices must list at least one service (e.g. [app]); shared services are excluded from per-worktree up")
-	}
-	for i, s := range c.Shared.WorktreeServices {
-		if !serviceNameRe.MatchString(s) {
-			return fmt.Errorf("shared.worktreeServices[%d] %q is not a valid compose service name", i, s)
-		}
-		if _, dup := be.Services[s]; dup {
-			return fmt.Errorf("shared.worktreeServices[%d] %q is also a shared service (scopes must not overlap)", i, s)
-		}
-	}
-	if err := c.validateSharedEnv(); err != nil {
-		return err
-	}
-	return nil
-}
-
-// validateSharedEnv checks shared.env keys: valid .env identifiers,
-// outside the WRK3_ runtime namespace, and colliding with neither
-// managed <NAME>_PORT keys nor urls vars (both land in runner env).
-func (c *Config) validateSharedEnv() error {
-	if len(c.Shared.Env) == 0 {
-		return nil
-	}
-	taken := make(map[string]string, len(c.Ports.Base)+len(c.Urls))
-	for name := range c.Ports.Base {
-		taken[ports.EnvVarForPort(name)] = "ports.base " + name
-	}
-	for _, u := range c.Urls {
-		taken[strings.TrimSpace(u.Var)] = "urls var"
-	}
-	// Deterministic error order for multi-key configs.
-	keys := make([]string, 0, len(c.Shared.Env))
-	for k := range c.Shared.Env {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		if !isValidEnvVar(k) {
-			return fmt.Errorf("shared.env key %q is not a valid .env variable name", k)
-		}
-		if strings.HasPrefix(k, "WRK3_") {
-			return fmt.Errorf("shared.env key %q uses the reserved WRK3_ namespace (runtime provides WRK3_SLUG, WRK3_SHARED_PROJECT, ...)", k)
-		}
-		if k == "APP_URL" && c.Proxy.Enabled {
-			return fmt.Errorf("shared.env key %q collides with the proxy gateway URL (disable proxy or drop the key)", k)
-		}
-		if owner, ok := taken[k]; ok {
-			return fmt.Errorf("shared.env key %q collides with managed %s", k, owner)
 		}
 	}
 	return nil

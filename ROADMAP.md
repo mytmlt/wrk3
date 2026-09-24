@@ -36,5 +36,3 @@ developer answer — never invented.
   for them.
 - Guessing setup commands — uncertain agents ask, they do not invent.
 - Sharing mutable host state between worktrees — isolation is the point.
-  (Shared services are the deliberate opt-in exception: one instance,
-  per-worktree data via `shared.setup`/`shared.env`.)
