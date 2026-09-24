@@ -62,9 +62,9 @@ func (r *PodmanRunner) ProjectName() string {
 }
 
 // composeArgs prefixes sub with the runner's project name and compose
-// files (base files plus existing extra overlay files).
+// files.
 func (r *PodmanRunner) composeArgs(sub ...string) []string {
-	return buildComposeArgs(r.ProjectName(), allComposeFiles(r.opts), sub...)
+	return buildComposeArgs(r.ProjectName(), r.opts.ComposeFiles, sub...)
 }
 
 // environ builds the process environment for podman invocations.
@@ -81,7 +81,7 @@ func (r *PodmanRunner) Up(ctx context.Context, worktreePath string, env map[stri
 	if err := CheckComposeFiles(worktreePath, r.opts.ComposeFiles); err != nil {
 		return fmt.Errorf("podman up: %w", err)
 	}
-	_, err := composeLive(ctx, r.timeout(), "podman", r.ProjectName(), allComposeFiles(r.opts), worktreePath, r.environ(env), upArgs(r.opts)...)
+	_, err := composeLive(ctx, r.timeout(), "podman", r.ProjectName(), r.opts.ComposeFiles, worktreePath, r.environ(env), "up", "-d", "--build")
 	return err
 }
 
