@@ -378,6 +378,9 @@ Each test builds a throwaway git repo in a temp dir, writes a minimal
 off by default and is never enabled without explicit consent. Enabled
 reports include a scrubbed stacktrace (module, function, line; no locals,
 source context, paths, or personal data) so issues can group by location.
+Expected, user-actionable failures (e.g. `wrk3 remove` refusing a dirty
+worktree without `--force`, which already prints a hint) are excluded and
+never reported.
 
 **First run:** the dashboard shows a one-time prompt (default No). `y`
 enables; `n`/`esc` leaves off. Both states persist.
