@@ -1,14 +1,21 @@
 package cmd
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mytmlt/wrk3/internal/telemetry"
 )
 
-func TestRemove_HintsForceOnDirtyWorktree(t *testing.T) {
+// dirtyWorktreeRemoveError sets up a temp repo with a worktree that has an
+// untracked file and returns the error from `wrk3 remove` on it without
+// --force. The git helper runs inside the repo (cwd-independent assertions).
+func dirtyWorktreeRemoveError(t *testing.T) error {
+	t.Helper()
 	repo := initMainTestRepo(t)
 	_ = writeTestConfig(t, repo)
 
@@ -45,16 +52,19 @@ func TestRemove_HintsForceOnDirtyWorktree(t *testing.T) {
 	}
 	oldFile := fileFlag
 	fileFlag = ""
-	defer func() {
+	oldForce := removeForce
+	t.Cleanup(func() {
 		_ = os.Chdir(cwd)
 		fileFlag = oldFile
-	}()
-
-	// save/restore removeForce global
-	oldForce := removeForce
-	defer func() { removeForce = oldForce }()
+		removeForce = oldForce
+	})
 
 	_, _, err = executeCmd("remove", "feature/foo")
+	return err
+}
+
+func TestRemove_HintsForceOnDirtyWorktree(t *testing.T) {
+	err := dirtyWorktreeRemoveError(t)
 	if err == nil {
 		t.Fatal("expected error for dirty worktree remove, got nil")
 	}
@@ -64,5 +74,19 @@ func TestRemove_HintsForceOnDirtyWorktree(t *testing.T) {
 	}
 	if !strings.Contains(errMsg, "--force") {
 		t.Errorf("error should mention --force, got: %q", errMsg)
+	}
+}
+
+func TestRemove_DirtyWorktreeIsNonReportable(t *testing.T) {
+	err := dirtyWorktreeRemoveError(t)
+	if err == nil {
+		t.Fatal("expected error for dirty worktree remove, got nil")
+	}
+	var nr telemetry.NonReportable
+	if !errors.As(err, &nr) {
+		t.Fatalf("dirty-worktree error should implement telemetry.NonReportable, got %T", err)
+	}
+	if !nr.NonReportable() {
+		t.Error("NonReportable() = false, want true")
 	}
 }
