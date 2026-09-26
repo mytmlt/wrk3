@@ -110,12 +110,6 @@ func downOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf fu
 	if err := rn.Down(ctx, rec.AbsPath, env); err != nil {
 		return fmt.Errorf("down %q: %w", rec.Branch, err)
 	}
-	if r.cfg.HasShared() {
-		// The project-scoped down above cannot touch the shared
-		// project (different -p name); say so explicitly — shared
-		// services survive every worktree down by design.
-		logf("[%s] shared %s untouched (use `shared down` to stop it)", rec.Slug, r.cfg.SharedProject())
-	}
 	logf("[%s] down", rec.Slug)
 	return nil
 }

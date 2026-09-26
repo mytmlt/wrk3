@@ -185,3 +185,80 @@ func TestDashboardWorkColumns_StatusFitsSettingUp(t *testing.T) {
 		}
 	}
 }
+
+func TestDashboardRowsRefresh_KeepsInFlightMainSettingUp(t *testing.T) {
+	// Regression: `u` on the implicit main worktree (no state-file entry,
+	// synthesized Status "") flipped rows to "setting up", but the next
+	// poll refresh overwrote it with the live "stopped" probe while the op
+	// was still running (spinner on, status stopped).
+	m := testDashboardModel()
+	m.rows = []dashboardRow{
+		{Rec: ports.WorktreeRecord{Branch: "main", Slug: "main", Index: mainWorktreeIndex}, Status: ports.StatusStopped},
+	}
+	m.workCursor = 0
+	m.pane = 0
+	m.projects[0].cfg = nil
+	next, _ := m.handleKey(keyMsg("u"))
+	dm := next.(dashboardModel)
+	if dm.rows[0].Status != ports.StatusSettingUp {
+		t.Fatalf("u must flip main to setting up immediately: %+v", dm.rows)
+	}
+	// Simulate a poll refresh arriving mid-up: fresh probe says stopped
+	// (main has no stored status to win over the probe).
+	refreshed := []dashboardRow{
+		{Rec: ports.WorktreeRecord{Branch: "main", Slug: "main", Index: mainWorktreeIndex}, Status: ports.StatusStopped},
+	}
+	updated, _ := dm.Update(dashboardRowsMsg{rows: refreshed})
+	dm = updated.(dashboardModel)
+	if dm.rows[0].Status != ports.StatusSettingUp {
+		t.Errorf("refresh during up main must keep setting up, got %q", dm.rows[0].Status)
+	}
+	// Completing the op clears the override: the next refresh shows live.
+	done, _ := dm.Update(dashboardOpDoneMsg{opID: dm.ops[0].id, label: "up"})
+	dm = done.(dashboardModel)
+	if dm.isBusy() {
+		t.Fatal("opDone must clear busy")
+	}
+	refreshedAfter := []dashboardRow{
+		{Rec: ports.WorktreeRecord{Branch: "main", Slug: "main", Index: mainWorktreeIndex}, Status: ports.StatusStopped},
+	}
+	updated, _ = dm.Update(dashboardRowsMsg{rows: refreshedAfter})
+	dm = updated.(dashboardModel)
+	if dm.rows[0].Status != ports.StatusStopped {
+		t.Errorf("refresh after up done must show live stopped, got %q", dm.rows[0].Status)
+	}
+}
+
+func TestDashboardReapplyInFlightStatuses(t *testing.T) {
+	m := testDashboardModel()
+	m.rows = []dashboardRow{
+		{Rec: ports.WorktreeRecord{Branch: "a", Slug: "a"}, Status: ports.StatusStopped},
+		{Rec: ports.WorktreeRecord{Branch: "b", Slug: "b"}, Status: ports.StatusStopped},
+		{Rec: ports.WorktreeRecord{Branch: "gone", Slug: "gone"}, Status: "stale", Stale: true},
+	}
+	m.startOp("up", []string{"a", "gone"})
+	m.startOp("down", []string{"b"})
+	m.startOp("pull", []string{"a"})
+	m = m.reapplyInFlightStatuses()
+	byBranch := map[string]dashboardRow{}
+	for _, row := range m.rows {
+		byBranch[row.Rec.Branch] = row
+	}
+	// up wins first for "a" (op order); pull carries no status.
+	if byBranch["a"].Status != ports.StatusSettingUp {
+		t.Errorf("up must reapply setting up to a, got %q", byBranch["a"].Status)
+	}
+	if byBranch["b"].Status != ports.StatusStopping {
+		t.Errorf("down must reapply stopping to b, got %q", byBranch["b"].Status)
+	}
+	if byBranch["gone"].Status == ports.StatusSettingUp {
+		t.Errorf("stale row must stay stale: %+v", byBranch["gone"])
+	}
+	// Ops from another project must not leak into the current view.
+	m.ops[0].proj = m.cur + 1
+	m.rows[0].Status = ports.StatusStopped
+	m = m.reapplyInFlightStatuses()
+	if m.rows[0].Status != ports.StatusStopped {
+		t.Errorf("other-project op must not touch rows, got %q", m.rows[0].Status)
+	}
+}

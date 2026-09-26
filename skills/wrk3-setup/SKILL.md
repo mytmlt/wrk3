@@ -63,17 +63,14 @@ Stop and report if the repo root can't be found.
    - stop / logs commands
    If setup needs host-global state (single system DB, fixed socket path,
    license server on a hardcoded port, hardware device), record it — it may
-   be incompatible. Heavier shared infra (databases, brokers) may belong in
-   `shared:` instead of per-worktree `entry.setup` — note the candidate
-   services but do not author `shared:` without user approval.
+   be incompatible (run that service outside wrk3 or use single-worktree mode).
 4. **Host ports the stack binds.** Every host-side port that must differ per
    worktree. For each, note whether compose reads it from an env var
    (`${APP_PORT:-4000}` → parameterizable, good) or hardcodes it
    (`4000:3000` → conflict across worktrees until parameterized).
    Also note URL-shaped values with an explicit port (e.g. `BASE_URL` on
-   `http://localhost:8000`): those belong in `urls:` — a `urls` entry whose
-   base port matches a `ports.base` value tracks that host allocation
-   instead of taking its own port.
+   `http://localhost:8000`): those belong in `urls:` — each entry takes its
+   own lowest free port in its `range`.
 5. **Gateway / health intent.** Note whether the user wants
    `http://<slug>.<domain>` URLs (`proxy.enabled`) or per-check status
    suffixes (`health.checks`). Both are opt-in and display/runner-env only.
@@ -102,7 +99,7 @@ with listed changes):
 | C4 | No shared absolute bind mounts | inspect `volumes:` | absolute host path shared by all worktrees holding mutable state → `COMPATIBLE WITH CHANGES` (convert to named volume or relative path) or `INCOMPATIBLE` if the path is mandated by the toolchain |
 | C5 | Setup commands are repo verbs | setup comes from Makefile/README/compose, runs via `sh -c` with `cwd=worktree`, `env=ports` | setup requires manual GUI steps, host-global daemons, or secrets you can't reproduce per worktree → `INCOMPATIBLE` or scoped `COMPATIBLE WITH CHANGES` |
 | C6 | Ports fit `base` + `ranges` | every `ports.base` key has a `ranges` entry (`app` required, `base` inside `[min,max]`, `1–65535`, `min <= max`); legacy `ports.step` is a hard error | `step` present, `app` missing, `base` outside its range, or two configs sharing a host with overlapping bases/ranges → `COMPATIBLE WITH CHANGES` (delete `step`, add `ranges: {app: [8000, 8099]}`, shift `ports.base` / `ranges`) |
-| C7 | `urls` / `proxy` / `shared` / `health` shape | `urls[].base` absolute URL with explicit port inside its `range`; `proxy.addr` `host:port` with port ≥ 1024 (privileged ports rejected); `shared.*` engine block matches `runner.type`, `worktreeServices` set and disjoint from `shared.*.services`; `health.checks[].timeout` `1s–120s` | malformed entry → `COMPATIBLE WITH CHANGES` (fix the block or drop it) |
+| C7 | `urls` / `proxy` / `health` shape | `urls[].base` absolute URL with explicit port inside its `range`; `proxy.addr` `host:port` with port ≥ 1024 (privileged ports rejected); `health.checks[].timeout` `1s–120s` | malformed entry → `COMPATIBLE WITH CHANGES` (fix the block or drop it) |
 | C8 | Heavyweight sanity | note image sizes, `setup` time, ports count | >2 min boot or >5 host ports → still compatible, but warn and require user approval before live `up` |
 
 Named volumes, per-service `networks:`, `depends_on:`, and `healthcheck:`
@@ -130,7 +127,7 @@ scratch file — never commit it):
 | C4 bind mounts | pass/fail | <file:line> |
 | C5 setup reproducible | pass/fail | <file:line> |
 | C6 base+ranges | pass/fail | <bases + ranges> |
-| C7 urls/proxy/shared/health | pass/fail | <block or n/a> |
+| C7 urls/proxy/health | pass/fail | <block or n/a> |
 
 **Required changes (if any):**
 1. <file:line — exact edit, e.g. `delete container_name: testapp-db`>
@@ -154,14 +151,14 @@ Verdict rules:
 - C3 present, or C5 requires unreproducible host-global state →
   `INCOMPATIBLE` — stop. Say why, name the tool constraint, suggest the
   closest alternative (e.g. run that one service outside wrk3 or in
-  `shared:`, or single-worktree mode). Do not author a config.
+  single-worktree mode). Do not author a config.
 
 ## 1. Remediation (only for `COMPATIBLE WITH CHANGES` — needs approval)
 
 1. List every required edit with file:line evidence (e.g. delete
    `container_name:`, `"4000:3000"` → `"${APP_PORT:-4000}:3000"`,
    absolute bind → named volume, shifted `ports.base`/`ranges`, deleted
-   `ports.step`, fixed `urls`/`proxy`/`shared` block).
+   `ports.step`, fixed `urls`/`proxy` block).
 2. Get user approval before applying anything or working around it in the
    wrk3 config. Say which edits you will make vs. which conflicts the user
    accepts.
@@ -195,9 +192,8 @@ don't re-read files you already cited):
    Map each to the `.env` var the compose file actually reads (see port
    table below). Reuse the `ports.base` mapping proposed by the verdict.
    URL-shaped values with an explicit port belong in `urls:` (each needs
-   `var`, `base` URL, `range`); a `urls` entry whose base port matches a
-   `ports.base` value tracks that host allocation, otherwise it takes its
-   own lowest free port.
+   `var`, `base` URL, `range`); each entry takes its own lowest free port
+   in its `range`.
 5. **Branch names** the user wants in parallel (for slug/validation context).
 
 If anything is ambiguous (which compose file is canonical, what the setup
@@ -260,8 +256,7 @@ Constraints (enforced by `config.Validate` — unknown values fail fast):
 - `urls` (optional): each entry needs `var` (valid `.env` name, unique,
   must not collide with a managed `<NAME>_PORT` key), `base` (absolute
   URL with an explicit port), `range` (`[min,max]`, base port inside).
-  A `urls` entry whose base port matches a `ports.base` value tracks that
-  host allocation; the rest allocate their own lowest free port.
+  Each entry allocates its own lowest free port in its `range`.
 - `proxy` (optional): `addr` must be `host:port` with port `>= 1024`
   (privileged ports rejected); when `enabled`, `up`/`add`/dashboard ensure
   the gateway best-effort and runner env gains `APP_URL` (never written
@@ -269,12 +264,6 @@ Constraints (enforced by `config.Validate` — unknown values fail fast):
 - `health.checks` (optional, display-only): each needs unique non-empty
   `name` + `run` (via `sh -c`, `cwd=worktree`, `env=ports`); `timeout`
   default `10s`, must be `1s–120s` when set. Never fails `up`.
-- `shared` (optional, for heavy infra): only the block matching
-  `runner.type` applies; `worktreeServices` required and must not overlap
-  `shared.*.services`. Per-worktree `up` starts only `worktreeServices`
-  (`--no-deps`); `down`/`remove` never touch shared (only `shared down`
-  stops it, volumes kept). Only propose `shared:` when §0 shows a
-  database/broker worth running once — never by default.
 
 ### Port mapping (`ports.base` → `.env` vars)
 
@@ -326,7 +315,6 @@ Both must exit 0. Typical failures and fixes:
 | `load config ... no such file` | Wrong `-f` path or no `wrk3.yaml`/`wrk3.yml` above cwd. |
 | `sets container_name for service(s)` | §0 miss — delete `container_name:` from the named file/services. |
 | `urls[...]` / `proxy.addr ... requires root` | Fix the `urls` entry (`var`/`base` URL with port/`range`) or use a `proxy.addr` port ≥ 1024. |
-| `shared ...` | Engine block must match `runner.type`; `worktreeServices` required and disjoint from shared services. |
 
 ## 5. Live verification (needs user approval)
 
@@ -343,13 +331,11 @@ wrk3 up                      # setup → compose up → run (all worktrees, in p
 wrk3 status                  # expect running + distinct ports
 wrk3 logs <branch> --follow  # entry.logs (or compose logs); `--follow` long form only (-f is --file)
 wrk3 down
-wrk3 remove --all            # compose down -v + worktree remove (never touches main or shared)
+wrk3 remove --all            # compose down -v + worktree remove (never touches main)
 ```
 
 For a second parallel instance, `add`/`up` another branch and confirm
 `status` shows distinct ports and distinct `<prefix>-<slug>` compose projects.
-With `shared:` configured, `wrk3 shared up|status|logs` manage the shared
-project explicitly (`up` ensures it first; `down`/`remove` never touch it).
 
 ## 6. Hand off
 

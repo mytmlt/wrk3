@@ -35,18 +35,6 @@ func assignPorts(alloc ports.Allocator, recs []ports.WorktreeRecord) (map[string
 func assignAllocation(r *resolved, recs []ports.WorktreeRecord) (ports.EnvAllocation, error) {
 	alloc := r.cfg.Allocator()
 	taken := takenWithMain(alloc, recs)
-	specs := r.cfg.URLSpecs()
-	if len(specs) > 0 {
-		// Share one taken set in both directions: host allocation must
-		// skip ports held by existing URL vars (and main's base-URL
-		// allocation), just as URL allocation skips host ports below.
-		for p := range ports.TakenFromURLRecords(recs) {
-			taken[p] = struct{}{}
-		}
-		for _, p := range r.cfg.URLBasePorts() {
-			taken[p] = struct{}{}
-		}
-	}
 	hostPorts, err := alloc.FindFreeAllocation(taken, osPortFree)
 	if err != nil {
 		return ports.EnvAllocation{}, fmt.Errorf("ports: %w", err)
@@ -54,10 +42,19 @@ func assignAllocation(r *resolved, recs []ports.WorktreeRecord) (ports.EnvAlloca
 	for _, p := range hostPorts {
 		taken[p] = struct{}{}
 	}
+	specs := r.cfg.URLSpecs()
 	if len(specs) == 0 {
 		return ports.EnvAllocation{Ports: hostPorts}, nil
 	}
-	urlPorts, err := ports.AllocateURLs(specs, alloc.HostPortsByBase(hostPorts), taken, osPortFree)
+	for _, rec := range recs {
+		if rec.Urls == nil {
+			continue
+		}
+		for _, p := range rec.Urls {
+			taken[p] = struct{}{}
+		}
+	}
+	urlPorts, err := ports.AllocateURLs(specs, taken, osPortFree)
 	if err != nil {
 		return ports.EnvAllocation{}, fmt.Errorf("urls: %w", err)
 	}
@@ -136,88 +133,6 @@ func migrateLegacyMainCollisions(r *resolved, recs []ports.WorktreeRecord) (upda
 		// (dir missing) still migrate state, but must not create dirs.
 		if st, statErr := os.Stat(out[ci].AbsPath); statErr == nil && st.IsDir() {
 			if err := ensureWorktreeEnv(r, out[ci], r.cfg.URLSpecs()); err != nil {
-				return recs, nil, nil, err
-			}
-		}
-	}
-	return out, migrated, warns, nil
-}
-
-// migrateTrackedURLs rewrites stored URL allocations that diverge from
-// the host port they track. A `urls` entry whose base port matches a
-// `ports.base` value must name that group's allocated port (see
-// AllocateURLs); records allocated before tracking existed hold a
-// distinct port instead (e.g. BASE_URL on 8002 while `app` is 8001) and
-// point at nothing. Diverged values are pointed at the tracked port;
-// untracked (standalone) URL values are never renumbered, and records
-// without stored URLs are left alone.
-//
-// Records are processed in sorted branch order for determinism. The
-// worktree .env is ensured (managed URL keys overwritten to the tracked
-// port). Like migrateLegacyMainCollisions, stale records (dir missing)
-// still migrate state but never create dirs.
-func migrateTrackedURLs(r *resolved, recs []ports.WorktreeRecord) (updated []ports.WorktreeRecord, migrated []string, warns []string, err error) {
-	if r == nil || r.cfg == nil {
-		return recs, nil, nil, nil
-	}
-	specs := r.cfg.URLSpecs()
-	if len(specs) == 0 {
-		return recs, nil, nil, nil
-	}
-	alloc := r.cfg.Allocator()
-	var diverging []int
-	for i, rec := range recs {
-		if len(rec.Urls) == 0 {
-			continue
-		}
-		tracked := alloc.HostPortsByBase(rec.Ports)
-		for _, s := range specs {
-			tp, ok := tracked[s.BasePort()]
-			if !ok {
-				continue
-			}
-			if cur, ok := rec.Urls[s.Var]; !ok || cur != tp {
-				diverging = append(diverging, i)
-				break
-			}
-		}
-	}
-	if len(diverging) == 0 {
-		return recs, nil, nil, nil
-	}
-	sort.Slice(diverging, func(a, b int) bool {
-		return recs[diverging[a]].Branch < recs[diverging[b]].Branch
-	})
-
-	out := append([]ports.WorktreeRecord(nil), recs...)
-
-	for _, di := range diverging {
-		tracked := alloc.HostPortsByBase(out[di].Ports)
-		fixed := make(map[string]int, len(out[di].Urls))
-		for k, v := range out[di].Urls {
-			fixed[k] = v
-		}
-		for _, s := range specs {
-			tp, ok := tracked[s.BasePort()]
-			if !ok {
-				continue
-			}
-			if tp < s.Range[0] || tp > s.Range[1] {
-				return recs, nil, nil, fmt.Errorf("migrate worktree %q: tracked host port %d outside range for %q in [%d,%d]", out[di].Branch, tp, s.Var, s.Range[0], s.Range[1])
-			}
-			if cur, ok := fixed[s.Var]; !ok || cur != tp {
-				fixed[s.Var] = tp
-			}
-		}
-		out[di].Urls = fixed
-		migrated = append(migrated, out[di].Branch)
-		warns = append(warns, fmt.Sprintf(
-			"migrated worktree %q URL ports to tracked host ports (urls entries follow their ports.base allocation)",
-			out[di].Branch))
-		// Ensure .env only when the worktree dir exists: stale records
-		// (dir missing) still migrate state, but must not create dirs.
-		if st, statErr := os.Stat(out[di].AbsPath); statErr == nil && st.IsDir() {
-			if err := ensureWorktreeEnv(r, out[di], r.cfg.URLSpecs()); err != nil {
 				return recs, nil, nil, err
 			}
 		}

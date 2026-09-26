@@ -12,7 +12,7 @@
 | C4 bind mounts | pass/fail | <file:line> |
 | C5 setup reproducible | pass/fail | <file:line> |
 | C6 base+ranges | pass/fail | <bases + ranges; `ports.step` must be absent> |
-| C7 urls/proxy/shared/health | pass/fail | <block or n/a> |
+| C7 urls/proxy/health | pass/fail | <block or n/a> |
 
 **Required changes (if any):**
 1. <file:line — exact edit>

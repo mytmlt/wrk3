@@ -1083,6 +1083,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.workCursor >= len(m.rows) {
 				m.workCursor = max(0, len(m.rows)-1)
 			}
+			m = m.reapplyInFlightStatuses()
 			m.statusMsg = ""
 		}
 		return m, nil
@@ -1284,6 +1285,35 @@ func (m dashboardModel) markRowsStatus(targets []ports.WorktreeRecord, status st
 			m.rows[i].Status = status
 			m.rows[i].Rec.Status = status
 		}
+	}
+	return m
+}
+
+// reapplyInFlightStatuses restores optimistic transitional statuses after a
+// rows refresh. Managed worktrees persist setting up/stopping/failed to the
+// state file so ResolveDisplayStatus survives polls, but the implicit main
+// worktree has no state entry (markStatus is a no-op for it) — without this,
+// the next poll overwrites its in-memory "setting up" with the live "stopped"
+// probe while `up main` is still running (spinner on, status stopped).
+func (m dashboardModel) reapplyInFlightStatuses() dashboardModel {
+	for _, op := range m.ops {
+		if op.proj != m.cur {
+			continue
+		}
+		var status string
+		switch op.label {
+		case "up", "reload":
+			status = ports.StatusSettingUp
+		case "down":
+			status = ports.StatusStopping
+		default:
+			continue
+		}
+		targets := make([]ports.WorktreeRecord, 0, len(op.branches))
+		for _, b := range op.branches {
+			targets = append(targets, ports.WorktreeRecord{Branch: b})
+		}
+		m = m.markRowsStatus(targets, status)
 	}
 	return m
 }
