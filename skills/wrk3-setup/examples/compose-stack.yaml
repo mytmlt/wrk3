@@ -31,8 +31,7 @@ ports:
   ranges:
     app: [8000, 8099]
 # Optional config-driven URLs: each needs var + base URL (explicit port) + range.
-# An entry whose base port matches a ports.base value tracks that host
-# allocation instead of taking its own port.
+# Each entry takes its own lowest free port in its range.
 # urls:
 #   - {var: BASE_URL, base: "http://localhost:8000", range: [8000, 8099]}
 # Optional health checks (display-only): each `run` executes via `sh -c`
@@ -43,22 +42,6 @@ ports:
 #     - name: api
 #       run: "curl -sf http://localhost:${APP_PORT}/healthz"
 #       timeout: 10s  # optional, default 10s (1s-120s)
-# Optional shared services: long-lived infra (databases, brokers) that runs
-# once per repo in a fixed compose project while each worktree runs only
-# its app services. `up` ensures shared first; `down`/`remove` never touch
-# shared — only `shared down` stops it (volumes kept).
-# shared:
-#   docker:  # or podman (must match runner.type)
-#     composeFiles: [docker-compose.yml]  # resolved against the repo root
-#     project: demo-shared                 # fixed compose project (sanitized)
-#     services:                            # started by `shared up` / ensured by `up`
-#       db: {ports: ["5432:5432"]}         # host publishes added by a generated overlay
-#   worktreeServices: [app]  # required when shared is set; per-worktree up starts only these (--no-deps)
-#   env:  # per-worktree overrides (template-expanded; reach containers via overlay + entry env)
-#     DB_HOST: host.docker.internal
-#     DB_NAME: myapp_${slug_underscore}  # ${slug}, ${slug_underscore}, ${slug_dash}, ${shared_project}
-#   setup:  # per-worktree, before entry.setup (e.g. create the branch database); empty strings skipped
-#     - docker exec ${shared_project}-db-1 createdb -U postgres ${DB_NAME} || true
 # Optional local gateway: http://<slug>.localhost:8080 -> app port (stdlib
 # reverse proxy, no extra dependencies). Opt-in: `up`/`add`/dashboard ensure
 # the gateway when enabled, runner env gains APP_URL (not written into .env).

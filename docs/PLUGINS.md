@@ -191,9 +191,7 @@ Generic backends should take their own options struct (or none, like the
 
 4. **Wire construction** in `cmd/common.go: newRunner`. Every backend is
     built via its registered `Factory(Options)` with
-    `cfg.ComposeOptions(slug)` (compose files + prefix + slug, plus the
-    shared-services worktree scope — services, `--no-deps`, overlay
-    files — when `shared` is configured). If your
+    `cfg.ComposeOptions(slug)` (compose files + prefix + slug). If your
     backend needs per-worktree options, read them from `Options` — still
     via the `runner` package API, never by importing your concrete type's
     internals beyond its constructor.

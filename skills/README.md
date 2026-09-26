@@ -14,7 +14,7 @@ tested against. Keep this table in sync when testing against a new release.
 
 | skills release | tested wrk3 |
 | -------------- | ----------- |
-| 0.2.0 | `wrk3 v0.10.25` (covers `main`: range ports, aliases, `urls`, `shared`, `podman`, `health`, `proxy`) |
+| 0.2.0 | `wrk3 v0.10.25` (covers `main`: range ports, aliases, `urls`, `podman`, `health`, `proxy`) |
 | 0.1.0 | `wrk3 v0.1.0` (initial extraction — outdated, kept for history) |
 
 Usage with agents: copy or symlink the skill dir your agent loads, e.g.

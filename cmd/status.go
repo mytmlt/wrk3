@@ -36,19 +36,7 @@ var statusCmd = &cobra.Command{
 		if err := printResolvedStatus(w, r.cfg); err != nil {
 			return err
 		}
-		if err := w.Flush(); err != nil {
-			return fmt.Errorf("write output: %w", err)
-		}
-		if r.cfg.HasShared() {
-			// Shared summary lives outside the worktree table:
-			// it is one repo-wide row, not one row per branch.
-			// Probes never fail status (unknown on error).
-			state, detail := probeSharedStatus(cmd.Context(), r)
-			if _, err := fmt.Fprintln(cmd.OutOrStdout(), sharedStatusLine(r.cfg, state, detail)); err != nil {
-				return fmt.Errorf("write output: %w", err)
-			}
-		}
-		return nil
+		return w.Flush()
 	},
 }
 

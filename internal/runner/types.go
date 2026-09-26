@@ -39,27 +39,10 @@ type Status struct {
 // ProjectPrefix and Slug combine into the compose project name
 // "<prefix>-<slug>" (sanitized); an empty prefix means the project name
 // is just the slug (see Options.ProjectName).
-//
-// ExtraFiles lists additional -f files appended after ComposeFiles
-// (e.g. wrk3-generated overlays); missing files are the caller's
-// problem, so only attach paths that exist.
-//
-// Services, when non-empty, scopes Up to those services
-// (`up -d --build [services...]`); empty means all services.
-// NoDeps adds --no-deps to Up so only Services start (their depends_on
-// and links targets are left alone — used for per-worktree projects
-// whose dependencies live in a shared compose project).
-// Wait adds --wait to Up so it returns after containers are
-// running/healthy instead of right after start (used for the shared
-// project, whose dependents assume readiness).
 type Options struct {
 	ComposeFiles  []string
 	ProjectPrefix string
 	Slug          string
-	ExtraFiles    []string
-	Services      []string
-	NoDeps        bool
-	Wait          bool
 }
 
 // Runner executes worktrees. Implementations must be safe for use from
