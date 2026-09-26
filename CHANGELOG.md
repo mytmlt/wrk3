@@ -62,6 +62,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `add` now fails with a clear, actionable error when the target worktree
+  directory already exists on disk (e.g. a stale directory left over from a
+  prior failed operation) instead of surfacing git's cryptic "already
+  exists" failure. The error names the conflicting path and suggests
+  removing it (`rm -rf`) or running `git worktree prune`.
 - Dashboard keeps the implicit main worktree on `setting up`/`stopping`
   while its `up`/`down`/`reload` op is still running. Main has no
   state-file entry, so the next poll refresh used to overwrite the
