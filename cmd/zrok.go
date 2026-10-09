@@ -8,12 +8,9 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/spf13/cobra"
-
 	"github.com/mytmlt/wrk3/internal/config"
 	"github.com/mytmlt/wrk3/internal/ports"
 	"github.com/mytmlt/wrk3/internal/proxy"
-	"github.com/mytmlt/wrk3/internal/syslog"
 )
 
 // zrokNameFor returns the reserved name (<prefix><slug>) for a worktree.
@@ -146,23 +143,4 @@ func releaseZrokShare(ctx context.Context, cfg *config.Config, slug string) erro
 	ctx2, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	return proxy.ZrokDeleteName(ctx2, bin, cfg.ZrokNamespace(), prefix, name)
-}
-
-// logZrokResult logs a per-worktree share ensure outcome (warnings only;
-// shares are best-effort like the local gateway).
-func logZrokResult(cmd *cobra.Command, r *resolved, msg, warn string) {
-	if msg != "" {
-		_, _ = fmt.Fprintln(cmd.OutOrStdout(), msg)
-	} else if warn != "" {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", warn)
-	}
-	if r == nil {
-		return
-	}
-	switch {
-	case msg != "":
-		r.oplog(syslog.Entry{Level: syslog.LevelInfo, Op: "zrok", Msg: msg})
-	case warn != "":
-		r.oplog(syslog.Entry{Level: syslog.LevelWarn, Op: "zrok", Msg: "warning: " + warn})
-	}
 }
