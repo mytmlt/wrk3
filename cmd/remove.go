@@ -152,6 +152,11 @@ func removeOne(cmd *cobra.Command, r *resolved, recs []ports.WorktreeRecord, bra
 		r.logOpDone("remove", "remove "+branch, err)
 		return err
 	}
+	if r.cfg.Proxy.Enabled && r.cfg.IsZrok() {
+		if err := releaseZrokShare(cmd.Context(), r.cfg, rec.Slug); err != nil {
+			warnf(cmd, "zrok release for %q: %v", rec.Branch, err)
+		}
+	}
 	r.logOpDone("remove", "removed "+removedBranch, nil)
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "removed %s\n", removedBranch); err != nil {
 		return fmt.Errorf("write output: %w", err)

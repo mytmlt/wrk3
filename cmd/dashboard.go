@@ -454,10 +454,14 @@ func dashboardRefreshRowsCmd(p *dashboardProject) tea.Cmd {
 // (best-effort via ensureProxyForUp, never errors). It returns a short
 // status for the meta line plus a log note when the gateway was started or
 // failed to start. Disabled projects yield ("", "") and the meta line falls
-// back to "proxy off".
+// back to "proxy off". The zrok provider manages per-worktree shares in
+// up/down instead, so this only reports the domain.
 func dashboardProxyEnsure(r *resolved) (info, note string) {
 	if r == nil || r.cfg == nil || !r.cfg.Proxy.Enabled {
 		return "", ""
+	}
+	if r.cfg.IsZrok() {
+		return "zrok " + r.cfg.ProxyDomain(), ""
 	}
 	if msg, warn := ensureProxyForUp(r); msg != "" {
 		note = msg
@@ -2248,7 +2252,11 @@ func (m dashboardModel) dashboardMeta() string {
 	proxySeg := m.proxyInfo
 	if proxySeg == "" {
 		if p.cfg != nil && p.cfg.Proxy.Enabled {
-			proxySeg = "proxy " + p.cfg.ProxyAddr()
+			if p.cfg.IsZrok() {
+				proxySeg = "zrok " + p.cfg.ProxyDomain()
+			} else {
+				proxySeg = "proxy " + p.cfg.ProxyAddr()
+			}
 		} else {
 			proxySeg = "proxy off"
 		}

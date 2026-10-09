@@ -111,15 +111,43 @@ type PortsConfig struct {
 	Step *int `yaml:"step"`
 }
 
-// ProxyConfig holds the local-only gateway (<slug>.<domain> -> app port).
-// Disabled by default; when enabled `up` ensures the gateway and runner
-// env gains APP_URL. Domain defaults to "localhost"
-// (zero-config in Chrome/Firefox/Edge; Safari/curl need hosts-sync) and
-// addr defaults to "127.0.0.1:8080" (port 80 needs root).
+// Proxy provider names.
+const (
+	ProxyProviderLocal = "local"
+	ProxyProviderZrok  = "zrok"
+)
+
+// ZrokConfig holds the zrok proxy provider options. Names are reserved
+// per worktree as <namePrefix><slug> in the namespace (e.g.
+// public:myt-home-demo -> https://myt-home-demo.tunnel.mytmlt.site).
+// The zrok CLI is installed + enabled outside wrk3; wrk3 only shells out
+// to `zrok2 create/share/delete` for the lifecycle.
+type ZrokConfig struct {
+	// Namespace is the zrok namespace token (e.g. "public"). Default "public".
+	Namespace string `yaml:"namespace"`
+	// NamePrefix prefixes every reserved name (e.g. "myt-home-"). Empty
+	// derives "<composeProjectPrefix>-" when the runner sets one.
+	NamePrefix string `yaml:"namePrefix"`
+	// BackendMode is the zrok backend mode. Only "proxy" is supported.
+	BackendMode string `yaml:"backendMode"`
+	// Binary overrides the zrok CLI binary (default "zrok2").
+	// $WRK3_ZROK_BIN wins over this field (tests).
+	Binary string `yaml:"binary"`
+}
+
+// ProxyConfig holds the per-worktree URL gateway (<slug>.<domain>).
+// Provider selects the backend: "local" (default, stdlib gateway on addr)
+// or "zrok" (one `zrok2 share public` per worktree, TLS at the frontend).
+// Disabled by default; when enabled `up` ensures the backend and runner
+// env gains APP_URL. Domain defaults to "localhost" for local
+// (zero-config in Chrome/Firefox/Edge; Safari/curl need hosts-sync); the
+// zrok provider needs a real frontend domain (e.g. tunnel.mytmlt.site).
 type ProxyConfig struct {
-	Enabled bool   `yaml:"enabled"`
-	Domain  string `yaml:"domain"`
-	Addr    string `yaml:"addr"`
+	Enabled  bool       `yaml:"enabled"`
+	Provider string     `yaml:"provider"`
+	Domain   string     `yaml:"domain"`
+	Addr     string     `yaml:"addr"`
+	Zrok     ZrokConfig `yaml:"zrok"`
 }
 
 // HealthCheck is one user-configured health probe. Run executes verbatim
@@ -201,6 +229,21 @@ func (c *Config) Allocator() ports.Allocator {
 	return ports.Allocator{Base: c.Ports.Base, Ranges: c.Ports.Ranges}
 }
 
+// ProxyProvider returns the effective proxy backend ("local" or "zrok").
+// Empty normalizes to "local" so existing configs keep working.
+func (c *Config) ProxyProvider() string {
+	p := strings.ToLower(strings.TrimSpace(c.Proxy.Provider))
+	if p == "" {
+		return ProxyProviderLocal
+	}
+	return p
+}
+
+// IsZrok reports whether the zrok proxy provider is selected.
+func (c *Config) IsZrok() bool {
+	return c.ProxyProvider() == ProxyProviderZrok
+}
+
 // ProxyDomain returns the effective gateway domain (default localhost).
 func (c *Config) ProxyDomain() string {
 	if strings.TrimSpace(c.Proxy.Domain) == "" {
@@ -217,8 +260,63 @@ func (c *Config) ProxyAddr() string {
 	return strings.TrimSpace(c.Proxy.Addr)
 }
 
-// ProxyURL returns http://<slug>.<domain>[:port] for a worktree.
+// ZrokNamespace returns the effective zrok namespace token.
+func (c *Config) ZrokNamespace() string {
+	if strings.TrimSpace(c.Proxy.Zrok.Namespace) == "" {
+		return "public"
+	}
+	return strings.TrimSpace(c.Proxy.Zrok.Namespace)
+}
+
+// ZrokBackendMode returns the effective zrok backend mode.
+func (c *Config) ZrokBackendMode() string {
+	if strings.TrimSpace(c.Proxy.Zrok.BackendMode) == "" {
+		return "proxy"
+	}
+	return strings.TrimSpace(c.Proxy.Zrok.BackendMode)
+}
+
+// ZrokBinary returns the zrok CLI binary (config field, default zrok2).
+// $WRK3_ZROK_BIN overrides at runtime (see internal/proxy).
+func (c *Config) ZrokBinary() string {
+	if strings.TrimSpace(c.Proxy.Zrok.Binary) != "" {
+		return strings.TrimSpace(c.Proxy.Zrok.Binary)
+	}
+	return "zrok2"
+}
+
+// ZrokNamePrefix returns the reserved-name prefix: explicit
+// proxy.zrok.namePrefix, else "<composeProjectPrefix>-" when the runner
+// sets one (so myt-home/demo -> myt-home-demo matching the compose
+// project), else "".
+func (c *Config) ZrokNamePrefix() string {
+	if strings.TrimSpace(c.Proxy.Zrok.NamePrefix) != "" {
+		return strings.ToLower(strings.TrimSpace(c.Proxy.Zrok.NamePrefix))
+	}
+	var prefix string
+	switch c.Runner.Type {
+	case "podman":
+		prefix = strings.TrimSpace(c.Runner.Podman.ProjectPrefix)
+	default:
+		prefix = strings.TrimSpace(c.Runner.Docker.ProjectPrefix)
+	}
+	if prefix == "" {
+		return ""
+	}
+	return strings.ToLower(prefix) + "-"
+}
+
+// ZrokName returns the reserved zrok name for a worktree slug.
+func (c *Config) ZrokName(slug string) string {
+	return strings.ToLower(strings.TrimSpace(c.ZrokNamePrefix() + strings.TrimSpace(slug)))
+}
+
+// ProxyURL returns the public URL for a worktree: https://<name>.<domain>
+// for the zrok provider, http://<slug>.<domain>[:port] for local.
 func (c *Config) ProxyURL(slug string) string {
+	if c.IsZrok() {
+		return ports.ZrokURL(c.ZrokName(slug), c.ProxyDomain())
+	}
 	return proxyURLFor(c.ProxyDomain(), c.ProxyAddr(), slug)
 }
 
@@ -521,10 +619,18 @@ func isValidEnvVar(s string) bool {
 	return true
 }
 
-// validateProxy defaults empty domain/addr and validates them when the
-// gateway is enabled. Disabled configs always normalize so ProxyURL and
-// status helpers stay stable.
+// validateProxy defaults empty domain/addr/provider and validates them
+// when the proxy is enabled. Disabled configs always normalize so ProxyURL
+// and status helpers stay stable.
 func (c *Config) validateProxy() error {
+	if strings.TrimSpace(c.Proxy.Provider) == "" {
+		c.Proxy.Provider = ProxyProviderLocal
+	} else {
+		c.Proxy.Provider = strings.ToLower(strings.TrimSpace(c.Proxy.Provider))
+	}
+	if c.Proxy.Provider != ProxyProviderLocal && c.Proxy.Provider != ProxyProviderZrok {
+		return fmt.Errorf("proxy.provider %q must be one of [local zrok]", c.Proxy.Provider)
+	}
 	if strings.TrimSpace(c.Proxy.Domain) == "" {
 		c.Proxy.Domain = "localhost"
 	} else {
@@ -535,11 +641,66 @@ func (c *Config) validateProxy() error {
 	} else {
 		c.Proxy.Addr = strings.TrimSpace(c.Proxy.Addr)
 	}
+	if strings.TrimSpace(c.Proxy.Zrok.Namespace) == "" {
+		c.Proxy.Zrok.Namespace = "public"
+	} else {
+		c.Proxy.Zrok.Namespace = strings.TrimSpace(c.Proxy.Zrok.Namespace)
+	}
+	if strings.TrimSpace(c.Proxy.Zrok.BackendMode) == "" {
+		c.Proxy.Zrok.BackendMode = "proxy"
+	}
 	if !c.Proxy.Enabled {
 		return nil
 	}
+	if c.Proxy.Provider == ProxyProviderZrok {
+		return c.validateZrokProxy()
+	}
 	if err := validateProxyValues(c.Proxy.Domain, c.Proxy.Addr); err != nil {
 		return err
+	}
+	return nil
+}
+
+// validateZrokProxy checks the zrok provider: real frontend domain (never
+// localhost), non-empty namespace, proxy backend mode, and a prefix that
+// keeps <prefix><slug> a valid DNS label for slugs up to 50 chars.
+func (c *Config) validateZrokProxy() error {
+	d := c.Proxy.Domain
+	if d == "localhost" {
+		return fmt.Errorf("proxy.domain must not be localhost for provider zrok (use the namespace frontend domain, e.g. tunnel.mytmlt.site)")
+	}
+	for _, part := range strings.Split(d, ".") {
+		if part == "" {
+			return fmt.Errorf("proxy.domain %q has an empty label", d)
+		}
+		if len(part) > 63 {
+			return fmt.Errorf("proxy.domain %q label %q too long", d, part)
+		}
+		for _, r := range part {
+			ok := r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-'
+			if !ok {
+				return fmt.Errorf("proxy.domain %q must be hostname characters", d)
+			}
+		}
+		if strings.HasPrefix(part, "-") || strings.HasSuffix(part, "-") {
+			return fmt.Errorf("proxy.domain %q label %q must not start/end with -", d, part)
+		}
+	}
+	if strings.TrimSpace(c.Proxy.Zrok.Namespace) == "" {
+		return fmt.Errorf("proxy.zrok.namespace must not be empty")
+	}
+	if strings.TrimSpace(c.Proxy.Zrok.BackendMode) != "proxy" {
+		return fmt.Errorf("proxy.zrok.backendMode %q unsupported (only \"proxy\" is supported)", c.Proxy.Zrok.BackendMode)
+	}
+	prefix := c.ZrokNamePrefix()
+	if len(prefix) > 12 {
+		return fmt.Errorf("proxy.zrok.namePrefix %q too long (max 12 chars so <prefix><slug> stays a DNS label)", prefix)
+	}
+	for _, r := range prefix {
+		ok := r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-'
+		if !ok {
+			return fmt.Errorf("proxy.zrok.namePrefix %q must be hostname characters", prefix)
+		}
 	}
 	return nil
 }

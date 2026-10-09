@@ -78,3 +78,79 @@ func TestProxyEnabledValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestProxyProviderDefaultsLocal(t *testing.T) {
+	cfg := writeProxyConfig(t, proxyBase)
+	if cfg.ProxyProvider() != "local" {
+		t.Errorf("Provider = %q, want local", cfg.ProxyProvider())
+	}
+	if cfg.IsZrok() {
+		t.Error("IsZrok should be false by default")
+	}
+}
+
+func TestProxyProviderValidation(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "wrk3.yaml")
+	if err := os.WriteFile(path, []byte(proxyBase+"proxy:\n  enabled: true\n  provider: bogus\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Error("provider bogus should fail")
+	}
+}
+
+func TestProxyZrokValidation(t *testing.T) {
+	cfg := writeProxyConfig(t, proxyBase+`proxy:
+  enabled: true
+  provider: zrok
+  domain: tunnel.mytmlt.site
+  zrok:
+    namespace: public
+    namePrefix: myt-home-
+`)
+	if !cfg.IsZrok() {
+		t.Error("IsZrok should be true")
+	}
+	if cfg.ZrokNamespace() != "public" {
+		t.Errorf("Namespace = %q", cfg.ZrokNamespace())
+	}
+	if got := cfg.ZrokName("demo"); got != "myt-home-demo" {
+		t.Errorf("ZrokName = %q", got)
+	}
+	if got := cfg.ProxyURL("demo"); got != "https://myt-home-demo.tunnel.mytmlt.site" {
+		t.Errorf("ProxyURL = %q", got)
+	}
+	for _, body := range []string{
+		// localhost is not a valid zrok frontend domain
+		proxyBase + "proxy:\n  enabled: true\n  provider: zrok\n  domain: localhost\n",
+		// bad backend mode
+		proxyBase + "proxy:\n  enabled: true\n  provider: zrok\n  domain: tunnel.mytmlt.site\n  zrok:\n    backendMode: web\n",
+		// bad prefix chars
+		proxyBase + "proxy:\n  enabled: true\n  provider: zrok\n  domain: tunnel.mytmlt.site\n  zrok:\n    namePrefix: \"bad prefix!\"\n",
+	} {
+		dir := t.TempDir()
+		p := filepath.Join(dir, "wrk3.yaml")
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(p); err == nil {
+			t.Errorf("Load(%q) = nil, want error", body)
+		}
+	}
+}
+
+func TestProxyZrokPrefixDerivesFromProjectPrefix(t *testing.T) {
+	cfg := writeProxyConfig(t, proxyBase+`proxy:
+  enabled: true
+  provider: zrok
+  domain: tunnel.mytmlt.site
+`)
+	// proxyBase sets projectPrefix: demo
+	if got := cfg.ZrokNamePrefix(); got != "demo-" {
+		t.Errorf("derived prefix = %q, want demo-", got)
+	}
+	if got := cfg.ProxyURL("pr-1"); got != "https://demo-pr-1.tunnel.mytmlt.site" {
+		t.Errorf("ProxyURL = %q", got)
+	}
+}

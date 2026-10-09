@@ -94,6 +94,13 @@ func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func
 			return fmt.Errorf("up %q run %q: %w", rec.Branch, s, err)
 		}
 	}
+	if r.cfg.Proxy.Enabled && r.cfg.IsZrok() {
+		if msg, warn := ensureZrokShare(ctx, r.cfg, rec); msg != "" {
+			logf("%s", msg)
+		} else if warn != "" {
+			logf("warning: %s", warn)
+		}
+	}
 	logf("[%s] up", rec.Slug)
 	return nil
 }

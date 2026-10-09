@@ -19,6 +19,8 @@ opencode.json
 .wrk3-log.jsonl.1
 .wrk3-proxy.pid
 .wrk3-proxy.log
+.wrk3-zrok-*.pid
+.wrk3-zrok-*.log
 .worktrees/
 /completions/
 

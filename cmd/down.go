@@ -110,6 +110,10 @@ func downOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf fu
 	if err := rn.Down(ctx, rec.AbsPath, env); err != nil {
 		return fmt.Errorf("down %q: %w", rec.Branch, err)
 	}
+	if r.cfg.Proxy.Enabled && r.cfg.IsZrok() {
+		stopZrokShare(r.cfg, rec.Slug)
+		logf("[%s] zrok share stopped", rec.Slug)
+	}
 	logf("[%s] down", rec.Slug)
 	return nil
 }

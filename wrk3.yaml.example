@@ -49,7 +49,15 @@ ports:
 # gateway when enabled, runner env gains APP_URL (not written into .env),
 # and `status` grows a URL column (the dashboard always shows one). Chrome/Firefox/Edge resolve .localhost with
 # no setup; Safari/curl need `wrk3 proxy hosts-sync` (sudo for /etc/hosts).
+# provider: local (default) or zrok (one `zrok2 share public` per worktree,
+# https://<prefix><slug>.<domain>; zrok CLI installed + enabled outside wrk3).
 proxy:
   enabled: false
+  provider: local
   domain: localhost
   addr: 127.0.0.1:8080
+  # zrok:
+  #   namespace: public      # zrok namespace token (the `-n public:` part)
+  #   namePrefix: demo-      # reserved names are <prefix><slug>; empty derives "<projectPrefix>-"
+  #   backendMode: proxy     # only "proxy" is supported
+  #   binary: zrok2          # CLI binary ($WRK3_ZROK_BIN wins)

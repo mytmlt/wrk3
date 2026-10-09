@@ -37,7 +37,8 @@ ports:
   base: {app: 8000}
   ranges:
     app: [8000, 8099]
-# proxy: {enabled: false, domain: localhost, addr: 127.0.0.1:8080}  # optional gateway; see below
+# proxy: {enabled: false, provider: local, domain: localhost, addr: 127.0.0.1:8080}  # optional gateway; see below
+# zrok provider: proxy: {enabled: true, provider: zrok, domain: tunnel.mytmlt.site, zrok: {namespace: public, namePrefix: demo-}}
 # health:  # optional health checks (display-only); see below
 #   checks:
 #     - {name: api, run: "curl -sf http://localhost:${APP_PORT}/healthz", timeout: 10s}
@@ -87,7 +88,12 @@ broader than `--mine`, which matches git commit authorship).
 | `entry.reload` | no | Ordered list run by `reload` (CLI + dashboard `l`), each via `sh -c` with `cwd=worktree`, `env=allocated ports`. Empty strings skipped. `reload` errors when nothing is set. |
 | `ports.base` | no | Defaults to `{app: 8000}`. `app` is required; add more names when the stack binds extra host ports. Each base must sit inside its `ports.ranges` entry. Two names may share one value as aliases for a single host port (e.g. `{app: 8000, public_api: 8000}` when both vars address one listener): aliases are allocated once and stay equal in every worktree. Names mapping to the same `<NAME>_PORT` variable (e.g. `api-v2` and `api_v2`) are rejected. |
 | `ports.ranges` | no | Defaults to `{app: [8000, 8099]}`. Per-service `[min, max]` inclusive; `app` required; every `base` key needs a range (1–65535, `min <= max`). Legacy `ports.step` is a hard error: delete it and add `ranges` instead. |
-| `proxy.enabled` | no | Default `false`. When `true`, `up`/`add`/dashboard ensure the local gateway (best-effort, never fails the command) and runner env gains `APP_URL` (not written into the worktree `.env`). |
+| `proxy.enabled` | no | Default `false`. When `true`, `up`/`add`/dashboard ensure the local gateway (best-effort, never fails the command) and runner env gains `APP_URL` (not written into the worktree `.env`). With `provider: zrok`, `up`/`down`/`remove` manage one zrok share per worktree instead (best-effort warns). |
+| `proxy.provider` | no | Default `local`. `local` = stdlib gateway (`<slug>.<domain>[:port]`); `zrok` = one `zrok2 share public` per worktree (`https://<prefix><slug>.<domain>`, TLS at the frontend). Unknown values error listing `[local zrok]`. |
+| `proxy.zrok.namespace` | no (zrok) | Default `public`. Zrok namespace token (the `-n <namespace>:` part of the name selection). |
+| `proxy.zrok.namePrefix` | no (zrok) | Reserved names are `<prefix><slug>` (e.g. `myt-home-demo`). Empty derives `<projectPrefix>-` from the compose runner (`projectPrefix: demo` → `demo-`), else no prefix. Max 12 chars, hostname chars only. |
+| `proxy.zrok.backendMode` | no (zrok) | Default `proxy`. Only `proxy` is supported (target `http://127.0.0.1:<appPort>`). |
+| `proxy.zrok.binary` | no (zrok) | CLI binary, default `zrok2`. `$WRK3_ZROK_BIN` wins at runtime (tests). Install + `enable` stay outside wrk3; missing/not-enabled errors hint at `zrok2 enable`. |
 | `proxy.domain` | no | Default `localhost` → `http://<slug>.localhost:<port>`. Lowercased, hostname chars only. `.localhost` needs no setup in Chrome/Firefox/Edge (RFC 6761); Safari and non-browser clients need `wrk3 proxy hosts-sync`. Avoid `.local` (mDNS/Bonjour conflicts on macOS). |
 | `proxy.addr` | no | Default `127.0.0.1:8080`. Gateway listen addr, must be `host:port` with port 1-65535 (`:80` needs root, so a high port is the default). |
 | `health.checks` | no | Optional list of `{name, run, timeout}` probes (see below). Empty/missing means no shell checks; compose container health is still probed automatically. |
@@ -182,7 +188,7 @@ compose/`entry` commands consume the matching `.env` vars (e.g.
 `"${APP_PORT:-8000}:8000"`). How recovered ports, reconcile, and live
 docker status sync on every read: [USAGE.md](USAGE.md).
 
-## Local gateway (`proxy`)
+## Local gateway (`proxy.provider: local`)
 
 Opt-in stdlib reverse proxy (no Caddy/binary dependency) mapping
 `http://<slug>.<domain>[:port]` → `127.0.0.1:<appPort>` per worktree
@@ -207,6 +213,34 @@ header per request against `<worktreeBase>/.wrk3-state.json`, so
 - HTTP only (no local TLS in v1); unknown slugs answer `404`, unreachable
   backends `502`. Pid/log live next to state:
   `<worktreeBase>/.wrk3-proxy.{pid,log}`.
+
+## zrok provider (`proxy.provider: zrok`)
+
+One `zrok2 share public` per worktree: reserved name `<prefix><slug>` in
+`proxy.zrok.namespace`, served as `https://<prefix><slug>.<domain>` by the
+namespace frontend (e.g. `public:myt-home-demo` →
+`https://myt-home-demo.tunnel.mytmlt.site`). `domain` is the frontend
+domain (never `localhost` — a reserved name is one DNS label, so names
+cannot nest like `<slug>.mythome.tunnel...`).
+
+- Prereq (outside wrk3): install the `zrok2` CLI and `zrok2 enable` once.
+  wrk3 only shells out (`create name` / `share public ... --headless
+  --force-local` / `delete name`); missing or not-enabled errors hint at
+  `zrok2 enable` and never auto-install.
+- `up` ensures the name (idempotent `create`) then starts the share
+  targeting `http://127.0.0.1:<appPort>` after the run entry succeeds
+  (best-effort warn, like the local gateway — the worktree stays
+  reachable via localhost ports). `down` stops the share process and
+  keeps the reserved name; `remove` stops it and `delete`s the name
+  (guarded to the configured prefix; `remove --force` cleans up even
+  when the dir is gone). `add` creates nothing (names appear on `up`).
+- `status` grows the same `URL` column (`https://…`, no port); `proxy
+  status` shows per-worktree `sharing`/`stopped` (pid check);
+  `proxy up/down` are no-ops with a hint (shares live per worktree);
+  `proxy hosts-sync` errors (public DNS needs no hosts entries).
+  Runner env gains `APP_URL=https://<name>.<domain>` (not in `.env`).
+  Pid/log live next to state per slug:
+  `<worktreeBase>/.wrk3-zrok-<slug>.{pid,log}`.
 
 ## Config discovery + project registry
 

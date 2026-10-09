@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `proxy.provider: local|zrok` (default `local`): the `zrok` provider maps
+  one `zrok2 share public` per worktree to
+  `https://<prefix><slug>.<domain>` (TLS at the namespace frontend, e.g.
+  `public:myt-home-demo` → `https://myt-home-demo.tunnel.mytmlt.site`).
+  `up` ensures the reserved name + share (best-effort warn), `down` stops
+  the share and keeps the name, `remove` stops and deletes it (prefix
+  guarded). `status` shows the `https://` URL, runner env gains `APP_URL`,
+  `proxy status` shows `sharing`/`stopped`; `proxy up/down` are no-ops and
+  `hosts-sync` errors for zrok. Install + `zrok2 enable` stay outside wrk3;
+  `$WRK3_ZROK_BIN` overrides the binary. `local` behavior is unchanged.
+
 ### Removed
 
 - Shared services (`shared:` block, `wrk3 shared up|down|status|logs`,
