@@ -417,10 +417,19 @@ func TestReportIfEnabled_SkipsNonReportable(t *testing.T) {
 
 	tr := &recordingTransport{}
 	if err := sentry.Init(sentry.ClientOptions{
-		Dsn:              DSN,
-		Transport:        tr,
+		Dsn:       DSN,
+		Transport: tr,
+		DataCollection: &sentry.DataCollection{
+			UserInfo:   sentry.Set(false),
+			HTTPBodies: []sentry.BodyType{},
+			Cookies:    &sentry.KeyValueCollectionBehavior{Mode: sentry.CollectionOff},
+			HTTPHeaders: &sentry.HeaderCollectionConfig{
+				Request:  &sentry.KeyValueCollectionBehavior{Mode: sentry.CollectionDenyList},
+				Response: &sentry.KeyValueCollectionBehavior{Mode: sentry.CollectionDenyList},
+			},
+			QueryParams: &sentry.KeyValueCollectionBehavior{Mode: sentry.CollectionDenyList},
+		},
 		TracesSampleRate: 0,
-		SendDefaultPII:   false,
 	}); err != nil {
 		t.Fatalf("sentry.Init: %v", err)
 	}

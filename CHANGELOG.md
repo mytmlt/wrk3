@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `wrk3_version`/`goos`/`goarch` under `event.Contexts["wrk3"]`
   instead (tags, user/server scrubbing, exception + thread behavior
   unchanged; `beforeSend` scrubs the context message).
+  `ClientOptions.SendDefaultPII` (deprecated in 0.48/0.49) is replaced
+  with an equivalent `DataCollection` (no user info/bodies/cookies,
+  denylisted headers/query params).
 
 ### Added
 

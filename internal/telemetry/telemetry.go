@@ -189,9 +189,22 @@ func Init() {
 	if err := sentry.Init(sentry.ClientOptions{
 		Dsn:              dsn,
 		TracesSampleRate: 0,
-		SendDefaultPII:   false,
-		ServerName:       "",
-		BeforeSend:       beforeSend,
+		// Preserve the previous SendDefaultPII=false privacy posture:
+		// no automatic user info or bodies, no cookies, denylisted
+		// headers/query params. (SendDefaultPII is deprecated in
+		// sentry-go 0.49; DataCollection is the replacement.)
+		DataCollection: &sentry.DataCollection{
+			UserInfo:   sentry.Set(false),
+			HTTPBodies: []sentry.BodyType{},
+			Cookies:    &sentry.KeyValueCollectionBehavior{Mode: sentry.CollectionOff},
+			HTTPHeaders: &sentry.HeaderCollectionConfig{
+				Request:  &sentry.KeyValueCollectionBehavior{Mode: sentry.CollectionDenyList},
+				Response: &sentry.KeyValueCollectionBehavior{Mode: sentry.CollectionDenyList},
+			},
+			QueryParams: &sentry.KeyValueCollectionBehavior{Mode: sentry.CollectionDenyList},
+		},
+		ServerName: "",
+		BeforeSend: beforeSend,
 	}); err != nil {
 		_ = err
 	}
