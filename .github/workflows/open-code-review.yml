@@ -11,6 +11,10 @@ name: OpenCodeReview
 # required by the /go/v1 gateway; {ocr_session_key} is expanded per request.
 # Runs on collaborator PRs; no fork-PR handling (see pull_request_target docs
 # if forks ever need reviews).
+# Skipped for Dependabot PRs: they run without access to the OCR_LLM_*
+# secrets, so the review action would fail with "no valid LLM endpoint
+# configured". The `if` on the review job keeps the check green (skipped)
+# for dependabot while staying blocking for normal PRs.
 
 on:
   pull_request:
@@ -27,6 +31,9 @@ permissions:
 
 jobs:
   review:
+    # Dependabot PRs get no secrets, so there is no LLM endpoint to call.
+    # Skip gracefully (check shows as skipped) instead of failing.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

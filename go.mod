@@ -1,6 +1,6 @@
 module github.com/mytmlt/wrk3
 
-go 1.26.2
+go 1.26.9
 
 require (
 	github.com/charmbracelet/bubbles v0.21.0

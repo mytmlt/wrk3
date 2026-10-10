@@ -148,6 +148,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer written into `.env` (still injected into runner env when the
   gateway is enabled); `remove` leaves a user-set `APP_URL`.
 
+- CI pins the Go toolchain to 1.26.9 (`go.mod` plus every
+  `actions/setup-go` pin in `ci`/`security`/`release`/`tag` workflows),
+  fixing `govulncheck` stdlib failures (GO-2026-6603 and friends, fixed
+  in go1.26.9). The `OpenCodeReview` bot now skips Dependabot PRs
+  (`dependabot[bot]` gets no `OCR_LLM_*` secrets, so the review action
+  failed with "no valid LLM endpoint configured"); human PRs are still
+  reviewed as before.
+
 ### Added
 
 - Dashboard log pane now has two tabs: `console` (raw command output
