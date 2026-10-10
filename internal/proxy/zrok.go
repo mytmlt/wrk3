@@ -124,12 +124,9 @@ func ZrokNameExists(ctx context.Context, binary, namespace, name string) (bool, 
 	if strings.TrimSpace(namespace) != "" {
 		cmd.Args = append(cmd.Args, "-n", strings.TrimSpace(namespace))
 	}
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			return false, fmt.Errorf("zrok list names: %w: %s", err, strings.TrimSpace(string(ee.Stderr)))
-		}
-		return false, fmt.Errorf("zrok list names: %w", err)
+		return false, fmt.Errorf("zrok list names: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	var entries []zrokNameEntry
 	if err := json.Unmarshal(out, &entries); err != nil {
@@ -166,7 +163,8 @@ func ZrokCreateName(ctx context.Context, binary, namespace, name string) error {
 }
 
 // ZrokDeleteName releases <name> (refuses names outside prefix guard — the
-// caller passes only prefix-derived names; empty prefix deletes nothing).
+// caller passes only prefix-derived names; empty prefix disables the guard
+// for stored names whose pid file proves wrk3 created them).
 func ZrokDeleteName(ctx context.Context, binary, namespace, prefix, name string) error {
 	if strings.TrimSpace(prefix) != "" && !strings.HasPrefix(strings.ToLower(name), strings.ToLower(prefix)) {
 		return fmt.Errorf("refusing to delete zrok name %q outside prefix %q", name, prefix)
@@ -219,29 +217,33 @@ func ZrokShareRunning(worktreeBase, slug string) bool {
 	return true
 }
 
-// ZrokShareIdentity reads the stored {name,target} from the pid file.
-// ok=false when the pid file is missing or corrupt.
-func ZrokShareIdentity(worktreeBase, slug string) (name, target string, ok bool) {
+// ZrokShareIdentity reads the stored {name,target,namespace} from the pid file.
+// ok=false when the pid file is missing or corrupt. Files written before the
+// namespace was tracked return namespace="" so callers treat them as stale.
+// backendMode is not stored: config validation pins it to "proxy", so it
+// cannot change between valid configs.
+func ZrokShareIdentity(worktreeBase, slug string) (name, target, namespace string, ok bool) {
 	raw, err := os.ReadFile(ZrokPidPath(worktreeBase, slug))
 	if err != nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	var p struct {
-		Name   string `json:"name"`
-		Target string `json:"target"`
+		Name      string `json:"name"`
+		Target    string `json:"target"`
+		Namespace string `json:"namespace"`
 	}
 	if err := json.Unmarshal(raw, &p); err != nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	if strings.TrimSpace(p.Name) == "" {
-		return "", "", false
+		return "", "", "", false
 	}
-	return p.Name, p.Target, true
+	return p.Name, p.Target, p.Namespace, true
 }
 
 // ZrokWritePid writes the share pid file.
-func ZrokWritePid(worktreeBase, slug string, pid int, name, target string) error {
-	raw, _ := json.Marshal(map[string]any{"pid": pid, "name": name, "target": target})
+func ZrokWritePid(worktreeBase, slug string, pid int, name, target, namespace string) error {
+	raw, _ := json.Marshal(map[string]any{"pid": pid, "name": name, "target": target, "namespace": namespace})
 	if err := os.MkdirAll(worktreeBase, 0o755); err != nil {
 		return fmt.Errorf("create worktree base: %w", err)
 	}

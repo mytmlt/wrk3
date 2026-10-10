@@ -65,14 +65,27 @@ func TestZrokShareRunningMissing(t *testing.T) {
 
 func TestZrokShareIdentity(t *testing.T) {
 	base := t.TempDir()
-	if _, _, ok := ZrokShareIdentity(base, "demo"); ok {
+	if _, _, _, ok := ZrokShareIdentity(base, "demo"); ok {
 		t.Error("missing pid should not be ok")
 	}
-	if err := ZrokWritePid(base, "demo", 12345, "myt-home-demo", "http://127.0.0.1:6969"); err != nil {
+	if err := ZrokWritePid(base, "demo", 12345, "myt-home-demo", "http://127.0.0.1:6969", "public"); err != nil {
 		t.Fatal(err)
 	}
-	name, target, ok := ZrokShareIdentity(base, "demo")
-	if !ok || name != "myt-home-demo" || target != "http://127.0.0.1:6969" {
-		t.Errorf("identity = (%q,%q,%v)", name, target, ok)
+	name, target, namespace, ok := ZrokShareIdentity(base, "demo")
+	if !ok || name != "myt-home-demo" || target != "http://127.0.0.1:6969" || namespace != "public" {
+		t.Errorf("identity = (%q,%q,%q,%v)", name, target, namespace, ok)
+	}
+}
+
+func TestZrokShareIdentityLegacyNoNamespace(t *testing.T) {
+	base := t.TempDir()
+	// Pid files written before namespace tracking have no namespace field:
+	// identity stays ok but namespace is empty so callers treat them as stale.
+	if err := ZrokWritePid(base, "demo", 12345, "myt-home-demo", "http://127.0.0.1:6969", ""); err != nil {
+		t.Fatal(err)
+	}
+	name, _, namespace, ok := ZrokShareIdentity(base, "demo")
+	if !ok || name != "myt-home-demo" || namespace != "" {
+		t.Errorf("legacy identity = (%q,%q,%v)", name, namespace, ok)
 	}
 }

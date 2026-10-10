@@ -702,6 +702,9 @@ func (c *Config) validateZrokProxy() error {
 			return fmt.Errorf("proxy.zrok.namePrefix %q must be hostname characters", prefix)
 		}
 	}
+	if strings.HasPrefix(prefix, "-") || strings.HasSuffix(prefix, "-") {
+		return fmt.Errorf("proxy.zrok.namePrefix %q must not start/end with -", prefix)
+	}
 	return nil
 }
 

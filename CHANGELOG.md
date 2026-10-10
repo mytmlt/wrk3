@@ -13,11 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one `zrok2 share public` per worktree to
   `https://<prefix><slug>.<domain>` (TLS at the namespace frontend, e.g.
   `public:myt-home-demo` → `https://myt-home-demo.tunnel.mytmlt.site`).
-  `up` ensures the reserved name + share (best-effort warn), `down` stops
+  `up` ensures the reserved name + share (best-effort warn, restarting a
+  live share whose stored `{name,target,namespace}` differs), `down` stops
   the share and keeps the name, `remove` stops and deletes it (prefix
-  guarded). `status` shows the `https://` URL, runner env gains `APP_URL`,
-  `proxy status` shows `sharing`/`stopped`; `proxy up/down` are no-ops and
-  `hosts-sync` errors for zrok. Install + `zrok2 enable` stay outside wrk3;
+  guarded; stored names bypass the guard). `status` shows the `https://` URL,
+  runner env gains `APP_URL`,
+  `proxy status` shows `sharing`/`stale (needs up)`/`stopped`; `proxy up/down` are no-ops and
+  `hosts-sync` errors for zrok. `proxy.zrok.namePrefix` (max 12 chars,
+  hostname chars, no leading/trailing `-`) is rejected at config load.
+  Install + `zrok2 enable` stay outside wrk3;
   `$WRK3_ZROK_BIN` overrides the binary. `local` behavior is unchanged.
 
 ### Removed

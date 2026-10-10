@@ -128,6 +128,10 @@ func TestProxyZrokValidation(t *testing.T) {
 		proxyBase + "proxy:\n  enabled: true\n  provider: zrok\n  domain: tunnel.mytmlt.site\n  zrok:\n    backendMode: web\n",
 		// bad prefix chars
 		proxyBase + "proxy:\n  enabled: true\n  provider: zrok\n  domain: tunnel.mytmlt.site\n  zrok:\n    namePrefix: \"bad prefix!\"\n",
+		// leading/trailing dash passes charset but yields an invalid DNS label
+		proxyBase + "proxy:\n  enabled: true\n  provider: zrok\n  domain: tunnel.mytmlt.site\n  zrok:\n    namePrefix: \"-bad-\"\n",
+		proxyBase + "proxy:\n  enabled: true\n  provider: zrok\n  domain: tunnel.mytmlt.site\n  zrok:\n    namePrefix: \"-lead\"\n",
+		proxyBase + "proxy:\n  enabled: true\n  provider: zrok\n  domain: tunnel.mytmlt.site\n  zrok:\n    namePrefix: \"trail-\"\n",
 	} {
 		dir := t.TempDir()
 		p := filepath.Join(dir, "wrk3.yaml")

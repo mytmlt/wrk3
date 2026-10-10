@@ -296,7 +296,16 @@ var proxyStatusCmd = &cobra.Command{
 			}
 			for _, rec := range recs {
 				state := "stopped"
-				if proxy.ZrokShareRunning(r.cfg.AbsWorktreeBase(), rec.Slug) {
+				want := zrokNameFor(r.cfg, rec.Slug)
+				wantNS := r.cfg.ZrokNamespace()
+				wantTarget := ""
+				if app, ok := rec.Ports[ports.PortApp]; ok && app > 0 {
+					wantTarget = proxy.ZrokTarget(app)
+				}
+				if stored, storedTarget, storedNS, ok := proxy.ZrokShareIdentity(r.cfg.AbsWorktreeBase(), rec.Slug); ok &&
+					(stored != want || storedNS != wantNS || (wantTarget != "" && storedTarget != "" && storedTarget != wantTarget)) {
+					state = "stale (needs up)"
+				} else if proxy.ZrokShareRunning(r.cfg.AbsWorktreeBase(), rec.Slug) {
 					state = "sharing"
 				}
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s -> %s (%s)\n",

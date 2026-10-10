@@ -53,9 +53,10 @@ func ensureZrokName(ctx context.Context, cfg *config.Config, slug string) error 
 // ensureZrokShare ensures the name + background share for rec. It is
 // best-effort like the local gateway: errors come back for the caller to
 // log as warnings; the worktree stays reachable via localhost ports.
-// A live share whose stored {name,target} differs from the desired values
-// (prefix change, port reallocation) is restarted so status/APP_URL never
-// point at a stale share.
+// A live share whose stored {name,target,namespace} differs from the desired
+// values (prefix change, port reallocation, namespace change) is restarted
+// so status/APP_URL never point at a stale share. backendMode is not
+// compared: config validation pins it to "proxy".
 func ensureZrokShare(ctx context.Context, cfg *config.Config, rec ports.WorktreeRecord) (msg, warned string) {
 	if cfg == nil || !cfg.Proxy.Enabled || !cfg.IsZrok() {
 		return "", ""
@@ -66,9 +67,10 @@ func ensureZrokShare(ctx context.Context, cfg *config.Config, rec ports.Worktree
 	if err != nil {
 		return "", fmt.Sprintf("zrok share for %q not started (%v)", slug, err)
 	}
+	namespace := cfg.ZrokNamespace()
 	if proxy.ZrokShareRunning(cfg.AbsWorktreeBase(), slug) {
-		if storedName, storedTarget, ok := proxy.ZrokShareIdentity(cfg.AbsWorktreeBase(), slug); ok &&
-			storedName == name && storedTarget == target {
+		if storedName, storedTarget, storedNamespace, ok := proxy.ZrokShareIdentity(cfg.AbsWorktreeBase(), slug); ok &&
+			storedName == name && storedTarget == target && storedNamespace == namespace {
 			return "", ""
 		}
 		stopZrokShare(cfg, slug)
@@ -127,7 +129,7 @@ func startZrokShareDetached(cfg *config.Config, slug, name, target string) error
 	if pid <= 0 {
 		return fmt.Errorf("spawn zrok share: no pid")
 	}
-	return proxy.ZrokWritePid(cfg.AbsWorktreeBase(), slug, pid, name, target)
+	return proxy.ZrokWritePid(cfg.AbsWorktreeBase(), slug, pid, name, target, cfg.ZrokNamespace())
 }
 
 // stopZrokShare kills the per-slug share process, keeping the reserved
@@ -153,16 +155,20 @@ func stopZrokShare(cfg *config.Config, slug string) {
 
 // releaseZrokShare stops the share and deletes the reserved name. The name
 // is read from the pid file first (falling back to the config-derived one
-// when no pid file exists) so a prefix change cannot orphan the old
-// reservation. Recomputed fallback names outside the configured prefix are
-// never deleted; stored names skip the guard (the pid file proves wrk3
-// created them).
+// when no pid file exists) so a prefix change with a live share cannot
+// orphan the old reservation. Recomputed fallback names outside the
+// configured prefix are never deleted; stored names skip the guard (the pid
+// file proves wrk3 created them). Limitation: down stops the share and
+// removes the pid file while keeping the reservation, so a prefix change
+// between down and remove falls back to the current-prefix name and may
+// orphan the old reservation — run remove before renaming the prefix, or
+// delete the leftover name manually.
 func releaseZrokShare(ctx context.Context, cfg *config.Config, slug string) error {
-	storedName, _, hasStored := proxy.ZrokShareIdentity(cfg.AbsWorktreeBase(), slug)
-	stopZrokShare(cfg, slug)
 	if cfg == nil || !cfg.IsZrok() {
 		return nil
 	}
+	storedName, _, _, hasStored := proxy.ZrokShareIdentity(cfg.AbsWorktreeBase(), slug)
+	stopZrokShare(cfg, slug)
 	bin := proxy.ZrokBin(cfg.ZrokBinary())
 	name := zrokNameFor(cfg, slug)
 	prefix := cfg.ZrokNamePrefix()
