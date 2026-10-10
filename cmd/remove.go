@@ -152,6 +152,16 @@ func removeOne(cmd *cobra.Command, r *resolved, recs []ports.WorktreeRecord, bra
 		r.logOpDone("remove", "remove "+branch, err)
 		return err
 	}
+	// NOTE: keep in sync with dashboardRemoveCmd in cmd/dashboard.go — it
+	// must call releaseZrokShare after saveState as well.
+	// No Proxy.Enabled gate: release whenever IsZrok() so flipping
+	// enabled=false then remove still deletes the reservation (release
+	// tolerates a missing pid/share as not-found -> nil).
+	if r.cfg.IsZrok() {
+		if err := releaseZrokShare(cmd.Context(), r.cfg, rec.Slug); err != nil {
+			warnf(cmd, "zrok release for %q: %v", rec.Branch, err)
+		}
+	}
 	r.logOpDone("remove", "removed "+removedBranch, nil)
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "removed %s\n", removedBranch); err != nil {
 		return fmt.Errorf("write output: %w", err)

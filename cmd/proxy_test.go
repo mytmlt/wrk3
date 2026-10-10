@@ -43,6 +43,47 @@ func TestEnsureProxyForUpDisabledNoop(t *testing.T) {
 	}
 }
 
+func TestProxyEnvForSlugZrok(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfig(t, repo)
+	cfg.Proxy.Enabled = true
+	cfg.Proxy.Provider = "zrok"
+	cfg.Proxy.Domain = "tunnel.mytmlt.site"
+	cfg.Proxy.Zrok.Namespace = "public"
+	cfg.Proxy.Zrok.NamePrefix = "myt-home-"
+	got := proxyEnvForSlug(cfg, "demo")
+	if got[ports.EnvAppURL] != "https://myt-home-demo.tunnel.mytmlt.site" {
+		t.Errorf("APP_URL = %v", got)
+	}
+}
+
+func TestEnsureProxyForUpZrokNoop(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfig(t, repo)
+	cfg.Proxy.Enabled = true
+	cfg.Proxy.Provider = "zrok"
+	cfg.Proxy.Domain = "tunnel.mytmlt.site"
+	r := &resolved{cfg: cfg}
+	if msg, warn := ensureProxyForUp(r); msg != "" || warn != "" {
+		t.Errorf("zrok ensure = (%q,%q), want empty (per-worktree shares)", msg, warn)
+	}
+}
+
+func TestZrokNameFor(t *testing.T) {
+	repo := initMainTestRepo(t)
+	cfg := writeTestConfig(t, repo)
+	cfg.Proxy.Zrok.NamePrefix = "myt-home-"
+	if got := zrokNameFor(cfg, "demo"); got != "myt-home-demo" {
+		t.Errorf("zrokNameFor = %q", got)
+	}
+}
+
+func TestZrokTargetForMissingApp(t *testing.T) {
+	if _, err := zrokTargetFor(ports.WorktreeRecord{Branch: "b", Slug: "b"}); err == nil {
+		t.Error("missing app port should fail")
+	}
+}
+
 func TestEnsureProxyForCfgDisabledNoop(t *testing.T) {
 	repo := initMainTestRepo(t)
 	cfg := writeTestConfig(t, repo)

@@ -42,12 +42,18 @@ ports:
 #     - name: api
 #       run: "curl -sf http://localhost:${APP_PORT}/healthz"
 #       timeout: 10s  # optional, default 10s (1s-120s)
-# Optional local gateway: http://<slug>.localhost:8080 -> app port (stdlib
-# reverse proxy, no extra dependencies). Opt-in: `up`/`add`/dashboard ensure
-# the gateway when enabled, runner env gains APP_URL (not written into .env).
-# Chrome/Firefox/Edge resolve .localhost with no setup; Safari/curl need
-# `wrk3 proxy hosts-sync` (sudo for /etc/hosts). Addr ports < 1024 are rejected.
+# Optional gateway (provider local: http://<slug>.localhost:8080 -> app port,
+# stdlib reverse proxy, no extra dependencies; provider zrok: one `zrok2 share
+# public` per worktree -> https://<prefix><slug>.<domain>). Opt-in:
+# `up`/`add`/dashboard ensure the backend when enabled, runner env gains
+# APP_URL (not written into .env). Chrome/Firefox/Edge resolve .localhost
+# with no setup; Safari/curl need `wrk3 proxy hosts-sync` (sudo for
+# /etc/hosts; local only). Addr ports < 1024 are rejected.
 # proxy:
 #   enabled: false
+#   provider: local
 #   domain: localhost
 #   addr: 127.0.0.1:8080
+#   # zrok:
+#   #   namespace: public
+#   #   namePrefix: demo-

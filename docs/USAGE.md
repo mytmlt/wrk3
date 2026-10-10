@@ -94,10 +94,10 @@ wrk3 dashboard                       # interactive TUI: worktrees + branches + p
 wrk3 dashboard --project myapp       # same, starting from a registered project
 wrk3 update --check                 # show latest release without installing
 wrk3 update                         # install latest over the current binary (sha256 verified)
-wrk3 proxy status                   # gateway state + per-worktree http://<slug>.localhost URLs
-wrk3 proxy up | wrk3 proxy down     # start/stop the gateway (auto-started by up/add/dashboard when proxy.enabled)
+wrk3 proxy status                   # gateway state + per-worktree http://<slug>.localhost URLs (provider zrok: https://<name>.<domain> + sharing/stale (needs up)/stopped)
+wrk3 proxy up | wrk3 proxy down     # start/stop the gateway (auto-started by up/add/dashboard when proxy.enabled; no-op with a hint for provider zrok — shares are per worktree)
 wrk3 proxy open feature-a           # open the worktree URL in a browser
-sudo wrk3 proxy hosts-sync          # 127.0.0.1 entries for Safari/curl (Chrome/FF/Edge need nothing)
+sudo wrk3 proxy hosts-sync          # 127.0.0.1 entries for Safari/curl (Chrome/FF/Edge need nothing; errors for provider zrok)
 ```
 
 Copy includes: `source.git.copy` lists repo-relative files/dirs (globs,

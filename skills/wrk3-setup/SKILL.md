@@ -99,7 +99,7 @@ with listed changes):
 | C4 | No shared absolute bind mounts | inspect `volumes:` | absolute host path shared by all worktrees holding mutable state → `COMPATIBLE WITH CHANGES` (convert to named volume or relative path) or `INCOMPATIBLE` if the path is mandated by the toolchain |
 | C5 | Setup commands are repo verbs | setup comes from Makefile/README/compose, runs via `sh -c` with `cwd=worktree`, `env=ports` | setup requires manual GUI steps, host-global daemons, or secrets you can't reproduce per worktree → `INCOMPATIBLE` or scoped `COMPATIBLE WITH CHANGES` |
 | C6 | Ports fit `base` + `ranges` | every `ports.base` key has a `ranges` entry (`app` required, `base` inside `[min,max]`, `1–65535`, `min <= max`); legacy `ports.step` is a hard error | `step` present, `app` missing, `base` outside its range, or two configs sharing a host with overlapping bases/ranges → `COMPATIBLE WITH CHANGES` (delete `step`, add `ranges: {app: [8000, 8099]}`, shift `ports.base` / `ranges`) |
-| C7 | `urls` / `proxy` / `health` shape | `urls[].base` absolute URL with explicit port inside its `range`; `proxy.addr` `host:port` with port ≥ 1024 (privileged ports rejected); `health.checks[].timeout` `1s–120s` | malformed entry → `COMPATIBLE WITH CHANGES` (fix the block or drop it) |
+| C7 | `urls` / `proxy` / `health` shape | `urls[].base` absolute URL with explicit port inside its `range`; `proxy.provider` `local` or `zrok`; local `proxy.addr` `host:port` with port ≥ 1024 (privileged ports rejected); zrok needs a real frontend `domain` (never `localhost`) + `zrok.namespace`; `health.checks[].timeout` `1s–120s` | malformed entry → `COMPATIBLE WITH CHANGES` (fix the block or drop it) |
 | C8 | Heavyweight sanity | note image sizes, `setup` time, ports count | >2 min boot or >5 host ports → still compatible, but warn and require user approval before live `up` |
 
 Named volumes, per-service `networks:`, `depends_on:`, and `healthcheck:`
@@ -230,7 +230,8 @@ ports:
     app: [8000, 8099]              # per-service [min, max]; base must sit inside
 # urls:                              # optional config-driven URLs (each needs var + base + range)
 #   - {var: BASE_URL, base: "http://localhost:8000", range: [8000, 8099]}
-# proxy: {enabled: false, domain: localhost, addr: 127.0.0.1:8080}  # optional gateway
+# proxy: {enabled: false, provider: local, domain: localhost, addr: 127.0.0.1:8080}  # optional gateway
+  # zrok provider (one share per worktree, https): proxy: {enabled: true, provider: zrok, domain: tunnel.mytmlt.site, zrok: {namespace: public, namePrefix: demo-}}
 # health:                            # optional display-only checks
 #   checks:
 #     - {name: api, run: "curl -sf http://localhost:${APP_PORT}/healthz", timeout: 10s}
@@ -257,10 +258,20 @@ Constraints (enforced by `config.Validate` — unknown values fail fast):
   must not collide with a managed `<NAME>_PORT` key), `base` (absolute
   URL with an explicit port), `range` (`[min,max]`, base port inside).
   Each entry allocates its own lowest free port in its `range`.
-- `proxy` (optional): `addr` must be `host:port` with port `>= 1024`
-  (privileged ports rejected); when `enabled`, `up`/`add`/dashboard ensure
-  the gateway best-effort and runner env gains `APP_URL` (never written
-  into the worktree `.env`).
+- `proxy` (optional): `provider` is `local` (default, stdlib gateway) or
+  `zrok` (one `zrok2 share public` per worktree). `addr` must be
+  `host:port` with port `>= 1024` (privileged ports rejected; ignored for
+  zrok); when `enabled`, `up`/`add`/dashboard ensure the backend
+  best-effort and runner env gains `APP_URL` (never written into the
+  worktree `.env`). zrok needs a real frontend `domain` (never
+  `localhost`), `zrok.namespace` (default `public`), and reserved names
+  `<prefix><slug>` (`zrok.namePrefix`, empty derives
+  `<projectPrefix>-`; max 12 chars, hostname chars, no leading `-` (single trailing `-` separator allowed); zrok CLI install + `enable` stay outside wrk3.
+  `proxy status` also reports `orphan (proxy disabled)` for shares left
+  running after `enabled: false` (`up`/`down` stop them; `remove`
+  releases the reservation even with `enabled: false`). Unverifiable
+  share pids are never killed (stop drops the pid file); stale
+  restarts poll for exit first.
 - `health.checks` (optional, display-only): each needs unique non-empty
   `name` + `run` (via `sh -c`, `cwd=worktree`, `env=ports`); `timeout`
   default `10s`, must be `1s–120s` when set. Never fails `up`.

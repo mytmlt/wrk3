@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `proxy.provider: local|zrok` (default `local`): the `zrok` provider maps
+  one `zrok2 share public` per worktree to
+  `https://<prefix><slug>.<domain>` (TLS at the namespace frontend, e.g.
+  `public:myt-home-demo` → `https://myt-home-demo.tunnel.mytmlt.site`).
+  `up` ensures the reserved name + share (best-effort warn, restarting a
+  live share whose stored `{name,target,namespace}` differs), `down` stops
+  the share and keeps the name, `remove` stops and deletes it (prefix
+  guarded; stored names bypass the guard). `status` shows the `https://` URL,
+  runner env gains `APP_URL`,
+  `proxy status` shows `sharing`/`stale (needs up)`/`stopped`; `proxy up/down` are no-ops and
+  `hosts-sync` errors for zrok. `proxy.zrok.namePrefix` (max 12 chars,
+  hostname chars, no leading `-`; a single trailing `-` separator like
+  `demo-` is allowed) is rejected at config load. Dashboard `remove` also
+  stops the share and releases the reserved name, mirroring CLI `remove`.
+  Install + `zrok2 enable` stay outside wrk3;
+  `$WRK3_ZROK_BIN` overrides the binary. `local` behavior is unchanged.
+  Share liveness is pid file + process-binary ownership (`ps`/`tasklist`
+  argv[0] basename; a pid file pointing at a non-zrok process is dropped,
+  never killed, and an unverified pid is never killed); a failed
+  share stop keeps its pid file and warns instead of spawning a second
+  share for the same name; `release` deletes with the stored namespace;
+  the post-spawn grace requires the share to stay alive across the
+  window; `proxy status` reports `orphan (proxy disabled)` for shares
+  left running after `enabled: false` (`up`/`down` stop them); `proxy
+  down` stops a gateway left listening from before a local→zrok switch.
+  `remove` (CLI + dashboard) releases the reservation whenever the
+  provider is zrok, even with `enabled: false`; a pid-write failure
+  after spawn kills the child instead of leaking an untracked share;
+  stale-share restarts poll ~2s for the old share to exit before
+  respawning; pid ownership is fail-closed for killing (`owns,known`,
+  argv[0] basename) — an unverifiable pid is never killed (stop drops
+  the pid file; liveness keeps signal-0 behavior).
+
 ### Removed
 
 - Shared services (`shared:` block, `wrk3 shared up|down|status|logs`,

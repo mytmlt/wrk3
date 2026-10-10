@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mytmlt/wrk3/internal/ports"
+	"github.com/mytmlt/wrk3/internal/proxy"
 	"github.com/mytmlt/wrk3/internal/runner"
 )
 
@@ -109,6 +110,14 @@ func downOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf fu
 	logf("[%s] compose down (%s)", rec.Slug, rec.ComposeProject)
 	if err := rn.Down(ctx, rec.AbsPath, env); err != nil {
 		return fmt.Errorf("down %q: %w", rec.Branch, err)
+	}
+	// Stop the share regardless of proxy.enabled so flipping enabled=false
+	// then down still cleans up orphans (env already drops APP_URL).
+	if r.cfg.IsZrok() {
+		if proxy.ZrokShareRunning(r.cfg.AbsWorktreeBase(), rec.Slug) {
+			stopZrokShare(r.cfg, rec.Slug)
+			logf("[%s] zrok share stopped", rec.Slug)
+		}
 	}
 	logf("[%s] down", rec.Slug)
 	return nil

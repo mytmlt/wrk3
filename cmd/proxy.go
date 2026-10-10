@@ -50,10 +50,15 @@ func proxyRunning(cfg *config.Config) bool {
 	return true
 }
 
-// proxyEnvForSlug returns {APP_URL} when the gateway is enabled.
+// proxyEnvForSlug returns {APP_URL} when the proxy is enabled: https://
+// <name>.<domain> for zrok, http://<slug>.<domain>[:port] for local.
 func proxyEnvForSlug(cfg *config.Config, slug string) map[string]string {
 	if cfg == nil || !cfg.Proxy.Enabled {
 		return nil
+	}
+	if cfg.IsZrok() {
+		name := proxy.ZrokName(cfg.ZrokNamePrefix(), slug)
+		return map[string]string{ports.EnvAppURL: ports.ZrokURL(name, cfg.ProxyDomain())}
 	}
 	port := proxy.GatewayPort(cfg.ProxyAddr())
 	return map[string]string{ports.EnvAppURL: ports.AppURL(slug, cfg.ProxyDomain(), port)}
@@ -61,9 +66,13 @@ func proxyEnvForSlug(cfg *config.Config, slug string) map[string]string {
 
 // ensureProxyForUp starts the gateway in the background when enabled and
 // not already listening. It never fails `up`: bind/spawn errors come back
-// as warnings for the caller to log.
+// as warnings for the caller to log. The zrok provider manages one share
+// per worktree inside upOne instead, so this is a no-op for zrok.
 func ensureProxyForUp(r *resolved) (msg string, warned string) {
 	if r == nil || r.cfg == nil || !r.cfg.Proxy.Enabled {
+		return "", ""
+	}
+	if r.cfg.IsZrok() {
 		return "", ""
 	}
 	if proxyRunning(r.cfg) {
@@ -216,19 +225,23 @@ func proxyHostnames(cfg *config.Config, recs []ports.WorktreeRecord) []string {
 
 var proxyCmd = &cobra.Command{
 	Use:               "proxy",
-	Short:             "Local gateway: <slug>.localhost URLs for worktrees",
+	Short:             "Worktree URLs: local gateway or zrok shares",
 	ValidArgsFunction: cobra.NoFileCompletions,
 }
 
 var proxyUpCmd = &cobra.Command{
 	Use:               "up",
-	Short:             "Start the local gateway (background)",
+	Short:             "Start the local gateway (background; no-op for zrok provider)",
 	Args:              cobra.NoArgs,
 	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		r, err := resolveConfig()
 		if err != nil {
 			return err
+		}
+		if r.cfg.IsZrok() {
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "zrok provider: shares are managed per worktree by up/down (see proxy status)")
+			return nil
 		}
 		if proxyRunning(r.cfg) {
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "proxy already listening on %s\n", r.cfg.ProxyAddr())
@@ -244,13 +257,24 @@ var proxyUpCmd = &cobra.Command{
 
 var proxyDownCmd = &cobra.Command{
 	Use:               "down",
-	Short:             "Stop the local gateway",
+	Short:             "Stop the local gateway (no-op for zrok provider)",
 	Args:              cobra.NoArgs,
 	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		r, err := resolveConfig()
 		if err != nil {
 			return err
+		}
+		if r.cfg.IsZrok() {
+			// A gateway left listening from before a local->zrok switch
+			// is orphaned by no zrok-path command: stop it here.
+			if proxyRunning(r.cfg) {
+				if err := stopProxy(r.cfg); err != nil {
+					return err
+				}
+			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "zrok provider: shares are managed per worktree by up/down (see proxy status)")
+			return nil
 		}
 		if err := stopProxy(r.cfg); err != nil {
 			return err
@@ -262,13 +286,44 @@ var proxyDownCmd = &cobra.Command{
 
 var proxyStatusCmd = &cobra.Command{
 	Use:               "status",
-	Short:             "Show gateway state + per-worktree URLs",
+	Short:             "Show proxy state + per-worktree URLs",
 	Args:              cobra.NoArgs,
 	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		r, err := resolveConfig()
 		if err != nil {
 			return err
+		}
+		if r.cfg.IsZrok() {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "zrok: namespace %s domain .%s (enabled=%v)\n",
+				r.cfg.ZrokNamespace(), r.cfg.ProxyDomain(), r.cfg.Proxy.Enabled)
+			recs, err := recordsForDisplay(r.cfg)
+			if err != nil {
+				return err
+			}
+			for _, rec := range recs {
+				state := "stopped"
+				want := zrokNameFor(r.cfg, rec.Slug)
+				wantNS := r.cfg.ZrokNamespace()
+				wantTarget := ""
+				if app, ok := rec.Ports[ports.PortApp]; ok && app > 0 {
+					wantTarget = proxy.ZrokTarget(app)
+				}
+				if stored, storedTarget, storedNS, ok := proxy.ZrokShareIdentity(r.cfg.AbsWorktreeBase(), rec.Slug); ok &&
+					(stored != want || storedNS != wantNS || (wantTarget != "" && storedTarget != "" && storedTarget != wantTarget)) {
+					state = "stale (needs up)"
+				} else if proxy.ZrokShareRunning(r.cfg.AbsWorktreeBase(), rec.Slug) {
+					state = "sharing"
+				}
+				// Env drops APP_URL when disabled, so a lingering share
+				// is an orphan, not an active URL: label it honestly.
+				if !r.cfg.Proxy.Enabled && state != "stopped" {
+					state = "orphan (proxy disabled)"
+				}
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s -> %s (%s)\n",
+					zrokURLFor(r.cfg, rec.Slug), rec.Slug, state)
+			}
+			return nil
 		}
 		state := "stopped"
 		if proxyRunning(r.cfg) {
@@ -348,6 +403,9 @@ var proxyHostsSyncCmd = &cobra.Command{
 		r, err := resolveConfig()
 		if err != nil {
 			return err
+		}
+		if r.cfg.IsZrok() {
+			return fmt.Errorf("hosts-sync only applies to the local provider (zrok uses public DNS)")
 		}
 		hostsPath := hostsFilePath()
 		if v := strings.TrimSpace(os.Getenv("WRK3_HOSTS_FILE")); v != "" {

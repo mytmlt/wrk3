@@ -454,10 +454,14 @@ func dashboardRefreshRowsCmd(p *dashboardProject) tea.Cmd {
 // (best-effort via ensureProxyForUp, never errors). It returns a short
 // status for the meta line plus a log note when the gateway was started or
 // failed to start. Disabled projects yield ("", "") and the meta line falls
-// back to "proxy off".
+// back to "proxy off". The zrok provider manages per-worktree shares in
+// up/down instead, so this only reports the domain.
 func dashboardProxyEnsure(r *resolved) (info, note string) {
 	if r == nil || r.cfg == nil || !r.cfg.Proxy.Enabled {
 		return "", ""
+	}
+	if r.cfg.IsZrok() {
+		return "zrok " + r.cfg.ProxyDomain(), ""
 	}
 	if msg, warn := ensureProxyForUp(r); msg != "" {
 		note = msg
@@ -874,10 +878,14 @@ func dashboardAddCmd(p *dashboardProject, opID int, branches []string) tea.Cmd {
 }
 
 // dashboardRemoveCmd mirrors removeOne without cobra: compose down (warn and
-// continue), strip managed .env keys, worktree remove, state cleanup.
+// continue), strip managed .env keys, worktree remove, state cleanup, then
+// the zrok release (stop share + delete reserved name) when the zrok
+// provider is enabled.
 // Refuses the implicit main checkout like `remove`. Force runs
 // `git worktree remove --force` and falls back to rm -rf like
 // `remove --force` when git still refuses.
+// NOTE: keep in sync with removeOne in cmd/remove.go — both must call
+// releaseZrokShare after saveState.
 func dashboardRemoveCmd(p *dashboardProject, opID int, branches []string, force bool) tea.Cmd {
 	label := "remove"
 	if force {
@@ -938,6 +946,14 @@ func dashboardRemoveCmd(p *dashboardProject, opID int, branches []string, force 
 			if err := saveState(r, kept); err != nil {
 				r.logOpDone(label, label+" "+rec.Branch, err)
 				return err
+			}
+			// NOTE: keep in sync with removeOne in cmd/remove.go. No
+			// Proxy.Enabled gate so disable-then-remove still releases
+			// the reservation (release tolerates missing pid/share).
+			if r.cfg.IsZrok() {
+				if err := releaseZrokShare(ctx, r.cfg, rec.Slug); err != nil {
+					logf("warning: zrok release for %q: %v", rec.Branch, err)
+				}
 			}
 			r.logOpDone(label, "removed "+rec.Branch, nil)
 			logf("removed %s", rec.Branch)
@@ -2248,7 +2264,11 @@ func (m dashboardModel) dashboardMeta() string {
 	proxySeg := m.proxyInfo
 	if proxySeg == "" {
 		if p.cfg != nil && p.cfg.Proxy.Enabled {
-			proxySeg = "proxy " + p.cfg.ProxyAddr()
+			if p.cfg.IsZrok() {
+				proxySeg = "zrok " + p.cfg.ProxyDomain()
+			} else {
+				proxySeg = "proxy " + p.cfg.ProxyAddr()
+			}
 		} else {
 			proxySeg = "proxy off"
 		}

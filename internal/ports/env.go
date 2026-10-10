@@ -65,6 +65,19 @@ func AppURL(slug, domain string, gatewayPort int) string {
 	return "http://" + s + "." + d + ":" + fmt.Sprintf("%d", gatewayPort)
 }
 
+// ZrokURL builds https://<name>.<domain> for a zrok-backed worktree.
+// The name is the reserved zrok name (<prefix><slug>); the domain is the
+// namespace frontend domain (e.g. tunnel.mytmlt.site). Port is never shown:
+// TLS terminates at the zrok frontend.
+func ZrokURL(name, domain string) string {
+	d := strings.ToLower(strings.Trim(strings.TrimSpace(domain), "."))
+	if d == "" {
+		d = "localhost"
+	}
+	n := strings.ToLower(strings.Trim(strings.TrimSpace(name), "."))
+	return "https://" + n + "." + d
+}
+
 // ManagedValues maps every wrk3-managed .env variable to its value for
 // the given allocation: one <NAME>_PORT per ports.base entry. Nothing else
 // is managed: app-level URLs such as BASE_URL stay user-owned and are
