@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Telemetry now builds against `github.com/getsentry/sentry-go v0.49.0`
+  (`golang.org/x/sys v0.46.0`): `sentry-go` removed `Event.Extra` in
+  0.46, so error reports store `error_type`/`message`/`command`/
+  `wrk3_version`/`goos`/`goarch` under `event.Contexts["wrk3"]`
+  instead (tags, user/server scrubbing, exception + thread behavior
+  unchanged; `beforeSend` scrubs the context message).
+
 ### Added
 
 - `proxy.provider: local|zrok` (default `local`): the `zrok` provider maps

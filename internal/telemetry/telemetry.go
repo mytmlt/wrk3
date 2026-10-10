@@ -117,7 +117,7 @@ func newErrorEvent(command string, err error) *sentry.Event {
 	event := sentry.NewEvent()
 	event.Level = sentry.LevelError
 	event.Message = msg
-	event.Extra = map[string]interface{}{
+	event.Contexts["wrk3"] = sentry.Context{
 		"error_type":   et,
 		"message":      msg,
 		"command":      command,
@@ -168,9 +168,9 @@ func beforeSend(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
 		event.Exception[i].Value = scrubString(event.Exception[i].Value)
 		scrubStacktrace(event.Exception[i].Stacktrace)
 	}
-	if event.Extra != nil {
-		if m, ok := event.Extra["message"].(string); ok {
-			event.Extra["message"] = scrubString(m)
+	if ctx, ok := event.Contexts["wrk3"]; ok && ctx != nil {
+		if m, ok := ctx["message"].(string); ok {
+			ctx["message"] = scrubString(m)
 		}
 	}
 	for i := range event.Threads {
