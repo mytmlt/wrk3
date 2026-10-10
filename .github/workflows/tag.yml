@@ -81,7 +81,7 @@ jobs:
           echo "pushed=true" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.26"
+          go-version: "1.26.9"
           cache: true
       - name: Check whether the release already exists
         id: release-check
