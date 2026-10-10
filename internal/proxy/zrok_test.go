@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"os"
-	"runtime"
 	"testing"
 )
 
@@ -60,21 +59,33 @@ func TestZrokBinOverride(t *testing.T) {
 }
 
 func TestZrokOwnsPID(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("ps-based check fail-opens on windows")
+	owns, known := ZrokOwnsPID(os.Getpid())
+	if !known {
+		t.Skip("process table unreadable")
 	}
-	if ZrokOwnsPID(os.Getpid()) {
+	if owns {
 		t.Error("test binary is not a zrok share")
 	}
-	if ZrokOwnsPID(-1) {
-		t.Error("invalid pid must not be owned")
+	if owns, known := ZrokOwnsPID(-1); owns || !known {
+		t.Error("invalid pid must be (false, true)")
+	}
+}
+
+func TestArgvOwnsZrok(t *testing.T) {
+	for argv, want := range map[string]bool{
+		"/opt/homebrew/bin/zrok2 share public http://127.0.0.1:6969": true,
+		`"zrok2.exe","1234","Session","1","10,000 K"`:                true,
+		"/tmp/go-build123/b001/proxy.test -test.run TestZrokOwnsPID": false,
+		"/usr/bin/vim internal/proxy/zrok.go":                        false,
+		"":                                                           false,
+	} {
+		if got := argvOwnsZrok(argv); got != want {
+			t.Errorf("argvOwnsZrok(%q) = %v, want %v", argv, got, want)
+		}
 	}
 }
 
 func TestZrokShareRunningStalePID(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("ps-based check fail-opens on windows")
-	}
 	base := t.TempDir()
 	// Pid file pointing at this test process (not a zrok share) is stale:
 	// Running reports false and drops the file so stop never kills it.

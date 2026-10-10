@@ -238,7 +238,9 @@ cannot nest like `<slug>.mythome.tunnel...`).
   when the dir is gone). `add` creates nothing (names appear on `up`).
 - `status` grows the same `URL` column (`https://…`, no port); `proxy
   status` shows per-worktree `sharing`/`stale (needs up)`/`stopped`/`orphan (proxy disabled)`
-  (pid check + `ps` command-line ownership check + stored-identity
+  (pid check + process-binary ownership check (`ps`/`tasklist` argv[0]
+  basename; a stale pid file pointing at a non-zrok process is dropped,
+  and an unverified pid is never killed) + stored-identity
   comparison; `stale` means the running share predates a
   prefix/namespace/port change — run `up` to restart it; a stale pid file
   pointing at a non-zrok process is dropped, never killed; a share that

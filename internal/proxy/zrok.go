@@ -195,25 +195,50 @@ func ZrokShareArgs(target, namespace, name, backendMode string) []string {
 }
 
 // ZrokOwnsPID reports whether pid plausibly belongs to a zrok share.
-// It fail-opens (true) when the process table cannot be read (Windows,
-// missing ps) so callers keep the old signal-0 behavior there; when ps
-// succeeds and the command line has no "zrok", the pid file is stale
-// (crash/reboot/PID wrap matched an unrelated recycled PID).
-// ponytail: ps-based heuristic, zrok-side state check if false positives matter.
-func ZrokOwnsPID(pid int) bool {
+// known=false only when ownership cannot be verified (ps/tasklist
+// missing): liveness fail-opens (keep the old signal-0 behavior) but
+// killing fail-closes (an unverified pid is dropped, never killed).
+// ponytail: ps/tasklist heuristic, zrok-side state check if false positives matter.
+func ZrokOwnsPID(pid int) (owns, known bool) {
 	if pid <= 0 {
-		return false
-	}
-	if runtime.GOOS == "windows" {
-		return true
+		return false, true
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
+	if runtime.GOOS == "windows" {
+		out, err := exec.CommandContext(ctx, "tasklist", "/FI", "PID eq "+strconv.Itoa(pid), "/FO", "CSV", "/NH").Output()
+		if err != nil {
+			return false, false
+		}
+		return argvOwnsZrok(string(out)), true
+	}
 	out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "args=").Output()
 	if err != nil {
-		return true
+		return false, false
 	}
-	return strings.Contains(strings.ToLower(string(out)), "zrok")
+	return argvOwnsZrok(string(out)), true
+}
+
+// argvOwnsZrok matches "zrok" against the process binary name (first argv
+// token's basename), not the full command line: flags and file args may
+// legitimately mention zrok (e.g. `go test -run Zrok...`, an editor with
+// zrok.go open). The share is always spawned by direct exec of the zrok2
+// CLI, so argv[0] is the CLI path; a renamed wrapper binary reads as
+// unknown (liveness fail-open, kill fail-closed).
+func argvOwnsZrok(out string) bool {
+	line := strings.TrimSpace(out)
+	if i := strings.Index(line, "\n"); i >= 0 {
+		line = line[:i]
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(line), " ")
+	first = strings.Trim(first, `",`)
+	if i := strings.LastIndex(first, "/"); i >= 0 {
+		first = first[i+1:]
+	}
+	if i := strings.LastIndex(first, `\`); i >= 0 {
+		first = first[i+1:]
+	}
+	return strings.Contains(strings.ToLower(first), "zrok")
 }
 
 // ZrokShareRunning reports whether the per-slug share process is alive
@@ -238,7 +263,7 @@ func ZrokShareRunning(worktreeBase, slug string) bool {
 		_ = os.Remove(ZrokPidPath(worktreeBase, slug))
 		return false
 	}
-	if !ZrokOwnsPID(p.PID) {
+	if owns, known := ZrokOwnsPID(p.PID); known && !owns {
 		_ = os.Remove(ZrokPidPath(worktreeBase, slug))
 		return false
 	}

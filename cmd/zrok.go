@@ -153,7 +153,10 @@ func stopZrokShare(cfg *config.Config, slug string) {
 		proxy.ZrokRemovePid(cfg.AbsWorktreeBase(), slug)
 		return
 	}
-	if !proxy.ZrokOwnsPID(p.PID) {
+	// Fail closed for killing: only Kill a positively identified zrok
+	// process. Unknown ownership (Windows, missing ps) drops the pid file
+	// without killing — a stale pid must never kill an unrelated process.
+	if owns, _ := proxy.ZrokOwnsPID(p.PID); !owns {
 		proxy.ZrokRemovePid(cfg.AbsWorktreeBase(), slug)
 		return
 	}
