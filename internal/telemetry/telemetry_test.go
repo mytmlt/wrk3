@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -374,8 +375,9 @@ func (t *recordingTransport) SendEvent(event *sentry.Event) {
 	defer t.mu.Unlock()
 	t.events = append(t.events, event)
 }
-func (t *recordingTransport) Flush(time.Duration) bool { return true }
-func (t *recordingTransport) Close()                   {}
+func (t *recordingTransport) Flush(time.Duration) bool              { return true }
+func (t *recordingTransport) FlushWithContext(context.Context) bool { return true }
+func (t *recordingTransport) Close()                                {}
 
 func (t *recordingTransport) count() int {
 	t.mu.Lock()
@@ -415,10 +417,19 @@ func TestReportIfEnabled_SkipsNonReportable(t *testing.T) {
 
 	tr := &recordingTransport{}
 	if err := sentry.Init(sentry.ClientOptions{
-		Dsn:              DSN,
-		Transport:        tr,
+		Dsn:       DSN,
+		Transport: tr,
+		DataCollection: &sentry.DataCollection{
+			UserInfo:   sentry.Set(false),
+			HTTPBodies: []sentry.BodyType{},
+			Cookies:    &sentry.KeyValueCollectionBehavior{Mode: sentry.CollectionOff},
+			HTTPHeaders: &sentry.HeaderCollectionConfig{
+				Request:  &sentry.KeyValueCollectionBehavior{Mode: sentry.CollectionDenyList},
+				Response: &sentry.KeyValueCollectionBehavior{Mode: sentry.CollectionDenyList},
+			},
+			QueryParams: &sentry.KeyValueCollectionBehavior{Mode: sentry.CollectionDenyList},
+		},
 		TracesSampleRate: 0,
-		SendDefaultPII:   false,
 	}); err != nil {
 		t.Fatalf("sentry.Init: %v", err)
 	}
@@ -507,14 +518,68 @@ func TestNewErrorEvent_UnwrappedType(t *testing.T) {
 	if got := event.Exception[0].Type; got != "telemetry.errSentinel" {
 		t.Errorf("Exception[0].Type = %q, want telemetry.errSentinel", got)
 	}
-	et, ok := event.Extra["error_type"].(string)
+	et, ok := event.Contexts["wrk3"]["error_type"].(string)
 	if !ok {
-		t.Fatalf("Extra[error_type] = %T, want string", event.Extra["error_type"])
+		t.Fatalf("Contexts[wrk3][error_type] = %T, want string", event.Contexts["wrk3"]["error_type"])
 	}
 	if et != "telemetry.errSentinel" {
-		t.Errorf("Extra[error_type] = %q, want telemetry.errSentinel", et)
+		t.Errorf("Contexts[wrk3][error_type] = %q, want telemetry.errSentinel", et)
 	}
 	if event.Message != "outer: inner: something went wrong" {
 		t.Errorf("Message = %q, want full wrapped text", event.Message)
+	}
+}
+
+func TestNewErrorEvent_Wrk3Context(t *testing.T) {
+	event := newErrorEvent("status", errSentinel("something went wrong"))
+	if event == nil {
+		t.Fatal("newErrorEvent returned nil")
+	}
+	ctx, ok := event.Contexts["wrk3"]
+	if !ok || ctx == nil {
+		t.Fatal("Contexts[wrk3] missing")
+	}
+	for _, key := range []string{"error_type", "message", "command", "wrk3_version", "goos", "goarch"} {
+		if _, ok := ctx[key]; !ok {
+			t.Errorf("Contexts[wrk3][%q] missing", key)
+		}
+	}
+	if got := ctx["command"]; got != "status" {
+		t.Errorf("Contexts[wrk3][command] = %q, want status", got)
+	}
+}
+
+func TestBeforeSend_ScrubsWrk3ContextMessage(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Skip("no home dir")
+	}
+	dir := t.TempDir()
+	t.Setenv("WRK3_CONFIG_HOME", dir)
+	t.Setenv("WRK3_NO_TELEMETRY", "")
+	if err := SavePrefs(true, true); err != nil {
+		t.Fatalf("SavePrefs: %v", err)
+	}
+
+	event := sentry.NewEvent()
+	event.Message = "something went wrong"
+	event.Contexts["wrk3"] = sentry.Context{
+		"message": "failed at " + home + "/.config/wrk3.yaml",
+		"command": "status",
+	}
+
+	got := beforeSend(event, nil)
+	if got == nil {
+		t.Fatal("beforeSend dropped event")
+	}
+	m, ok := got.Contexts["wrk3"]["message"].(string)
+	if !ok {
+		t.Fatalf("Contexts[wrk3][message] = %T, want string", got.Contexts["wrk3"]["message"])
+	}
+	if strings.Contains(m, home) {
+		t.Errorf("context message still contains home dir: %q", m)
+	}
+	if !strings.Contains(m, "$HOME") {
+		t.Errorf("context message missing $HOME: %q", m)
 	}
 }
