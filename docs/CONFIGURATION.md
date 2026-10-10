@@ -235,17 +235,25 @@ cannot nest like `<slug>.mythome.tunnel...`).
   restarted. `down` stops the share process and
   keeps the reserved name; `remove` stops it and `delete`s the name
   (guarded to the configured prefix; `remove --force` cleans up even
-  when the dir is gone). `add` creates nothing (names appear on `up`).
+  when the dir is gone; `remove` releases whenever the provider is zrok,
+  even with `enabled: false`, so disable-then-remove cannot orphan the
+  name). `add` creates nothing (names appear on `up`).
 - `status` grows the same `URL` column (`https://…`, no port); `proxy
   status` shows per-worktree `sharing`/`stale (needs up)`/`stopped`/`orphan (proxy disabled)`
   (pid check + process-binary ownership check (`ps`/`tasklist` argv[0]
   basename; a stale pid file pointing at a non-zrok process is dropped,
   and an unverified pid is never killed) + stored-identity
   comparison; `stale` means the running share predates a
-  prefix/namespace/port change — run `up` to restart it; a stale pid file
-  pointing at a non-zrok process is dropped, never killed; a share that
+  prefix/namespace/port change — run `up` to restart it (restart polls
+  ~2s for the old share to exit first so the new share does not fail
+  name-in-use); a stale pid file
+  pointing at a non-zrok process is dropped, never killed; ownership
+  that cannot be verified (windows, missing `ps`/`tasklist`) is never
+  killed (stop drops the pid file; liveness keeps signal-0 behavior);
+  a share that
   refuses to stop keeps its pid file and warns instead of spawning a
-  second share for the same name);
+  second share for the same name; a pid-write failure after spawn kills
+  the child instead of leaking an untracked share);
   `proxy up/down` are no-ops with a hint (shares live per worktree, but
   `proxy down` still stops a gateway left listening from before a
   local→zrok switch);

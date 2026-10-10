@@ -268,7 +268,10 @@ Constraints (enforced by `config.Validate` — unknown values fail fast):
   `<prefix><slug>` (`zrok.namePrefix`, empty derives
   `<projectPrefix>-`; max 12 chars, hostname chars, no leading `-` (single trailing `-` separator allowed); zrok CLI install + `enable` stay outside wrk3.
   `proxy status` also reports `orphan (proxy disabled)` for shares left
-  running after `enabled: false` (`up`/`down` stop them).
+  running after `enabled: false` (`up`/`down` stop them; `remove`
+  releases the reservation even with `enabled: false`). Unverifiable
+  share pids are never killed (stop drops the pid file); stale
+  restarts poll for exit first.
 - `health.checks` (optional, display-only): each needs unique non-empty
   `name` + `run` (via `sh -c`, `cwd=worktree`, `env=ports`); `timeout`
   default `10s`, must be `1s–120s` when set. Never fails `up`.

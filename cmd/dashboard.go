@@ -947,7 +947,10 @@ func dashboardRemoveCmd(p *dashboardProject, opID int, branches []string, force 
 				r.logOpDone(label, label+" "+rec.Branch, err)
 				return err
 			}
-			if r.cfg.Proxy.Enabled && r.cfg.IsZrok() {
+			// NOTE: keep in sync with removeOne in cmd/remove.go. No
+			// Proxy.Enabled gate so disable-then-remove still releases
+			// the reservation (release tolerates missing pid/share).
+			if r.cfg.IsZrok() {
 				if err := releaseZrokShare(ctx, r.cfg, rec.Slug); err != nil {
 					logf("warning: zrok release for %q: %v", rec.Branch, err)
 				}

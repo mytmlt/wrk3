@@ -74,6 +74,12 @@ func ensureZrokShare(ctx context.Context, cfg *config.Config, rec ports.Worktree
 			return "", ""
 		}
 		stopZrokShare(cfg, slug)
+		// The pid file is removed right after Kill without waiting for
+		// exit, so poll briefly: the old and new shares overlap on the
+		// same reserved name and an immediate respawn can fail name-in-use.
+		for i := 0; i < 20 && proxy.ZrokShareRunning(cfg.AbsWorktreeBase(), slug); i++ {
+			time.Sleep(100 * time.Millisecond)
+		}
 		if proxy.ZrokShareRunning(cfg.AbsWorktreeBase(), slug) {
 			return "", fmt.Sprintf("zrok share for %q still running (stop failed; not starting a second share)", slug)
 		}
@@ -132,13 +138,24 @@ func startZrokShareDetached(cfg *config.Config, slug, name, target string) error
 	if pid <= 0 {
 		return fmt.Errorf("spawn zrok share: no pid")
 	}
-	return proxy.ZrokWritePid(cfg.AbsWorktreeBase(), slug, pid, name, target, cfg.ZrokNamespace())
+	// A detached share with no pid file is untracked: down/up could no
+	// longer stop it and the next up would spawn a second share for the
+	// same reserved name. Kill the child before surfacing the write error.
+	if err := proxy.ZrokWritePid(cfg.AbsWorktreeBase(), slug, pid, name, target, cfg.ZrokNamespace()); err != nil {
+		if proc, ferr := os.FindProcess(pid); ferr == nil {
+			_ = proc.Kill()
+		}
+		return err
+	}
+	return nil
 }
 
 // stopZrokShare kills the per-slug share process, keeping the reserved
 // name for fast re-up. Missing process is not an error. A pid file
-// pointing at a non-zrok process is dropped without killing (stale PID
-// reuse must never kill an unrelated process). A failed Kill keeps the
+// proven to point at a non-zrok process is dropped without killing
+// (stale PID reuse must never kill an unrelated process), as is a pid
+// whose ownership cannot be verified (windows, missing ps/tasklist).
+// A failed Kill keeps the
 // pid file so callers do not spawn a second share for the same name.
 func stopZrokShare(cfg *config.Config, slug string) {
 	rawPidPath := proxy.ZrokPidPath(cfg.AbsWorktreeBase(), slug)

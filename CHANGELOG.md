@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   window; `proxy status` reports `orphan (proxy disabled)` for shares
   left running after `enabled: false` (`up`/`down` stop them); `proxy
   down` stops a gateway left listening from before a local→zrok switch.
+  `remove` (CLI + dashboard) releases the reservation whenever the
+  provider is zrok, even with `enabled: false`; a pid-write failure
+  after spawn kills the child instead of leaking an untracked share;
+  stale-share restarts poll ~2s for the old share to exit before
+  respawning; pid ownership is fail-closed for killing (`owns,known`,
+  argv[0] basename) — an unverifiable pid is never killed (stop drops
+  the pid file; liveness keeps signal-0 behavior).
 
 ### Removed
 

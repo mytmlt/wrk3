@@ -242,8 +242,11 @@ func argvOwnsZrok(out string) bool {
 }
 
 // ZrokShareRunning reports whether the per-slug share process is alive
-// (pid file + signal 0 + zrok command line). Missing pid file means
-// stopped; a pid file pointing at a non-zrok process is removed as stale.
+// (pid file + signal 0 + process-binary ownership). Missing pid file
+// means stopped; a pid file proven to point at a non-zrok process is
+// removed as stale. When ownership cannot be verified the pid file is
+// kept and the share counts as running (liveness fail-open) so callers
+// never spawn a duplicate off an unreadable process table.
 func ZrokShareRunning(worktreeBase, slug string) bool {
 	raw, err := os.ReadFile(ZrokPidPath(worktreeBase, slug))
 	if err != nil {
