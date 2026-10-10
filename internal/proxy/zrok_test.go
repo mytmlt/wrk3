@@ -62,3 +62,17 @@ func TestZrokShareRunningMissing(t *testing.T) {
 		t.Error("missing pid should not be running")
 	}
 }
+
+func TestZrokShareIdentity(t *testing.T) {
+	base := t.TempDir()
+	if _, _, ok := ZrokShareIdentity(base, "demo"); ok {
+		t.Error("missing pid should not be ok")
+	}
+	if err := ZrokWritePid(base, "demo", 12345, "myt-home-demo", "http://127.0.0.1:6969"); err != nil {
+		t.Fatal(err)
+	}
+	name, target, ok := ZrokShareIdentity(base, "demo")
+	if !ok || name != "myt-home-demo" || target != "http://127.0.0.1:6969" {
+		t.Errorf("identity = (%q,%q,%v)", name, target, ok)
+	}
+}

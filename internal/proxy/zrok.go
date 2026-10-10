@@ -219,6 +219,26 @@ func ZrokShareRunning(worktreeBase, slug string) bool {
 	return true
 }
 
+// ZrokShareIdentity reads the stored {name,target} from the pid file.
+// ok=false when the pid file is missing or corrupt.
+func ZrokShareIdentity(worktreeBase, slug string) (name, target string, ok bool) {
+	raw, err := os.ReadFile(ZrokPidPath(worktreeBase, slug))
+	if err != nil {
+		return "", "", false
+	}
+	var p struct {
+		Name   string `json:"name"`
+		Target string `json:"target"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return "", "", false
+	}
+	if strings.TrimSpace(p.Name) == "" {
+		return "", "", false
+	}
+	return p.Name, p.Target, true
+}
+
 // ZrokWritePid writes the share pid file.
 func ZrokWritePid(worktreeBase, slug string, pid int, name, target string) error {
 	raw, _ := json.Marshal(map[string]any{"pid": pid, "name": name, "target": target})

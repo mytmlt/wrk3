@@ -53,27 +53,48 @@ func ensureZrokName(ctx context.Context, cfg *config.Config, slug string) error 
 // ensureZrokShare ensures the name + background share for rec. It is
 // best-effort like the local gateway: errors come back for the caller to
 // log as warnings; the worktree stays reachable via localhost ports.
+// A live share whose stored {name,target} differs from the desired values
+// (prefix change, port reallocation) is restarted so status/APP_URL never
+// point at a stale share.
 func ensureZrokShare(ctx context.Context, cfg *config.Config, rec ports.WorktreeRecord) (msg, warned string) {
 	if cfg == nil || !cfg.Proxy.Enabled || !cfg.IsZrok() {
 		return "", ""
 	}
 	slug := rec.Slug
-	if proxy.ZrokShareRunning(cfg.AbsWorktreeBase(), slug) {
-		return "", ""
-	}
-	if err := zrokPrereq(ctx, cfg); err != nil {
-		return "", fmt.Sprintf("zrok share for %q not started (%v)", slug, err)
-	}
 	name := zrokNameFor(cfg, slug)
-	if err := ensureZrokName(ctx, cfg, slug); err != nil {
-		return "", fmt.Sprintf("zrok share for %q not started (%v)", slug, err)
-	}
 	target, err := zrokTargetFor(rec)
 	if err != nil {
 		return "", fmt.Sprintf("zrok share for %q not started (%v)", slug, err)
 	}
+	if proxy.ZrokShareRunning(cfg.AbsWorktreeBase(), slug) {
+		if storedName, storedTarget, ok := proxy.ZrokShareIdentity(cfg.AbsWorktreeBase(), slug); ok &&
+			storedName == name && storedTarget == target {
+			return "", ""
+		}
+		stopZrokShare(cfg, slug)
+	}
+	if err := zrokPrereq(ctx, cfg); err != nil {
+		return "", fmt.Sprintf("zrok share for %q not started (%v)", slug, err)
+	}
+	if err := ensureZrokName(ctx, cfg, slug); err != nil {
+		return "", fmt.Sprintf("zrok share for %q not started (%v)", slug, err)
+	}
 	if err := startZrokShareDetached(cfg, slug, name, target); err != nil {
 		return "", fmt.Sprintf("zrok share for %q not started (%v)", slug, err)
+	}
+	// Brief grace so an instantly-exiting share (bad target, name race,
+	// frontend error) surfaces now instead of on the next status poll —
+	// mirrors the local gateway dial grace in ensureProxyForCfg.
+	alive := false
+	for i := 0; i < 10 && !alive; i++ {
+		if proxy.ZrokShareRunning(cfg.AbsWorktreeBase(), slug) {
+			alive = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !alive {
+		return "", fmt.Sprintf("zrok share for %q exited immediately (see %s)", slug, proxy.ZrokLogPath(cfg.AbsWorktreeBase(), slug))
 	}
 	return fmt.Sprintf("zrok share up for %q -> %s", slug, zrokURLFor(cfg, slug)), ""
 }
@@ -130,9 +151,14 @@ func stopZrokShare(cfg *config.Config, slug string) {
 	proxy.ZrokRemovePid(cfg.AbsWorktreeBase(), slug)
 }
 
-// releaseZrokShare stops the share and deletes the reserved name. Names
-// outside the configured prefix are never deleted.
+// releaseZrokShare stops the share and deletes the reserved name. The name
+// is read from the pid file first (falling back to the config-derived one
+// when no pid file exists) so a prefix change cannot orphan the old
+// reservation. Recomputed fallback names outside the configured prefix are
+// never deleted; stored names skip the guard (the pid file proves wrk3
+// created them).
 func releaseZrokShare(ctx context.Context, cfg *config.Config, slug string) error {
+	storedName, _, hasStored := proxy.ZrokShareIdentity(cfg.AbsWorktreeBase(), slug)
 	stopZrokShare(cfg, slug)
 	if cfg == nil || !cfg.IsZrok() {
 		return nil
@@ -140,6 +166,12 @@ func releaseZrokShare(ctx context.Context, cfg *config.Config, slug string) erro
 	bin := proxy.ZrokBin(cfg.ZrokBinary())
 	name := zrokNameFor(cfg, slug)
 	prefix := cfg.ZrokNamePrefix()
+	if hasStored {
+		// The pid file proves wrk3 created this reservation, so the
+		// prefix guard is skipped: the stored name may predate a prefix
+		// change that the guard would otherwise refuse.
+		name, prefix = storedName, ""
+	}
 	ctx2, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	return proxy.ZrokDeleteName(ctx2, bin, cfg.ZrokNamespace(), prefix, name)
