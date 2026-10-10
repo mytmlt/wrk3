@@ -548,6 +548,9 @@ func createWorktreeRecord(r *resolved, recs *[]ports.WorktreeRecord, alloc *port
 			}
 		}
 	}
+	if _, err := os.Stat(path); err == nil {
+		return nil, fmt.Errorf("worktree directory already exists at %s: remove it first (rm -rf %s) or prune abandoned worktrees (git -C %s worktree prune)", path, path, r.cfg.RepoPath())
+	}
 	idx := nextIndex(*recs)
 	envAlloc, err := assignAllocation(r, *recs)
 	if err != nil {
