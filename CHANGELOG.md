@@ -20,7 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runner env gains `APP_URL`,
   `proxy status` shows `sharing`/`stale (needs up)`/`stopped`; `proxy up/down` are no-ops and
   `hosts-sync` errors for zrok. `proxy.zrok.namePrefix` (max 12 chars,
-  hostname chars, no leading/trailing `-`) is rejected at config load.
+  hostname chars, no leading `-`; a single trailing `-` separator like
+  `demo-` is allowed) is rejected at config load. Dashboard `remove` also
+  stops the share and releases the reserved name, mirroring CLI `remove`.
   Install + `zrok2 enable` stay outside wrk3;
   `$WRK3_ZROK_BIN` overrides the binary. `local` behavior is unchanged.
 

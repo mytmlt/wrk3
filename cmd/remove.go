@@ -152,6 +152,8 @@ func removeOne(cmd *cobra.Command, r *resolved, recs []ports.WorktreeRecord, bra
 		r.logOpDone("remove", "remove "+branch, err)
 		return err
 	}
+	// NOTE: keep in sync with dashboardRemoveCmd in cmd/dashboard.go — it
+	// must call releaseZrokShare after saveState as well.
 	if r.cfg.Proxy.Enabled && r.cfg.IsZrok() {
 		if err := releaseZrokShare(cmd.Context(), r.cfg, rec.Slug); err != nil {
 			warnf(cmd, "zrok release for %q: %v", rec.Branch, err)

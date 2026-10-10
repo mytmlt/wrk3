@@ -878,10 +878,14 @@ func dashboardAddCmd(p *dashboardProject, opID int, branches []string) tea.Cmd {
 }
 
 // dashboardRemoveCmd mirrors removeOne without cobra: compose down (warn and
-// continue), strip managed .env keys, worktree remove, state cleanup.
+// continue), strip managed .env keys, worktree remove, state cleanup, then
+// the zrok release (stop share + delete reserved name) when the zrok
+// provider is enabled.
 // Refuses the implicit main checkout like `remove`. Force runs
 // `git worktree remove --force` and falls back to rm -rf like
 // `remove --force` when git still refuses.
+// NOTE: keep in sync with removeOne in cmd/remove.go — both must call
+// releaseZrokShare after saveState.
 func dashboardRemoveCmd(p *dashboardProject, opID int, branches []string, force bool) tea.Cmd {
 	label := "remove"
 	if force {
@@ -942,6 +946,11 @@ func dashboardRemoveCmd(p *dashboardProject, opID int, branches []string, force 
 			if err := saveState(r, kept); err != nil {
 				r.logOpDone(label, label+" "+rec.Branch, err)
 				return err
+			}
+			if r.cfg.Proxy.Enabled && r.cfg.IsZrok() {
+				if err := releaseZrokShare(ctx, r.cfg, rec.Slug); err != nil {
+					logf("warning: zrok release for %q: %v", rec.Branch, err)
+				}
 			}
 			r.logOpDone(label, "removed "+rec.Branch, nil)
 			logf("removed %s", rec.Branch)

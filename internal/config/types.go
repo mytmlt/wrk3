@@ -702,7 +702,17 @@ func (c *Config) validateZrokProxy() error {
 			return fmt.Errorf("proxy.zrok.namePrefix %q must be hostname characters", prefix)
 		}
 	}
-	if strings.HasPrefix(prefix, "-") || strings.HasSuffix(prefix, "-") {
+	if strings.HasPrefix(prefix, "-") {
+		return fmt.Errorf("proxy.zrok.namePrefix %q must not start with -", prefix)
+	}
+	// A single trailing '-' is the documented separator ("demo-" + slug);
+	// only reject a bare "-" or a prefix still starting/ending with '-'
+	// after trimming it (e.g. "bad--").
+	trimmed := strings.TrimSuffix(prefix, "-")
+	if prefix != "" && strings.TrimSpace(trimmed) == "" {
+		return fmt.Errorf("proxy.zrok.namePrefix %q must not be only -", prefix)
+	}
+	if strings.HasPrefix(trimmed, "-") || strings.HasSuffix(trimmed, "-") {
 		return fmt.Errorf("proxy.zrok.namePrefix %q must not start/end with -", prefix)
 	}
 	return nil

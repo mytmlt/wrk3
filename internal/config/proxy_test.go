@@ -121,6 +121,18 @@ func TestProxyZrokValidation(t *testing.T) {
 	if got := cfg.ProxyURL("demo"); got != "https://myt-home-demo.tunnel.mytmlt.site" {
 		t.Errorf("ProxyURL = %q", got)
 	}
+	// A single trailing '-' is the documented separator, not an error.
+	trailCfg := writeProxyConfig(t, proxyBase+`proxy:
+  enabled: true
+  provider: zrok
+  domain: tunnel.mytmlt.site
+  zrok:
+    namespace: public
+    namePrefix: trail-
+`)
+	if got := trailCfg.ZrokName("demo"); got != "trail-demo" {
+		t.Errorf("ZrokName = %q, want trail-demo", got)
+	}
 	for _, body := range []string{
 		// localhost is not a valid zrok frontend domain
 		proxyBase + "proxy:\n  enabled: true\n  provider: zrok\n  domain: localhost\n",
@@ -128,10 +140,11 @@ func TestProxyZrokValidation(t *testing.T) {
 		proxyBase + "proxy:\n  enabled: true\n  provider: zrok\n  domain: tunnel.mytmlt.site\n  zrok:\n    backendMode: web\n",
 		// bad prefix chars
 		proxyBase + "proxy:\n  enabled: true\n  provider: zrok\n  domain: tunnel.mytmlt.site\n  zrok:\n    namePrefix: \"bad prefix!\"\n",
-		// leading/trailing dash passes charset but yields an invalid DNS label
+		// leading dash passes charset but yields an invalid DNS label;
+		// a single trailing '-' is the documented separator ("demo-" + slug)
 		proxyBase + "proxy:\n  enabled: true\n  provider: zrok\n  domain: tunnel.mytmlt.site\n  zrok:\n    namePrefix: \"-bad-\"\n",
 		proxyBase + "proxy:\n  enabled: true\n  provider: zrok\n  domain: tunnel.mytmlt.site\n  zrok:\n    namePrefix: \"-lead\"\n",
-		proxyBase + "proxy:\n  enabled: true\n  provider: zrok\n  domain: tunnel.mytmlt.site\n  zrok:\n    namePrefix: \"trail-\"\n",
+		proxyBase + "proxy:\n  enabled: true\n  provider: zrok\n  domain: tunnel.mytmlt.site\n  zrok:\n    namePrefix: \"bad--\"\n",
 	} {
 		dir := t.TempDir()
 		p := filepath.Join(dir, "wrk3.yaml")
