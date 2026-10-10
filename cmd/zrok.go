@@ -74,6 +74,9 @@ func ensureZrokShare(ctx context.Context, cfg *config.Config, rec ports.Worktree
 			return "", ""
 		}
 		stopZrokShare(cfg, slug)
+		if proxy.ZrokShareRunning(cfg.AbsWorktreeBase(), slug) {
+			return "", fmt.Sprintf("zrok share for %q still running (stop failed; not starting a second share)", slug)
+		}
 	}
 	if err := zrokPrereq(ctx, cfg); err != nil {
 		return "", fmt.Sprintf("zrok share for %q not started (%v)", slug, err)
@@ -86,14 +89,14 @@ func ensureZrokShare(ctx context.Context, cfg *config.Config, rec ports.Worktree
 	}
 	// Brief grace so an instantly-exiting share (bad target, name race,
 	// frontend error) surfaces now instead of on the next status poll —
-	// mirrors the local gateway dial grace in ensureProxyForCfg.
-	alive := false
-	for i := 0; i < 10 && !alive; i++ {
-		if proxy.ZrokShareRunning(cfg.AbsWorktreeBase(), slug) {
-			alive = true
-			break
-		}
+	// mirrors the local gateway dial grace in ensureProxyForCfg. Settles
+	// first, then requires the share to stay alive across the window: a
+	// share that exits 50-500ms after spawn must warn, not report success.
+	time.Sleep(500 * time.Millisecond)
+	alive := proxy.ZrokShareRunning(cfg.AbsWorktreeBase(), slug)
+	for i := 0; i < 5 && alive; i++ {
 		time.Sleep(100 * time.Millisecond)
+		alive = proxy.ZrokShareRunning(cfg.AbsWorktreeBase(), slug)
 	}
 	if !alive {
 		return "", fmt.Sprintf("zrok share for %q exited immediately (see %s)", slug, proxy.ZrokLogPath(cfg.AbsWorktreeBase(), slug))
@@ -133,7 +136,10 @@ func startZrokShareDetached(cfg *config.Config, slug, name, target string) error
 }
 
 // stopZrokShare kills the per-slug share process, keeping the reserved
-// name for fast re-up. Missing process is not an error.
+// name for fast re-up. Missing process is not an error. A pid file
+// pointing at a non-zrok process is dropped without killing (stale PID
+// reuse must never kill an unrelated process). A failed Kill keeps the
+// pid file so callers do not spawn a second share for the same name.
 func stopZrokShare(cfg *config.Config, slug string) {
 	rawPidPath := proxy.ZrokPidPath(cfg.AbsWorktreeBase(), slug)
 	raw, err := os.ReadFile(rawPidPath)
@@ -147,8 +153,14 @@ func stopZrokShare(cfg *config.Config, slug string) {
 		proxy.ZrokRemovePid(cfg.AbsWorktreeBase(), slug)
 		return
 	}
+	if !proxy.ZrokOwnsPID(p.PID) {
+		proxy.ZrokRemovePid(cfg.AbsWorktreeBase(), slug)
+		return
+	}
 	if proc, err := os.FindProcess(p.PID); err == nil {
-		_ = proc.Kill()
+		if err := proc.Kill(); err != nil && !os.IsNotExist(err) {
+			return
+		}
 	}
 	proxy.ZrokRemovePid(cfg.AbsWorktreeBase(), slug)
 }
@@ -167,18 +179,24 @@ func releaseZrokShare(ctx context.Context, cfg *config.Config, slug string) erro
 	if cfg == nil || !cfg.IsZrok() {
 		return nil
 	}
-	storedName, _, _, hasStored := proxy.ZrokShareIdentity(cfg.AbsWorktreeBase(), slug)
+	storedName, _, storedNamespace, hasStored := proxy.ZrokShareIdentity(cfg.AbsWorktreeBase(), slug)
 	stopZrokShare(cfg, slug)
 	bin := proxy.ZrokBin(cfg.ZrokBinary())
 	name := zrokNameFor(cfg, slug)
 	prefix := cfg.ZrokNamePrefix()
+	namespace := cfg.ZrokNamespace()
 	if hasStored {
 		// The pid file proves wrk3 created this reservation, so the
 		// prefix guard is skipped: the stored name may predate a prefix
-		// change that the guard would otherwise refuse.
+		// change that the guard would otherwise refuse. The stored
+		// namespace wins too, or a namespace change orphans the old
+		// reservation (delete would target the new namespace no-op).
 		name, prefix = storedName, ""
+		if storedNamespace != "" {
+			namespace = storedNamespace
+		}
 	}
 	ctx2, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
-	return proxy.ZrokDeleteName(ctx2, bin, cfg.ZrokNamespace(), prefix, name)
+	return proxy.ZrokDeleteName(ctx2, bin, namespace, prefix, name)
 }

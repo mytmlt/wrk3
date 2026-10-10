@@ -237,12 +237,20 @@ cannot nest like `<slug>.mythome.tunnel...`).
   (guarded to the configured prefix; `remove --force` cleans up even
   when the dir is gone). `add` creates nothing (names appear on `up`).
 - `status` grows the same `URL` column (`https://…`, no port); `proxy
-  status` shows per-worktree `sharing`/`stale (needs up)`/`stopped` (pid check +
-  stored-identity comparison; `stale` means the running share predates a
-  prefix/namespace/port change — run `up` to restart it);
-  `proxy up/down` are no-ops with a hint (shares live per worktree);
+  status` shows per-worktree `sharing`/`stale (needs up)`/`stopped`/`orphan (proxy disabled)`
+  (pid check + `ps` command-line ownership check + stored-identity
+  comparison; `stale` means the running share predates a
+  prefix/namespace/port change — run `up` to restart it; a stale pid file
+  pointing at a non-zrok process is dropped, never killed; a share that
+  refuses to stop keeps its pid file and warns instead of spawning a
+  second share for the same name);
+  `proxy up/down` are no-ops with a hint (shares live per worktree, but
+  `proxy down` still stops a gateway left listening from before a
+  local→zrok switch);
   `proxy hosts-sync` errors (public DNS needs no hosts entries).
   Runner env gains `APP_URL=https://<name>.<domain>` (not in `.env`).
+  When `enabled: false`, lingering shares are reported as orphans and
+  `up`/`down` stop them instead of starting new ones.
   Pid/log live next to state per slug:
   `<worktreeBase>/.wrk3-zrok-<slug>.{pid,log}`.
 

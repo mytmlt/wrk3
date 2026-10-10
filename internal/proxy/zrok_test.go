@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"os"
+	"runtime"
 	"testing"
 )
 
@@ -54,6 +56,36 @@ func TestZrokBinOverride(t *testing.T) {
 	t.Setenv("WRK3_ZROK_BIN", "stub-zrok2")
 	if got := ZrokBin("zrok2"); got != "stub-zrok2" {
 		t.Errorf("ZrokBin = %q", got)
+	}
+}
+
+func TestZrokOwnsPID(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ps-based check fail-opens on windows")
+	}
+	if ZrokOwnsPID(os.Getpid()) {
+		t.Error("test binary is not a zrok share")
+	}
+	if ZrokOwnsPID(-1) {
+		t.Error("invalid pid must not be owned")
+	}
+}
+
+func TestZrokShareRunningStalePID(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ps-based check fail-opens on windows")
+	}
+	base := t.TempDir()
+	// Pid file pointing at this test process (not a zrok share) is stale:
+	// Running reports false and drops the file so stop never kills it.
+	if err := ZrokWritePid(base, "demo", os.Getpid(), "myt-home-demo", "http://127.0.0.1:6969", "public"); err != nil {
+		t.Fatal(err)
+	}
+	if ZrokShareRunning(base, "demo") {
+		t.Error("non-zrok pid must not count as running")
+	}
+	if _, _, _, ok := ZrokShareIdentity(base, "demo"); ok {
+		t.Error("stale pid file should be removed")
 	}
 }
 

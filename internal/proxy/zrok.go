@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -193,8 +194,31 @@ func ZrokShareArgs(target, namespace, name, backendMode string) []string {
 		"--backend-mode", mode, "--headless", "--force-local"}
 }
 
+// ZrokOwnsPID reports whether pid plausibly belongs to a zrok share.
+// It fail-opens (true) when the process table cannot be read (Windows,
+// missing ps) so callers keep the old signal-0 behavior there; when ps
+// succeeds and the command line has no "zrok", the pid file is stale
+// (crash/reboot/PID wrap matched an unrelated recycled PID).
+// ponytail: ps-based heuristic, zrok-side state check if false positives matter.
+func ZrokOwnsPID(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "args=").Output()
+	if err != nil {
+		return true
+	}
+	return strings.Contains(strings.ToLower(string(out)), "zrok")
+}
+
 // ZrokShareRunning reports whether the per-slug share process is alive
-// (pid file + signal 0). Missing pid file means stopped.
+// (pid file + signal 0 + zrok command line). Missing pid file means
+// stopped; a pid file pointing at a non-zrok process is removed as stale.
 func ZrokShareRunning(worktreeBase, slug string) bool {
 	raw, err := os.ReadFile(ZrokPidPath(worktreeBase, slug))
 	if err != nil {
@@ -211,6 +235,10 @@ func ZrokShareRunning(worktreeBase, slug string) bool {
 		return false
 	}
 	if err := proc.Signal(syscall.Signal(0)); err != nil {
+		_ = os.Remove(ZrokPidPath(worktreeBase, slug))
+		return false
+	}
+	if !ZrokOwnsPID(p.PID) {
 		_ = os.Remove(ZrokPidPath(worktreeBase, slug))
 		return false
 	}

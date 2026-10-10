@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stops the share and releases the reserved name, mirroring CLI `remove`.
   Install + `zrok2 enable` stay outside wrk3;
   `$WRK3_ZROK_BIN` overrides the binary. `local` behavior is unchanged.
+  Share liveness is pid file + `ps` command-line ownership (a pid file
+  pointing at a non-zrok process is dropped, never killed); a failed
+  share stop keeps its pid file and warns instead of spawning a second
+  share for the same name; `release` deletes with the stored namespace;
+  the post-spawn grace requires the share to stay alive across the
+  window; `proxy status` reports `orphan (proxy disabled)` for shares
+  left running after `enabled: false` (`up`/`down` stop them); `proxy
+  down` stops a gateway left listening from before a local→zrok switch.
 
 ### Removed
 

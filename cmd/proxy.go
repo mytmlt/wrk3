@@ -266,6 +266,13 @@ var proxyDownCmd = &cobra.Command{
 			return err
 		}
 		if r.cfg.IsZrok() {
+			// A gateway left listening from before a local->zrok switch
+			// is orphaned by no zrok-path command: stop it here.
+			if proxyRunning(r.cfg) {
+				if err := stopProxy(r.cfg); err != nil {
+					return err
+				}
+			}
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "zrok provider: shares are managed per worktree by up/down (see proxy status)")
 			return nil
 		}
@@ -307,6 +314,11 @@ var proxyStatusCmd = &cobra.Command{
 					state = "stale (needs up)"
 				} else if proxy.ZrokShareRunning(r.cfg.AbsWorktreeBase(), rec.Slug) {
 					state = "sharing"
+				}
+				// Env drops APP_URL when disabled, so a lingering share
+				// is an orphan, not an active URL: label it honestly.
+				if !r.cfg.Proxy.Enabled && state != "stopped" {
+					state = "orphan (proxy disabled)"
 				}
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s -> %s (%s)\n",
 					zrokURLFor(r.cfg, rec.Slug), rec.Slug, state)

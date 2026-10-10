@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mytmlt/wrk3/internal/ports"
+	"github.com/mytmlt/wrk3/internal/proxy"
 	"github.com/mytmlt/wrk3/internal/runner"
 )
 
@@ -94,8 +95,15 @@ func upOne(ctx context.Context, r *resolved, rec ports.WorktreeRecord, logf func
 			return fmt.Errorf("up %q run %q: %w", rec.Branch, s, err)
 		}
 	}
-	if r.cfg.Proxy.Enabled && r.cfg.IsZrok() {
-		if msg, warn := ensureZrokShare(ctx, r.cfg, rec); msg != "" {
+	if r.cfg.IsZrok() {
+		if !r.cfg.Proxy.Enabled {
+			// Heal orphans left running when the user flipped enabled=false:
+			// env no longer emits APP_URL, so a lingering share is stopped.
+			if proxy.ZrokShareRunning(r.cfg.AbsWorktreeBase(), rec.Slug) {
+				stopZrokShare(r.cfg, rec.Slug)
+				logf("[%s] zrok share stopped (proxy disabled)", rec.Slug)
+			}
+		} else if msg, warn := ensureZrokShare(ctx, r.cfg, rec); msg != "" {
 			logf("%s", msg)
 		} else if warn != "" {
 			logf("warning: %s", warn)
