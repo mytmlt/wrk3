@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: alibaba/open-code-review@bccbc15f785269400735d5255540c231e6c02b6d # v1.12.9
+      - uses: alibaba/open-code-review@1672852136fc87748249d22bce0819f33419ea79 # v1.13.0
         with:
           llm_url: ${{ secrets.OCR_LLM_URL }}
           llm_auth_token: ${{ secrets.OCR_LLM_TOKEN }}
