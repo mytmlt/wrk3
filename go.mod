@@ -10,7 +10,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.16
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sync v0.23.0
-	golang.org/x/sys v0.46.0
+	golang.org/x/sys v0.49.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
