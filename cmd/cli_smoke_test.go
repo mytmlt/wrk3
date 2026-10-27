@@ -33,6 +33,25 @@ func TestCLIVersionSmoke(t *testing.T) {
 	}
 }
 
+func TestNameOfLastCommand(t *testing.T) {
+	prev := lastCommandName
+	t.Cleanup(func() { lastCommandName = prev })
+
+	if _, _, err := executeCmd("version"); err != nil {
+		t.Fatalf("version: %v", err)
+	}
+	if got := NameOfLastCommand(); got != "version" {
+		t.Fatalf("NameOfLastCommand() = %q, want version", got)
+	}
+
+	if _, _, err := executeCmd("completion", "bash"); err != nil {
+		t.Fatalf("completion: %v", err)
+	}
+	if got := NameOfLastCommand(); got != "completion" {
+		t.Fatalf("NameOfLastCommand() = %q, want completion", got)
+	}
+}
+
 func TestCLIMissingConfigErrors(t *testing.T) {
 	dir := t.TempDir()
 	cwd, _ := os.Getwd()
